@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -405,6 +406,135 @@ func EpayNotify(c *gin.Context) {
 			}
 			logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
 			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")
+			invitee, err := model.GetUserById(topUp.UserId, false)
+			if invitee.Id == 0 {
+				logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值用户异常，无法进行返点操作 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
+				return
+			}
+			if invitee.InviterId == 0 {
+				logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值用户无邀请人，无法进行返点操作 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
+				return
+			}
+			inviter, err := model.GetUserById(invitee.InviterId, false)
+			if inviter.Id == 0 {
+				logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值用户无邀请人，无法进行返点操作 trade_no=%s user_id=%d inviter_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, invitee.InviterId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
+				return
+			}
+
+			m := math.Min(float64(inviter.M), 50.0)
+			n := math.Min(float64(common.QuotaForInviter), 50.0)
+
+			totalPercent := m + n
+			if totalPercent >= 50.0 {
+				totalPercent = 49.9
+			}
+
+			iMoney := decimal.NewFromFloat(topUp.Money)
+
+			rebateAmount := iMoney.
+				Mul(decimal.NewFromFloat(totalPercent)).
+				Div(decimal.NewFromFloat(100.0))
+
+			if rebateAmount.LessThan(decimal.NewFromFloat(0.000001)) {
+				logger.LogInfo(
+					c.Request.Context(),
+					fmt.Sprintf(
+						"易支付 返点金额为0，无法返点 trade_no=%s user_id=%d inviter_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q",
+						topUp.TradeNo,
+						topUp.UserId,
+						inviter.Id,
+						c.ClientIP(),
+						quotaToAdd,
+						topUp.Money,
+						common.GetJsonString(topUp),
+					),
+				)
+				return
+			}
+
+			rebateAmountFloat64 := rebateAmount.InexactFloat64()
+
+			iQuotaToAdd := int(rebateAmount.Mul(dQuotaPerUnit).IntPart())
+
+			err = model.IncreaseUserQuota(inviter.Id, iQuotaToAdd, true)
+			if err != nil {
+				logger.LogError(
+					c.Request.Context(),
+					fmt.Sprintf(
+						"易支付 更新返点用户额度失败 trade_no=%s user_id=%d client_ip=%s money=%.2f rebate_amount=%.2f i_quota_to_add=%d quota_to_add=%d error=%q topup=%q",
+						topUp.TradeNo,
+						topUp.UserId,
+						c.ClientIP(),
+						topUp.Money,
+						rebateAmountFloat64,
+						iQuotaToAdd,
+						quotaToAdd,
+						err.Error(),
+						common.GetJsonString(topUp),
+					),
+				)
+				return
+			}
+
+			rebateRecord := model.RebateRecord{
+				InviterId:      inviter.Id,
+				InviterName:    inviter.Username,
+				InviteeId:      invitee.Id,
+				InviteeName:    invitee.Username,
+				RechargeId:     topUp.Id,
+				RechargeAmount: topUp.Money,
+				RebateAmount:   rebateAmountFloat64,
+				M:              m,
+				N:              n,
+			}
+
+			if err := rebateRecord.Insert(); err != nil {
+				logger.LogError(
+					c.Request.Context(),
+					fmt.Sprintf(
+						"易支付 插入返点记录失败 trade_no=%s user_id=%d client_ip=%s money=%.2f rebate_amount=%.2f i_quota_to_add=%d quota_to_add=%d error=%q topup=%q",
+						topUp.TradeNo,
+						topUp.UserId,
+						c.ClientIP(),
+						topUp.Money,
+						rebateAmountFloat64,
+						iQuotaToAdd,
+						quotaToAdd,
+						err.Error(),
+						common.GetJsonString(topUp),
+					),
+				)
+				common.ApiError(c, err)
+				return
+			}
+			logger.LogInfo(
+				c.Request.Context(),
+				fmt.Sprintf(
+					"易支付 返点成功 trade_no=%s user_id=%d inviter_id=%d client_ip=%s money=%.2f rebate_amount=%.2f i_quota_to_add=%d quota_to_add=%d topup=%q",
+					topUp.TradeNo,
+					topUp.UserId,
+					inviter.Id,
+					c.ClientIP(),
+					topUp.Money,
+					rebateAmountFloat64,
+					iQuotaToAdd,
+					quotaToAdd,
+					common.GetJsonString(topUp),
+				),
+			)
+
+			model.RecordTopupLog(
+				inviter.Id,
+				fmt.Sprintf(
+					"使用在线充值成功，充值金额: %v，支付金额：%f 返点金额：%f",
+					logger.LogQuota(quotaToAdd),
+					topUp.Money,
+					rebateAmountFloat64,
+				),
+				c.ClientIP(),
+				topUp.PaymentMethod,
+				"epay",
+			)
 		}
 	} else {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))

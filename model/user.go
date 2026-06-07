@@ -30,6 +30,7 @@ type User struct {
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
+	M                float64        `json:"m" gorm:"default:0"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -64,6 +65,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Username: user.Username,
 		Setting:  user.Setting,
 		Email:    user.Email,
+		M:        user.M,
 	}
 	return cache
 }
@@ -312,6 +314,15 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	return user.Id, err
 }
 
+func GetUserIdAndUsernameByAffCode(affCode string) (int, string, error) {
+	if affCode == "" {
+		return 0, "", errors.New("affCode 为空！")
+	}
+	var user User
+	err := DB.Select("id, username").First(&user, "aff_code = ?", affCode).Error
+	return user.Id, user.Username, err
+}
+
 func DeleteUserById(id int) (err error) {
 	if id == 0 {
 		return errors.New("id 为空！")
@@ -418,17 +429,17 @@ func (user *User) Insert(inviterId int) error {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
-	}
+	//if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
+	//	if common.QuotaForInvitee > 0 {
+	//		_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+	//		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+	//	}
+	//	if common.QuotaForInviter > 0 {
+	//		//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
+	//		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+	//		_ = inviteUser(inviterId)
+	//	}
+	//}
 	return nil
 }
 
@@ -460,6 +471,78 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	return nil
 }
 
+func (user *User) InsertWithInviterIdAndName(inviterId int, inviterName string) error {
+	var err error
+	if user.Password != "" {
+		user.Password, err = common.Password2Hash(user.Password)
+		if err != nil {
+			return err
+		}
+	}
+	user.Quota = common.QuotaForNewUser
+	//user.SetAccessToken(common.GetUUID())
+	user.AffCode = common.GetRandomString(4)
+
+	// 初始化用户设置，包括默认的边栏配置
+	if user.Setting == "" {
+		defaultSetting := dto.UserSetting{}
+		// 这里暂时不设置SidebarModules，因为需要在用户创建后根据角色设置
+		user.SetSetting(defaultSetting)
+	}
+
+	result := DB.Create(user)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 用户创建成功后，根据角色初始化边栏配置
+	// 需要重新获取用户以确保有正确的ID和Role
+	var createdUser User
+	if err := DB.Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
+		// 生成基于角色的默认边栏配置
+		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
+		if defaultSidebarConfig != "" {
+			currentSetting := createdUser.GetSetting()
+			currentSetting.SidebarModules = defaultSidebarConfig
+			createdUser.SetSetting(currentSetting)
+			createdUser.Update(false)
+			common.SysLog(fmt.Sprintf("为新用户 %s (角色: %d) 初始化边栏配置", createdUser.Username, createdUser.Role))
+		}
+	}
+
+	if common.QuotaForNewUser > 0 {
+		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+	}
+
+	if inviterId == 0 {
+		return nil
+	}
+
+	invitationRecord := InvitationRecord{
+		InviterId:   inviterId,
+		InviterName: inviterName,
+		InviteeId:   createdUser.Id,
+		InviteeName: createdUser.Username,
+	}
+
+	if err := invitationRecord.Insert(); err != nil {
+		common.SysLog(fmt.Sprintf("存储邀请记录失败，邀请人：%d-%s, 被邀请人：%d-%s", inviterId, inviterName, createdUser.Id, createdUser.Username))
+	}
+
+	// if inviterId != 0 {
+	// 	if common.QuotaForInvitee > 0 {
+	// 		_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+	// 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+	// 	}
+	// 	if common.QuotaForInviter > 0 {
+	// 		//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
+	// 		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+	// 		_ = inviteUser(inviterId)
+	// 	}
+	// }
+	return nil
+}
+
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
 // This should be called after the transaction commits successfully.
 func (user *User) FinalizeOAuthUserCreation(inviterId int) {
@@ -478,6 +561,23 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+	}
+	if inviterId != 0 {
+		var createdUser User
+		if err := DB.Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
+			var inviter User
+			if err := DB.Where("id = ?", inviterId).First(&inviter).Error; err == nil {
+				invitationRecord := InvitationRecord{
+					InviterId:   inviterId,
+					InviterName: inviter.Username,
+					InviteeId:   createdUser.Id,
+					InviteeName: createdUser.Username,
+				}
+				if err := invitationRecord.Insert(); err != nil {
+					common.SysLog(fmt.Sprintf("存储邀请记录失败，邀请人：%d-%s, 被邀请人：%d-%s", inviterId, inviter.Username, createdUser.Id, createdUser.Username))
+				}
+			}
+		}
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
@@ -522,6 +622,7 @@ func (user *User) Edit(updatePassword bool) error {
 	updates := map[string]interface{}{
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
+		"m":            newUser.M,
 		"group":        newUser.Group,
 		"remark":       newUser.Remark,
 	}

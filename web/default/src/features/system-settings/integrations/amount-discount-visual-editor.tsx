@@ -111,11 +111,17 @@ export function AmountDiscountVisualEditor({
     setDialogOpen(true)
   }
 
+  // const formatPercentage = (rate: number) => {
+  //   if (rate >= 1) return '0%'
+  //   const discount = Math.round((1 - rate) * 100)
+  //   return `${discount}%`
+  // }
+
   const formatPercentage = (rate: number) => {
-    if (rate >= 1) return '0%'
-    const discount = Math.round((1 - rate) * 100)
-    return `${discount}%`
-  }
+    if (rate >= 1) return '0%';
+    const discount = ((1 - rate) * 100).toFixed(1);
+    return `${discount}%`;
+  };
 
   return (
     <div className='space-y-4'>
@@ -262,7 +268,7 @@ export function AmountDiscountVisualEditor({
                     {t('Discount Rate:')}{' '}
                   </span>
                   <code className='bg-muted rounded px-1.5 py-0.5 text-xs'>
-                    {discount.discountRate.toFixed(2)}
+                    {discount.discountRate.toFixed(3)}
                   </code>
                 </div>
               </div>

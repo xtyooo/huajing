@@ -178,6 +178,11 @@ export function UsersMutateDrawer({
     triggerRefresh()
   }
 
+  function toNumber(value: unknown, fallback: number) {
+    const n = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(n) ? n : fallback
+  }
+
   return (
     <>
       <Sheet
@@ -313,6 +318,29 @@ export function UsersMutateDrawer({
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                    control={form.control}
+                    name='m'
+                    render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('M')}</FormLabel>
+                          <FormControl>
+                            <Input
+                                type='number'
+                                value={toNumber(field.value, 0)}
+                                onChange={(e) =>
+                                    field.onChange(
+                                        e.target.value === '' ? 0 : Number(e.target.value)
+                                    )
+                                }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
               </SideDrawerSection>
 
               {/* Group & Quota Settings (Update only) */}

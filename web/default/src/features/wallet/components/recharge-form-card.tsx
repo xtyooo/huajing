@@ -246,24 +246,33 @@ export function RechargeFormCard({
                           onClick={() => onSelectPreset(preset)}
                         >
                           <div className='flex w-full items-center justify-between'>
-                            <div className='text-base font-semibold sm:text-lg'>
-                              {formatNumber(displayValue)}
+                            <div className='text-base flex-1 text-center w-full font-semibold sm:text-lg'>
+                              ⚡{formatNumber(displayValue)}
                             </div>
-                            {hasDiscount && (
-                              <div className='text-xs font-medium text-green-600'>
-                                {getDiscountLabel(discount)}
+                            {/*{hasDiscount && (*/}
+                            {/*  <div className='text-xs font-medium text-green-600'>*/}
+                            {/*    {getDiscountLabel(discount)}*/}
+                            {/*  </div>*/}
+                            {/*)}*/}
+                          </div>
+                          {hasDiscount && (
+                              <div className='text-muted-foreground mt-0.5 text-xs sm:text-sm sm:mt-1 w-full text-center flex-1'>
+                                <span>{(discount * 10).toFixed(2)}折</span>
+                                {/* <span>{((1 - discount) * 10).toFixed(1)}折</span> */}
+                                <span className='text-green-600'>
+                                  节省 {((1 - discount) * 100).toFixed(1)}%
+                                </span>
                               </div>
-                            )}
-                          </div>
-                          <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            Pay {formatCurrency(actualPrice)}
-                            {hasDiscount && savedAmount > 0 && (
-                              <span className='text-green-600'>
-                                {' '}
-                                • Save {formatCurrency(savedAmount)}
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          {/*<div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>*/}
+                          {/*  Pay {formatCurrency(actualPrice)}*/}
+                          {/*  {hasDiscount && savedAmount > 0 && (*/}
+                          {/*    <span className='text-green-600'>*/}
+                          {/*      {' '}*/}
+                          {/*      • Save {formatCurrency(savedAmount)}*/}
+                          {/*    </span>*/}
+                          {/*  )}*/}
+                          {/*</div>*/}
                         </Button>
                       )
                     })}

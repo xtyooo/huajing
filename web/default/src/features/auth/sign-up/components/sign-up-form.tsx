@@ -53,10 +53,7 @@ import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
-import {
-  getAffiliateCode,
-  saveAffiliateCode,
-} from '@/features/auth/lib/storage'
+import { saveAffiliateCode } from '@/features/auth/lib/storage'
 
 export function SignUpForm({
   className,
@@ -162,13 +159,28 @@ export function SignUpForm({
     if (!validateTurnstile()) return
 
     setIsLoading(true)
+
+    const getUrlAffiliateCode = () => {
+      if (typeof window === 'undefined') return ''
+      const urlParams = new URLSearchParams(window.location.search)
+      return urlParams.get('aff') || getAffiliateCode()
+    }
+
+    function getAffiliateCode(): string {
+      try {
+        return window.localStorage.getItem('aff') ?? ''
+      } catch {
+        return ''
+      }
+    }
+
     try {
       const res = await register({
         username: data.username,
         password: data.password,
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
-        aff_code: getAffiliateCode(),
+        aff_code: getUrlAffiliateCode(),
         turnstile: turnstileToken,
       })
 

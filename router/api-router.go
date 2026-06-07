@@ -346,6 +346,12 @@ func SetApiRouter(router *gin.Engine) {
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
 		}
 
+		invitationRecordRoute := apiRouter.Group("/invitation_record")
+		{
+			invitationRecordRoute.GET("/self", middleware.UserAuth(), controller.GetUserInvitationRecord)
+			invitationRecordRoute.GET("/", middleware.AdminAuth(), controller.GetAllInvitationRecord)
+		}
+
 		vendorRoute := apiRouter.Group("/vendors")
 		vendorRoute.Use(middleware.AdminAuth())
 		{

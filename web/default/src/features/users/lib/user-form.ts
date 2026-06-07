@@ -30,6 +30,7 @@ export const userFormSchema = z.object({
   display_name: z.string().optional(),
   password: z.string().optional(),
   role: z.number().optional(),
+  m: z.coerce.number().int().min(1),
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
@@ -46,6 +47,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   display_name: '',
   password: '',
   role: 1, // Default to common user
+  m: 0,
   quota_dollars: 0,
   group: DEFAULT_GROUP,
   remark: '',
@@ -66,6 +68,7 @@ export function transformFormDataToPayload(
     username: data.username,
     display_name: data.display_name || data.username,
     password: data.password || undefined,
+    m: data.m as number | undefined || 0
   }
 
   // For create: only send required fields
@@ -90,6 +93,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     display_name: user.display_name,
     password: '',
     role: user.role,
+    m: user.m,
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',

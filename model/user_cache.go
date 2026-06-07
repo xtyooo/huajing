@@ -15,13 +15,14 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id       int    `json:"id"`
-	Group    string `json:"group"`
-	Email    string `json:"email"`
-	Quota    int    `json:"quota"`
-	Status   int    `json:"status"`
-	Username string `json:"username"`
-	Setting  string `json:"setting"`
+	Id       int     `json:"id"`
+	Group    string  `json:"group"`
+	Email    string  `json:"email"`
+	Quota    int     `json:"quota"`
+	Status   int     `json:"status"`
+	Username string  `json:"username"`
+	Setting  string  `json:"setting"`
+	M        float64 `json:"m"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -31,6 +32,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyM, user.M)
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -113,6 +115,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 		Username: user.Username,
 		Setting:  user.Setting,
 		Email:    user.Email,
+		M:        user.M,
 	}
 
 	return userCache, nil
@@ -184,6 +187,14 @@ func getUserSettingCache(userId int) (dto.UserSetting, error) {
 	return cache.GetSetting(), nil
 }
 
+func getUserMCache(userId int) (float64, error) {
+	cache, err := GetUserCache(userId)
+	if err != nil {
+		return 0, err
+	}
+	return cache.M, nil
+}
+
 // New functions for individual field updates
 func updateUserStatusCache(userId int, status bool) error {
 	if !common.RedisEnabled {
@@ -226,6 +237,13 @@ func updateUserSettingCache(userId int, setting string) error {
 		return nil
 	}
 	return common.RedisHSetField(getUserCacheKey(userId), "Setting", setting)
+}
+
+func updateUserMCache(userId int, m int) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return common.RedisHSetField(getUserCacheKey(userId), "M", m)
 }
 
 // GetUserLanguage returns the user's language preference from cache

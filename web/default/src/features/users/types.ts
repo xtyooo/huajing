@@ -40,6 +40,7 @@ export const userSchema = z.object({
   wechat_id: z.string().optional(),
   telegram_id: z.string().optional(),
   email: z.string().optional(),
+  m: z.number(),
   quota: z.number(),
   used_quota: z.number(),
   request_count: z.number(),
@@ -102,6 +103,7 @@ export interface UserFormData {
   username: string
   display_name: string
   password?: string
+  m?: number
   role?: number // Only used when creating user
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
