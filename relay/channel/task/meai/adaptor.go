@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -24,30 +25,6 @@ import (
 // ============================
 // Request / Response structures
 // ============================
-
-type meaiInput struct {
-	Prompt string      `json:"prompt"`
-	Media  []meaiMedia `json:"media,omitempty"`
-}
-
-type meaiMedia struct {
-	Type string `json:"type"`
-	URL  string `json:"url"`
-}
-
-type meaiParameters struct {
-	Resolution   string `json:"resolution,omitempty"`
-	Ratio        string `json:"ratio,omitempty"`
-	Duration     int    `json:"duration,omitempty"`
-	PromptExtend *bool  `json:"prompt_extend,omitempty"`
-	Watermark    *bool  `json:"watermark,omitempty"`
-}
-
-type requestPayload struct {
-	Model      string         `json:"model"`
-	Input      meaiInput      `json:"input"`
-	Parameters meaiParameters `json:"parameters"`
-}
 
 type submitResponse struct {
 	ID        string `json:"id"`
@@ -84,9 +61,21 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.apiKey = info.ApiKey
 }
 
-// ValidateRequestAndSetAction parses body, validates fields and sets default action.
+// ValidateRequestAndSetAction parses body for billing but skips prompt validation (passthrough mode).
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	var req relaycommon.TaskSubmitReq
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		return service.TaskErrorWrapper(err, "invalid_request", http.StatusBadRequest)
+	}
+	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
+		req.Images = []string{req.Image}
+	}
+	info.Action = constant.TaskActionGenerate
+	c.Set("task_request", req)
+	if len(req.Images) == 0 {
+		c.Set("action", constant.TaskActionTextGenerate)
+	}
+	return
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -96,29 +85,35 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 
 // BuildRequestHeader sets required headers.
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
+	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	return nil
 }
 
-// BuildRequestBody converts request into MeAI specific format.
+// BuildRequestBody passes raw request body to upstream, only replacing model.
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
-	v, exists := c.Get("task_request")
-	if !exists {
-		return nil, fmt.Errorf("request not found in context")
-	}
-	req := v.(relaycommon.TaskSubmitReq)
-
-	body := a.convertToRequestPayload(&req, info)
-	if len(req.Images) == 0 {
-		c.Set("action", constant.TaskActionTextGenerate)
-	}
-	data, err := common.Marshal(body)
+	storage, err := common.GetBodyStorage(c)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "get_request_body_failed")
 	}
-	return bytes.NewReader(data), nil
+	cachedBody, err := storage.Bytes()
+	if err != nil {
+		return nil, errors.Wrap(err, "read_body_bytes_failed")
+	}
+
+	contentType := c.GetHeader("Content-Type")
+	if strings.HasPrefix(contentType, "application/json") {
+		var bodyMap map[string]interface{}
+		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
+			bodyMap["model"] = info.UpstreamModelName
+			if newBody, err := common.Marshal(bodyMap); err == nil {
+				return bytes.NewReader(newBody), nil
+			}
+		}
+		return bytes.NewReader(cachedBody), nil
+	}
+
+	return bytes.NewReader(cachedBody), nil
 }
 
 // DoRequest delegates to common helper.
@@ -245,57 +240,4 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	return common.Marshal(openAIVideo)
 }
 
-// ============================
-// helpers
-// ============================
 
-func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) *requestPayload {
-	r := &requestPayload{
-		Model: info.UpstreamModelName,
-		Input: meaiInput{
-			Prompt: req.Prompt,
-		},
-		Parameters: meaiParameters{
-			Duration: req.Duration,
-		},
-	}
-	if r.Model == "" {
-		r.Model = "seedance-2.0"
-	}
-
-	if resolution, ratio := parseSize(req.Size); resolution != "" {
-		r.Parameters.Resolution = resolution
-		r.Parameters.Ratio = ratio
-	}
-
-	if len(req.Images) > 0 {
-		for _, img := range req.Images {
-			r.Input.Media = append(r.Input.Media, meaiMedia{
-				Type: "first_frame",
-				URL:  img,
-			})
-		}
-	}
-
-	return r
-}
-
-// parseSize converts "1920x1080" to resolution "1080P" and ratio "16:9".
-func parseSize(size string) (resolution, ratio string) {
-	switch size {
-	case "1920x1080", "1280x720", "1080P", "1080":
-		return "1080P", "16:9"
-	case "1080x1920", "720x1280":
-		return "1080P", "9:16"
-	case "2048x2048", "1024x1024":
-		return "1080P", "1:1"
-	case "768x1280":
-		return "720P", "9:16"
-	case "1280x768":
-		return "720P", "16:9"
-	case "768x768":
-		return "720P", "1:1"
-	default:
-		return "", ""
-	}
-}
