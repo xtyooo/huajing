@@ -35,6 +35,7 @@ import {
   type AudioClip,
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
+import { TaskLogDetailsDialog } from '../dialogs/task-log-details-dialog'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -175,21 +176,34 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       cell: ({ row }) => {
         const log = row.original
         const taskId = row.getValue('task_id') as string
+        const [dialogOpen, setDialogOpen] = useState(false)
         if (!taskId) {
           return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
         return (
-          <div className='flex max-w-[170px] flex-col gap-0.5'>
-            <StatusBadge
-              label={taskId}
-              autoColor={taskId}
-              size='sm'
-              className='border-border/60 bg-muted/30 max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
+          <>
+            <button
+              type='button'
+              className='flex max-w-[170px] flex-col gap-0.5 text-left'
+              onClick={() => setDialogOpen(true)}
+            >
+              <StatusBadge
+                label={taskId}
+                autoColor={taskId}
+                size='sm'
+                copyable={false}
+                className='border-border/60 bg-muted/30 max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
+              />
+              <span className='text-muted-foreground/60 truncate text-[11px]'>
+                {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
+              </span>
+            </button>
+            <TaskLogDetailsDialog
+              log={log}
+              open={dialogOpen}
+              onOpenChange={setDialogOpen}
             />
-            <span className='text-muted-foreground/60 truncate text-[11px]'>
-              {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
-            </span>
-          </div>
+          </>
         )
       },
       meta: { label: t('Task ID'), mobileTitle: true },

@@ -746,6 +746,17 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	if t.Prompt == "" {
+		var raw map[string]any
+		if common.Unmarshal(data, &raw) == nil {
+			if input, ok := raw["input"].(map[string]any); ok {
+				if prompt, ok := input["prompt"].(string); ok {
+					t.Prompt = prompt
+				}
+			}
+		}
+	}
+
 	return nil
 }
 func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
