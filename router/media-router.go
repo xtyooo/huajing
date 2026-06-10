@@ -9,7 +9,7 @@ import (
 )
 
 func SetMediaRouter(router *gin.Engine) {
-	mediaDir := common.GetEnvOrDefaultString("MEDIA_DIR", "/media")
+	mediaDir := common.GetMediaDir()
 	if info, err := os.Stat(mediaDir); err != nil || !info.IsDir() {
 		common.SysLog(fmt.Sprintf("MEDIA_DIR %s does not exist or is not a directory", mediaDir))
 		return

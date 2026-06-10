@@ -36,3 +36,10 @@ func GetEnvOrDefaultBool(env string, defaultValue bool) bool {
 	}
 	return b
 }
+
+const MediaDirEnv = "MEDIA_DIR"
+const DefaultMediaDir = "/media"
+
+func GetMediaDir() string {
+	return GetEnvOrDefaultString(MediaDirEnv, DefaultMediaDir)
+}

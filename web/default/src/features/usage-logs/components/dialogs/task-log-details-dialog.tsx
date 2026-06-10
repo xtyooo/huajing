@@ -50,7 +50,7 @@ export function TaskLogDetailsDialog(props: TaskLogDetailsDialogProps) {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='min-w-0 sm:max-w-2xl'>
+      <DialogContent className='min-w-0 sm:max-w-4xl'>
         <DialogHeader>
           <DialogTitle>{t('任务详情')}</DialogTitle>
         </DialogHeader>

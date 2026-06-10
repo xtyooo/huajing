@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -41,6 +42,14 @@ const (
 	TaskStatusUnknown               = "UNKNOWN"
 )
 
+const (
+	MediaStatusNotNeed     = 0
+	MediaStatusPending     = 1
+	MediaStatusDownloading = 2
+	MediaStatusSuccess     = 3
+	MediaStatusFailed      = -1
+)
+
 type Task struct {
 	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
 	CreatedAt  int64                 `json:"created_at" gorm:"index"`
@@ -61,8 +70,12 @@ type Task struct {
 	Properties Properties            `json:"properties" gorm:"type:json"`
 	Username   string                `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
-	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
-	Data        json.RawMessage `json:"data" gorm:"type:json"`
+	PrivateData     TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
+	Data            json.RawMessage `json:"data" gorm:"type:json"`
+	MediaURL        string          `json:"media_url" gorm:"type:varchar(512)"`
+	MediaStatus     int             `json:"media_status" gorm:"type:int;default:0;index"`
+	MediaStartTime  int64           `json:"media_start_time" gorm:"index"`
+	MediaFinishTime int64           `json:"media_finish_time" gorm:"index"`
 }
 
 func (t *Task) SetData(data any) {
@@ -314,6 +327,24 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	return tasks
 }
 
+func GetPendingMediaTasks(limit int) []*Task {
+	var tasks []*Task
+	err := DB.Where("media_status = ?", MediaStatusPending).Limit(limit).Order("id").Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
+func ResetStuckMediaTasks() {
+	err := DB.Model(&Task{}).Where("media_status = ?", MediaStatusDownloading).Update("media_status", MediaStatusPending).Error
+	if err != nil {
+		common.SysError(fmt.Sprintf("reset stuck media tasks failed: %v", err))
+	} else {
+		common.SysLog("********** reset stuck media tasks succeeded **********")
+	}
+}
+
 func GetByOnlyTaskId(taskId string) (*Task, bool, error) {
 	if taskId == "" {
 		return nil, false, nil
@@ -414,6 +445,35 @@ func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
 		return false, result.Error
 	}
 	return result.RowsAffected > 0, nil
+}
+
+func (t *Task) CompareAndSwapMediaStatus(from, to int) bool {
+	now := time.Now().Unix()
+	result := DB.Model(t).Where("id = ? AND media_status = ?", t.ID, from).Select("media_status", "media_start_time").Updates(map[string]any{
+		"media_status":     to,
+		"media_start_time": now,
+	})
+	if result.Error != nil {
+		return false
+	}
+	if result.RowsAffected > 0 {
+		t.MediaStartTime = now
+	}
+	return result.RowsAffected > 0
+}
+
+func (t *Task) UpdateMediaStatus(status int) error {
+	now := time.Now().Unix()
+	if status == MediaStatusSuccess || status == MediaStatusFailed {
+		t.MediaFinishTime = now
+	}
+	return DB.Model(t).Select("media_status", "media_url", "fail_reason", "media_start_time", "media_finish_time").Updates(map[string]any{
+		"media_status":      status,
+		"media_url":         t.MediaURL,
+		"fail_reason":       t.FailReason,
+		"media_start_time":  t.MediaStartTime,
+		"media_finish_time": t.MediaFinishTime,
+	}).Error
 }
 
 // TaskBulkUpdate performs an unconditional bulk UPDATE by upstream task_id strings.

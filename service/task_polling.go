@@ -421,6 +421,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	shouldRefund := false
 	shouldSettle := false
+	needsDownload := false
 	quota := task.Quota
 
 	task.Status = model.TaskStatus(taskResult.Status)
@@ -445,6 +446,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		} else if taskResult.Url != "" {
 			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
 			task.PrivateData.ResultURL = taskResult.Url
+			task.MediaStatus = model.MediaStatusPending
+			needsDownload = true
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
@@ -481,10 +484,15 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			logger.LogWarn(ctx, fmt.Sprintf("Task %s already transitioned by another process, skip billing", task.TaskID))
 			shouldRefund = false
 			shouldSettle = false
+			needsDownload = false
+		} else if needsDownload {
+			DownloadManager.WakeUp()
 		}
 	} else if !snap.Equal(task.Snapshot()) {
-		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
+		if won, err := task.UpdateWithStatus(snap.Status); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Failed to update task %s: %s", task.TaskID, err.Error()))
+		} else if won && needsDownload {
+			DownloadManager.WakeUp()
 		}
 	} else {
 		// No changes, skip update

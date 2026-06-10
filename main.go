@@ -138,6 +138,7 @@ func main() {
 		gopool.Go(func() {
 			controller.UpdateTaskBulk()
 		})
+		gopool.Go(service.DownloadManager.Start)
 	}
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true

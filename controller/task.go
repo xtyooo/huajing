@@ -90,15 +90,6 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 		}
 		task.Properties.UpstreamModelName = ""
 		result[i] = relay.TaskModel2Dto(task)
-		if len(result[i].Data) > 0 {
-			var m map[string]any
-			if err := common.Unmarshal(result[i].Data, &m); err == nil {
-				delete(m, "model")
-				if b, err := common.Marshal(m); err == nil {
-					result[i].Data = b
-				}
-			}
-		}
 	}
 	return result
 }
