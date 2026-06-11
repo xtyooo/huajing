@@ -13,6 +13,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -350,6 +351,53 @@ func CleanupLogFiles(c *gin.Context) {
 		"message": "",
 		"data":    result,
 	})
+}
+
+// CleanupMediaFiles 手动清理过期媒体文件
+// 可选参数: ?minutes=120 删除 120 分钟以前的文件；不传则使用 MEDIA_CLEANUP_AGE 配置
+func CleanupMediaFiles(c *gin.Context) {
+	var result *service.MediaCleanupResult
+	var err error
+
+	minutesStr := c.Query("minutes")
+	if minutesStr != "" {
+		minutes, parseErr := strconv.Atoi(minutesStr)
+		if parseErr != nil || minutes < 1 {
+			common.ApiErrorMsg(c, "invalid minutes parameter, must be a positive integer")
+			return
+		}
+		result, err = service.RunMediaCleanupWithAge(time.Duration(minutes) * time.Minute)
+	} else {
+		result, err = service.RunMediaCleanup()
+	}
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	message := fmt.Sprintf("已清理 %d 个媒体文件", result.DeletedCount)
+	if result.FreedBytes > 0 {
+		message += fmt.Sprintf("，释放 %s", formatBytes(result.FreedBytes))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": message,
+		"data":    result,
+	})
+}
+
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 // getDiskCacheInfo 获取磁盘缓存目录信息

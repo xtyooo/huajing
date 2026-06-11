@@ -43,3 +43,11 @@ const DefaultMediaDir = "/media"
 func GetMediaDir() string {
 	return GetEnvOrDefaultString(MediaDirEnv, DefaultMediaDir)
 }
+
+func GetMediaCleanupInterval() int {
+	return GetEnvOrDefault("MEDIA_CLEANUP_INTERVAL", 300)
+}
+
+func GetMediaCleanupAge() int {
+	return GetEnvOrDefault("MEDIA_CLEANUP_AGE", 180)
+}

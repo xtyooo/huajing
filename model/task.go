@@ -48,6 +48,7 @@ const (
 	MediaStatusDownloading = 2
 	MediaStatusSuccess     = 3
 	MediaStatusFailed      = -1
+	MediaStatusCleaned     = 4
 )
 
 type Task struct {
@@ -499,6 +500,18 @@ func TaskBulkUpdateByID(ids []int64, params map[string]any) error {
 	return DB.Model(&Task{}).
 		Where("id in (?)", ids).
 		Updates(params).Error
+}
+
+func CleanMediaByTaskIDs(taskIDs []string) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	return DB.Model(&Task{}).
+		Where("task_id in (?)", taskIDs).
+		Updates(map[string]any{
+			"media_url":    "",
+			"media_status": MediaStatusCleaned,
+		}).Error
 }
 
 type TaskQuotaUsage struct {

@@ -113,6 +113,8 @@ type FlatPerfDefaults = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
   'perf_metrics_setting.retention_days': number
+  'media_cleanup_setting.cleanup_interval': number
+  'media_cleanup_setting.cleanup_age': number
 }
 
 const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
@@ -229,6 +231,14 @@ export function PerformanceSection(props: Props) {
   const [logCleanupMode, setLogCleanupMode] = useState('by_count')
   const [logCleanupValue, setLogCleanupValue] = useState(10)
   const [logCleanupLoading, setLogCleanupLoading] = useState(false)
+  const [cleanupMinutes, setCleanupMinutes] = useState(180)
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
+  const [cleanupInterval, setCleanupInterval] = useState(
+    Number(props.defaultValues['media_cleanup_setting.cleanup_interval']) || 300
+  )
+  const [cleanupAge, setCleanupAge] = useState(
+    Number(props.defaultValues['media_cleanup_setting.cleanup_age']) || 180
+  )
 
   const formDefaults = useMemo(
     () => buildFormDefaults(props.defaultValues),
@@ -333,6 +343,28 @@ export function PerformanceSection(props: Props) {
       }
     } catch {
       toast.error(t('GC execution failed'))
+    }
+  }
+
+  const cleanupMediaFiles = async (minutes: number) => {
+    try {
+      const res = await api.post(`/api/performance/media_cleanup?minutes=${minutes}`)
+      if (res.data.success) {
+        toast.success(res.data.message)
+        fetchStats()
+      }
+    } catch {
+      toast.error('媒体文件清理失败')
+    }
+  }
+
+  const saveMediaCleanupSettings = async () => {
+    try {
+      await api.put('/api/option/', { key: 'media_cleanup_setting.cleanup_interval', value: String(cleanupInterval) })
+      await api.put('/api/option/', { key: 'media_cleanup_setting.cleanup_age', value: String(cleanupAge) })
+      toast.success('媒体清理设置已保存')
+    } catch {
+      toast.error('保存失败')
     }
   }
 
@@ -1040,6 +1072,81 @@ export function PerformanceSection(props: Props) {
             )}
           </>
         )}
+      </div>
+
+      <Separator />
+
+      <div className='space-y-4'>
+        <div>
+          <h4 className='font-medium'>媒体文件清理设置</h4>
+          <p className='text-muted-foreground mt-1 text-xs'>
+            配置媒体文件的自动清理策略，清理后对应任务的 media_url 将被清空。
+          </p>
+        </div>
+        <div className='flex items-center gap-4'>
+          <div className='flex items-center gap-2'>
+            <span className='text-sm'>清理间隔</span>
+            <Input
+              type='number'
+              className='w-20'
+              value={cleanupInterval}
+              onChange={(e) => setCleanupInterval(Number(e.target.value))}
+              min={1}
+            />
+            <span className='text-sm'>分钟</span>
+          </div>
+          <div className='flex items-center gap-2'>
+            <span className='text-sm'>文件保留</span>
+            <Input
+              type='number'
+              className='w-20'
+              value={cleanupAge}
+              onChange={(e) => setCleanupAge(Number(e.target.value))}
+              min={1}
+            />
+            <span className='text-sm'>分钟</span>
+          </div>
+          <Button variant='outline' size='sm' onClick={saveMediaCleanupSettings}>
+            保存
+          </Button>
+        </div>
+
+        <Separator />
+
+        <h4 className='font-medium'>手动清理</h4>
+        <div className='flex items-center gap-2'>
+          <span className='text-sm'>删除</span>
+          <Input
+            type='number'
+            className='w-20'
+            value={cleanupMinutes}
+            onChange={(e) => setCleanupMinutes(Number(e.target.value))}
+            min={1}
+          />
+          <span className='text-sm'>分钟以前的媒体文件</span>
+          <AlertDialog open={cleanupDialogOpen} onOpenChange={setCleanupDialogOpen}>
+            <AlertDialogTrigger render={<Button variant='outline' size='sm' />}>
+              执行清理
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>确认清理过期媒体文件？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  将删除 {cleanupMinutes} 分钟以前的媒体文件并更新对应任务状态，此操作不可撤销。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={() => {
+                  cleanupMediaFiles(cleanupMinutes)
+                  setCleanupDialogOpen(false)
+                }}>
+                  确认
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
     </SettingsSection>
   )

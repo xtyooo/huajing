@@ -79,6 +79,9 @@ export default function SettingsPerformance(props) {
   const [logCleanupMode, setLogCleanupMode] = useState('by_count');
   const [logCleanupValue, setLogCleanupValue] = useState(10);
   const [logCleanupLoading, setLogCleanupLoading] = useState(false);
+  const [cleanupMinutes, setCleanupMinutes] = useState(180);
+  const [cleanupInterval, setCleanupInterval] = useState(300);
+  const [cleanupAge, setCleanupAge] = useState(180);
 
   function handleFieldChange(fieldName) {
     return (value) => {
@@ -174,6 +177,30 @@ export default function SettingsPerformance(props) {
     }
   }
 
+  async function cleanupMediaFiles() {
+    try {
+      const res = await API.post(`/api/performance/media_cleanup?minutes=${cleanupMinutes}`);
+      if (res.data.success) {
+        showSuccess(res.data.message);
+        fetchStats();
+      } else {
+        showError(res.data.message || '清理失败');
+      }
+    } catch (error) {
+      showError('媒体文件清理失败');
+    }
+  }
+
+  async function saveMediaCleanupSettings() {
+    try {
+      await API.put('/api/option/', { key: 'media_cleanup_setting.cleanup_interval', value: String(cleanupInterval) });
+      await API.put('/api/option/', { key: 'media_cleanup_setting.cleanup_age', value: String(cleanupAge) });
+      showSuccess('媒体清理设置已保存');
+    } catch (error) {
+      showError('保存失败');
+    }
+  }
+
   async function fetchLogInfo() {
     try {
       const res = await API.get('/api/performance/logs');
@@ -235,6 +262,17 @@ export default function SettingsPerformance(props) {
     }
     fetchStats();
     fetchLogInfo();
+  }, [props.options]);
+
+  useEffect(() => {
+    const val = parseInt(props.options['media_cleanup_setting.cleanup_interval']);
+    if (!isNaN(val)) {
+      setCleanupInterval(val);
+    }
+    const age = parseInt(props.options['media_cleanup_setting.cleanup_age']);
+    if (!isNaN(age)) {
+      setCleanupAge(age);
+    }
   }, [props.options]);
 
   const diskCacheUsagePercent =
@@ -731,6 +769,66 @@ export default function SettingsPerformance(props) {
           )}
         </Form.Section>
       </Spin>
+
+      <Form.Section text='媒体文件清理'>
+        <Banner
+          type='info'
+          description='配置媒体文件的自动清理策略，清理后对应任务的 media_url 将被清空。'
+          style={{ marginBottom: 16 }}
+        />
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col xs={24} sm={12} md={6} lg={6} xl={6}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span>清理间隔</span>
+              <InputNumber
+                style={{ width: 100 }}
+                value={cleanupInterval}
+                onChange={(value) => setCleanupInterval(value)}
+                min={1}
+              />
+              <span>分钟</span>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} md={6} lg={6} xl={6}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span>文件保留</span>
+              <InputNumber
+                style={{ width: 100 }}
+                value={cleanupAge}
+                onChange={(value) => setCleanupAge(value)}
+                min={1}
+              />
+              <span>分钟</span>
+            </div>
+          </Col>
+          <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+            <Button size='default' onClick={saveMediaCleanupSettings}>
+              保存
+            </Button>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={24}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span>清理</span>
+              <InputNumber
+                style={{ width: 100 }}
+                value={cleanupMinutes}
+                onChange={(value) => setCleanupMinutes(value)}
+                min={1}
+              />
+              <span>分钟以前的媒体文件</span>
+              <Popconfirm
+                title='确认清理过期媒体文件？'
+                content={`将删除 ${cleanupMinutes} 分钟以前的媒体文件并更新对应任务状态，此操作不可撤销。`}
+                onConfirm={cleanupMediaFiles}
+              >
+                <Button type='warning'>执行清理</Button>
+              </Popconfirm>
+            </div>
+          </Col>
+        </Row>
+      </Form.Section>
     </>
   );
 }
