@@ -87,7 +87,7 @@ func RunMediaCleanupWithAge(age time.Duration) (*MediaCleanupResult, error) {
 		timeStr := matches[1]
 		taskID := matches[2]
 
-		fileTime, err := time.Parse("20060102150405", timeStr)
+		fileTime, err := time.ParseInLocation("20060102150405", timeStr, time.Local)
 		if err != nil {
 			continue
 		}
