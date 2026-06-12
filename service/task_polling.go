@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -448,6 +449,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			task.PrivateData.ResultURL = taskResult.Url
 			task.MediaStatus = model.MediaStatusPending
 			needsDownload = true
+		} else if dataURL := extractVideoURLFromRawData(task.Data); dataURL != "" {
+			// URL embedded in raw response Data but not captured by adaptor (e.g. Sora)
+			task.PrivateData.ResultURL = dataURL
+			task.MediaStatus = model.MediaStatusPending
+			needsDownload = true
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
@@ -541,6 +547,26 @@ func truncateBase64(s string) string {
 		return s
 	}
 	return s[:maxKeep] + "..."
+}
+
+func extractVideoURLFromRawData(data json.RawMessage) string {
+	var m map[string]any
+	if err := common.Unmarshal(data, &m); err != nil {
+		return ""
+	}
+	for _, key := range []string{"video_url", "result_url", "url"} {
+		if u, ok := m[key].(string); ok && strings.HasPrefix(u, "http") {
+			return u
+		}
+	}
+	if resp, ok := m["response"].(map[string]any); ok {
+		for _, key := range []string{"video_url", "result_url", "url"} {
+			if u, ok := resp[key].(string); ok && strings.HasPrefix(u, "http") {
+				return u
+			}
+		}
+	}
+	return ""
 }
 
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。

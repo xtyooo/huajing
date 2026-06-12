@@ -11,7 +11,7 @@ type MediaCleanupSetting struct {
 }
 
 var mediaCleanupSetting = MediaCleanupSetting{
-	CleanupInterval: 300,
+	CleanupInterval: 180,
 	CleanupAge:      180,
 }
 
