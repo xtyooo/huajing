@@ -122,11 +122,9 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 		return
 	}
 
-	ext := getExtFromURL(url)
+	ext := getExtFromContentType(resp.Header.Get("Content-Type"))
 	if ext == "" {
-		if exts, _ := mime.ExtensionsByType(resp.Header.Get("Content-Type")); len(exts) > 0 {
-			ext = exts[0]
-		}
+		ext = getExtFromURL(url)
 	}
 	timePrefix := time.Now().Format("20060102150405")
 	fileName := timePrefix + "_" + task.TaskID + ext
@@ -149,8 +147,21 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	common.SysLog(fmt.Sprintf("downloaded task %s result to %s", task.TaskID, filePath))
 }
 
+func getExtFromContentType(contentType string) string {
+	if contentType == "" {
+		return ""
+	}
+	if exts, _ := mime.ExtensionsByType(contentType); len(exts) > 0 {
+		return exts[0]
+	}
+	return ""
+}
+
 func getExtFromURL(rawURL string) string {
 	if idx := strings.Index(rawURL, "?"); idx != -1 {
+		rawURL = rawURL[:idx]
+	}
+	if idx := strings.Index(rawURL, "#"); idx != -1 {
 		rawURL = rawURL[:idx]
 	}
 	ext := strings.ToLower(filepath.Ext(rawURL))
