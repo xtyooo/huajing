@@ -122,10 +122,18 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 		return
 	}
 
-	ext := getExtFromContentType(resp.Header.Get("Content-Type"))
-	if ext == "" {
-		ext = getExtFromURL(url)
+	contentType := resp.Header.Get("Content-Type")
+	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s", url, contentType))
+	var ext string
+	if strings.ToLower(contentType) == "video/mp4" {
+		ext = ".mp4"
+	} else {
+		ext = getExtFromContentType(contentType)
+		if ext == "" {
+			ext = getExtFromURL(url)
+		}
 	}
+
 	timePrefix := time.Now().Format("20060102150405")
 	fileName := timePrefix + "_" + task.TaskID + ext
 	filePath := filepath.Join(mediaDir, fileName)
