@@ -11,7 +11,7 @@ var mediaCleanupConfig atomic.Value
 
 func init() {
 	mediaCleanupConfig.Store(MediaCleanupConfig{
-		CleanupInterval: 300,
+		CleanupInterval: 180,
 		CleanupAge:      180,
 	})
 }

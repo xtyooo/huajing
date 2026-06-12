@@ -34,12 +34,12 @@ func StartMediaCleanupTask() {
 		}
 		gopool.Go(func() {
 			cfg := common.GetMediaCleanupConfig()
-			common.SysLog(fmt.Sprintf("media cleanup task started: interval=%dh, age=%dh", cfg.CleanupInterval, cfg.CleanupAge))
+			common.SysLog(fmt.Sprintf("media cleanup task started: interval=%dm, age=%dm", cfg.CleanupInterval, cfg.CleanupAge))
 
 			RunMediaCleanup()
 			for {
 				cfg := common.GetMediaCleanupConfig()
-				interval := time.Duration(cfg.CleanupInterval) * time.Hour
+				interval := time.Duration(cfg.CleanupInterval) * time.Minute
 				time.Sleep(interval)
 				RunMediaCleanup()
 			}
@@ -48,7 +48,7 @@ func StartMediaCleanupTask() {
 }
 
 func RunMediaCleanup() (*MediaCleanupResult, error) {
-	age := time.Duration(common.GetMediaCleanupConfig().CleanupAge) * time.Hour
+	age := time.Duration(common.GetMediaCleanupConfig().CleanupAge) * time.Minute
 	return RunMediaCleanupWithAge(age)
 }
 
