@@ -88,6 +88,30 @@ func (t *Task) GetData(v any) error {
 	return common.Unmarshal(t.Data, &v)
 }
 
+type JSONData json.RawMessage
+
+func (j *JSONData) Scan(val interface{}) error {
+	if val == nil {
+		*j = nil
+		return nil
+	}
+	switch v := val.(type) {
+	case []byte:
+		*j = make([]byte, len(v))
+		copy(*j, v)
+	case string:
+		*j = []byte(v)
+	}
+	return nil
+}
+
+func (j JSONData) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return []byte(j), nil
+}
+
 type Properties struct {
 	Input             string `json:"input"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
