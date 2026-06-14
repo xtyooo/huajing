@@ -3,7 +3,9 @@ package service
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,11 +102,31 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 		return
 	}
 
-	common.SysLog("********** download task result starting...: " + task.TaskID + ", URL: " + url)
-	resp, err := DoDownloadRequest(url, "download_task_result")
-	if err != nil {
-		common.SysLog(fmt.Sprintf("download task %s failed: %v", task.TaskID, err))
-		task.FailReason = err.Error()
+	const maxRetries = 3
+	var resp *http.Response
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		resp, err = DoDownloadRequest(url, "download_task_result")
+		if err != nil {
+			common.SysLog(fmt.Sprintf("download task %s failed: %v", task.TaskID, err))
+			task.FailReason = err.Error()
+			if err := task.UpdateMediaStatus(model.MediaStatusFailed); err != nil {
+				common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
+			}
+			return
+		}
+		if resp.StatusCode == http.StatusNotFound && i < maxRetries-1 {
+			resp.Body.Close()
+			common.SysLog(fmt.Sprintf("download task %s got 404, retrying (%d/%d)...", task.TaskID, i+1, maxRetries))
+			time.Sleep(time.Duration(10+rand.Intn(6)) * time.Second)
+			continue
+		}
+		break
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		common.SysLog(fmt.Sprintf("download task %s failed: 404 after %d retries", task.TaskID, maxRetries))
+		task.FailReason = "404 Not Found after max retries"
 		if err := task.UpdateMediaStatus(model.MediaStatusFailed); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
@@ -123,7 +145,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	}
 
 	contentType := resp.Header.Get("Content-Type")
-	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s", url, contentType))
+	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s, StausCode: %s", url, contentType, resp.Status))
 	var ext string
 	if strings.ToLower(contentType) == "video/mp4" {
 		ext = ".mp4"
