@@ -133,6 +133,10 @@ const OPERATIONS_SECTIONS = [
             settings['perf_metrics_setting.bucket_time'] ?? 'hour',
           'perf_metrics_setting.retention_days':
             settings['perf_metrics_setting.retention_days'] ?? 0,
+          'media_cleanup_setting.cleanup_interval':
+            settings['media_cleanup_setting.cleanup_interval'] ?? 300,
+          'media_cleanup_setting.cleanup_age':
+            settings['media_cleanup_setting.cleanup_age'] ?? 180,
         }}
       />
     ),

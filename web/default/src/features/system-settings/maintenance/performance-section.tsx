@@ -141,7 +141,7 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
   },
 })
 
-const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
+const normalizeFormValues = (values: PerfFormValues): Omit<FlatPerfDefaults, 'media_cleanup_setting.cleanup_interval' | 'media_cleanup_setting.cleanup_age'> => ({
   'performance_setting.disk_cache_enabled':
     values.performance_setting.disk_cache_enabled,
   'performance_setting.disk_cache_threshold_mb':
@@ -261,6 +261,10 @@ export function PerformanceSection(props: Props) {
     baselineRef.current = props.defaultValues
     baselineSerializedRef.current = serialized
     form.reset(buildFormDefaults(props.defaultValues))
+    const interval = Number(props.defaultValues['media_cleanup_setting.cleanup_interval'])
+    if (!isNaN(interval)) setCleanupInterval(interval)
+    const age = Number(props.defaultValues['media_cleanup_setting.cleanup_age'])
+    if (!isNaN(age)) setCleanupAge(age)
   }, [props.defaultValues, form])
 
   const fetchStats = useCallback(async () => {
@@ -287,7 +291,13 @@ export function PerformanceSection(props: Props) {
   }, [fetchStats, fetchLogInfo])
 
   const onSubmit = async (values: PerfFormValues) => {
-    const normalized = normalizeFormValues(values)
+    const normalized: FlatPerfDefaults = {
+      ...normalizeFormValues(values),
+      'media_cleanup_setting.cleanup_interval':
+        baselineRef.current['media_cleanup_setting.cleanup_interval'],
+      'media_cleanup_setting.cleanup_age':
+        baselineRef.current['media_cleanup_setting.cleanup_age'],
+    }
     const changedKeys = (
       Object.keys(normalized) as Array<keyof FlatPerfDefaults>
     ).filter((key) => normalized[key] !== baselineRef.current[key])
