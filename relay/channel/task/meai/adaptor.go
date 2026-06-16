@@ -44,6 +44,19 @@ type queryResponse struct {
 	Seconds   int    `json:"seconds,omitempty"`
 }
 
+func isFailed(status string) bool {
+	return strings.HasPrefix(status, "FAILED:")
+}
+
+func extractFailedReason(status string) string {
+	reason := strings.TrimPrefix(status, "FAILED:")
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "task failed"
+	}
+	return reason
+}
+
 // ============================
 // Adaptor implementation
 // ============================
@@ -139,6 +152,20 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
+	if isFailed(mResp.Status) {
+		taskErr = service.TaskErrorWrapperLocal(fmt.Errorf("%s", extractFailedReason(mResp.Status)), "meai_submit_failed", http.StatusBadRequest)
+		return
+	}
+
+	upstreamTaskID := mResp.TaskID
+	if upstreamTaskID == "" {
+		upstreamTaskID = mResp.ID
+	}
+	if upstreamTaskID == "" {
+		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
+		return
+	}
+
 	ov := dto.NewOpenAIVideo()
 	ov.ID = info.PublicTaskID
 	ov.TaskID = info.PublicTaskID
@@ -147,8 +174,6 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	switch mResp.Status {
 	case "SUCCEEDED":
 		ov.Status = dto.VideoStatusCompleted
-	case "FAILED":
-		ov.Status = dto.VideoStatusFailed
 	case "RUNNING":
 		ov.Status = dto.VideoStatusInProgress
 	default:
@@ -158,7 +183,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		ov.Progress = mResp.Progress
 	}
 	c.JSON(http.StatusOK, ov)
-	return mResp.TaskID, responseBody, nil
+	return upstreamTaskID, responseBody, nil
 }
 
 // FetchTask fetch task status from upstream.
@@ -193,27 +218,35 @@ func (a *TaskAdaptor) GetChannelName() string {
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
-	taskInfo := &relaycommon.TaskInfo{}
 	var qResp queryResponse
 	err := common.Unmarshal(respBody, &qResp)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal response body")
 	}
-	taskInfo.TaskID = qResp.ID
+
+	taskInfo := &relaycommon.TaskInfo{
+		TaskID: qResp.ID,
+	}
 
 	status := qResp.Status
-	switch status {
-	case "PENDING":
+	switch {
+	case status == "PENDING":
 		taskInfo.Status = model.TaskStatusQueued
-	case "RUNNING":
+		taskInfo.Progress = taskcommon.ProgressQueued
+	case status == "RUNNING":
 		taskInfo.Status = model.TaskStatusInProgress
-	case "SUCCEEDED":
+		taskInfo.Progress = taskcommon.ProgressInProgress
+	case status == "SUCCEEDED":
 		taskInfo.Status = model.TaskStatusSuccess
+		taskInfo.Progress = taskcommon.ProgressComplete
 		taskInfo.Url = qResp.Object
-	case "FAILED":
+	case isFailed(status):
 		taskInfo.Status = model.TaskStatusFailure
+		taskInfo.Progress = taskcommon.ProgressComplete
+		taskInfo.Reason = extractFailedReason(status)
 	default:
-		return nil, fmt.Errorf("unknown task status: %s", status)
+		taskInfo.Status = model.TaskStatusInProgress
+		taskInfo.Progress = taskcommon.ProgressInProgress
 	}
 	return taskInfo, nil
 }
@@ -229,6 +262,12 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
 	openAIVideo.CreatedAt = qResp.CreatedAt
+
+	if isFailed(qResp.Status) {
+		openAIVideo.Error = &dto.OpenAIVideoError{
+			Message: extractFailedReason(qResp.Status),
+		}
+	}
 
 	if qResp.Object != "" {
 		openAIVideo.SetMetadata("url", qResp.Object)
