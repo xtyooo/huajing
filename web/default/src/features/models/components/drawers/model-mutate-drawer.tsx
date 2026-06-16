@@ -107,7 +107,7 @@ const extendedModelFormSchema = z.object({
 
 type ExtendedModelFormValues = z.infer<typeof extendedModelFormSchema>
 
-type PricingMode = 'per-token' | 'per-request'
+type PricingMode = 'per-token' | 'per-request' | 'resolution'
 type PricingSubMode = 'ratio' | 'price'
 
 type ModelMutateDrawerProps = {
@@ -131,6 +131,9 @@ export function ModelMutateDrawer({
   const [promptPrice, setPromptPrice] = useState('')
   const [completionPrice, setCompletionPrice] = useState('')
   const [oldModelName, setOldModelName] = useState<string>('')
+  const [resolution480p, setResolution480p] = useState('')
+  const [resolution720p, setResolution720p] = useState('')
+  const [resolution1080p, setResolution1080p] = useState('')
 
   // Fetch vendors for dropdown
   const { data: vendorsData } = useQuery({
@@ -232,6 +235,12 @@ export function ModelMutateDrawer({
     return !isNaN(parseFloat(value))
   }
 
+  const validateNonNegative = (value: string) => {
+    if (value === '') return true
+    const n = parseFloat(value)
+    return !isNaN(n) && n >= 0
+  }
+
   const handlePromptPriceChange = (value: string) => {
     setPromptPrice(value)
     if (value && !isNaN(parseFloat(value))) {
@@ -326,8 +335,33 @@ export function ModelMutateDrawer({
         const audioRatio = audioMap[modelName]
         const audioCompletionRatio = audioCompletionMap[modelName]
 
+        // Check resolution pricing first
+        const resolutionKey = `resolution_price_setting.${modelName}`
+        const resolutionOption = systemOptionsData?.data?.find(
+          (o: any) => o.key === resolutionKey
+        )
+        const resolutionSetting = resolutionOption
+          ? safeJsonParse<{
+              enabled: boolean
+              setting: Record<string, number>
+            }>(resolutionOption.value, { fallback: undefined, silent: true })
+          : undefined
+
         // Determine pricing mode
-        if (price !== undefined && price !== null) {
+        if (resolutionSetting?.enabled) {
+          setPricingMode('resolution')
+          setResolution480p(
+            resolutionSetting.setting['480p']?.toString() || ''
+          )
+          setResolution720p(
+            resolutionSetting.setting['720p']?.toString() || ''
+          )
+          setResolution1080p(
+            resolutionSetting.setting['1080p']?.toString() || ''
+          )
+          form.reset(baseModelData)
+          setAdvancedOpen(false)
+        } else if (price !== undefined && price !== null) {
           setPricingMode('per-request')
           form.reset({
             ...baseModelData,
@@ -369,6 +403,9 @@ export function ModelMutateDrawer({
       setPricingSubMode('ratio')
       setPromptPrice('')
       setCompletionPrice('')
+      setResolution480p('')
+      setResolution720p('')
+      setResolution1080p('')
       setAdvancedOpen(false)
       form.reset({
         model_name: currentRow?.model_name || '',
@@ -432,7 +469,8 @@ export function ModelMutateDrawer({
                 values.completionRatio ||
                 values.imageRatio ||
                 values.audioRatio ||
-                values.audioCompletionRatio))
+                values.audioCompletionRatio)) ||
+            pricingMode === 'resolution'
 
           // Always process system settings updates if we have modelSettings
           // This ensures we can remove stale entries even when clearing all pricing fields
@@ -593,6 +631,54 @@ export function ModelMutateDrawer({
             for (const update of updates) {
               await updateOption.mutateAsync(update)
             }
+
+            // Handle resolution price setting
+            const resolutionKey = `resolution_price_setting.${finalModelName}`
+            if (
+              isEditing &&
+              oldModelName &&
+              oldModelName !== finalModelName
+            ) {
+              const oldKey = `resolution_price_setting.${oldModelName}`
+              const oldExists = systemOptionsData?.data?.find(
+                (o: any) => o.key === oldKey
+              )
+              if (oldExists) {
+                await updateOption.mutateAsync({
+                  key: oldKey,
+                  value: JSON.stringify({ enabled: false, setting: {} }),
+                })
+              }
+            }
+            if (pricingMode === 'resolution') {
+              await updateOption.mutateAsync({
+                key: resolutionKey,
+                value: JSON.stringify({
+                  enabled: true,
+                  setting: {
+                    ...(resolution480p
+                      ? { '480p': parseFloat(resolution480p) }
+                      : {}),
+                    ...(resolution720p
+                      ? { '720p': parseFloat(resolution720p) }
+                      : {}),
+                    ...(resolution1080p
+                      ? { '1080p': parseFloat(resolution1080p) }
+                      : {}),
+                  },
+                }),
+              })
+            } else {
+              const exists = systemOptionsData?.data?.find(
+                (o: any) => o.key === resolutionKey
+              )
+              if (exists) {
+                await updateOption.mutateAsync({
+                  key: resolutionKey,
+                  value: JSON.stringify({ enabled: false, setting: {} }),
+                })
+              }
+            }
           }
 
           toast.success(
@@ -621,6 +707,9 @@ export function ModelMutateDrawer({
       oldModelName,
       modelSettings,
       updateOption,
+      resolution480p,
+      resolution720p,
+      resolution1080p,
     ]
   )
 
@@ -914,6 +1003,12 @@ export function ModelMutateDrawer({
                       {t('Per-request (fixed price)')}
                     </Label>
                   </div>
+                  <div className='flex items-center space-x-2'>
+                    <RadioGroupItem value='resolution' id='mode-resolution' />
+                    <Label htmlFor='mode-resolution' className='font-normal'>
+                      {t('Resolution (per second)')}
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
 
@@ -946,6 +1041,47 @@ export function ModelMutateDrawer({
                     </FormItem>
                   )}
                 />
+              ) : pricingMode === 'resolution' ? (
+                <div className='space-y-3'>
+                  <p className='text-xs text-muted-foreground'>
+                    {t('Price per second (USD)')}
+                  </p>
+                  <div className='flex items-center space-x-3'>
+                    <Label className='w-12 text-xs'>480p</Label>
+                    <Input
+                      type='text'
+                      placeholder='0'
+                      value={resolution480p}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (validateNonNegative(v)) setResolution480p(v)
+                      }}
+                      className='w-24'
+                    />
+                    <Label className='w-12 text-xs'>720p</Label>
+                    <Input
+                      type='text'
+                      placeholder='0'
+                      value={resolution720p}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (validateNonNegative(v)) setResolution720p(v)
+                      }}
+                      className='w-24'
+                    />
+                    <Label className='w-12 text-xs'>1080p</Label>
+                    <Input
+                      type='text'
+                      placeholder='0'
+                      value={resolution1080p}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (validateNonNegative(v)) setResolution1080p(v)
+                      }}
+                      className='w-24'
+                    />
+                  </div>
+                </div>
               ) : (
                 <>
                   <div className='space-y-4'>

@@ -595,6 +595,11 @@ func RelayTask(c *gin.Context) {
 		if req, err := relaycommon.GetTaskRequest(c); err == nil {
 			task.Properties.Input = req.Prompt
 		}
+		if v, ok := c.Get(string(constant.ContextKeyTaskPropsExtra)); ok {
+			if m, ok := v.(map[string]interface{}); ok {
+				task.Properties.Extra = m
+			}
+		}
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}

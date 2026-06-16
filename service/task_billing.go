@@ -50,6 +50,13 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	if v, ok := c.Get(string(constant.ContextKeyTaskPropsExtra)); ok {
+		if m, ok := v.(map[string]interface{}); ok {
+			for k, val := range m {
+				other[k] = val
+			}
+		}
+	}
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,

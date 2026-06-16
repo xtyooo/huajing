@@ -57,6 +57,7 @@ const (
 	ChannelTypeCodex          = 57
 	ChannelTypeMuse           = 58
 	ChannelTypeMeAI           = 59
+	ChannelTypeXs             = 60
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -122,6 +123,7 @@ var ChannelBaseURLs = []string{
 	"https://chatgpt.com",                       //57
 	"https://museai.vip",
 	"https://api.meai.cloud",
+	"https://api.xs-token.com",
 }
 
 var ChannelTypeNames = map[int]string{
@@ -181,6 +183,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeMuse:           "MuseAI",
 	ChannelTypeMeAI:           "MeAI",
+	ChannelTypeXs:             "Xs",
 }
 
 func GetChannelTypeName(channelType int) string {

@@ -113,9 +113,10 @@ func (j JSONData) Value() (driver.Value, error) {
 }
 
 type Properties struct {
-	Input             string `json:"input"`
-	UpstreamModelName string `json:"upstream_model_name,omitempty"`
-	OriginModelName   string `json:"origin_model_name,omitempty"`
+	Input             string                 `json:"input"`
+	UpstreamModelName string                 `json:"upstream_model_name,omitempty"`
+	OriginModelName   string                 `json:"origin_model_name,omitempty"`
+	Extra             map[string]interface{} `json:"extra,omitempty"`
 }
 
 func (m *Properties) Scan(val interface{}) error {
@@ -125,13 +126,6 @@ func (m *Properties) Scan(val interface{}) error {
 		return nil
 	}
 	return common.Unmarshal(bytesValue, m)
-}
-
-func (m Properties) Value() (driver.Value, error) {
-	if m == (Properties{}) {
-		return nil, nil
-	}
-	return common.Marshal(m)
 }
 
 type TaskPrivateData struct {
