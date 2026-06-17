@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
 type TaskStatus string
@@ -167,6 +168,18 @@ func (t *Task) GetUpstreamTaskID() string {
 		return t.PrivateData.UpstreamTaskID
 	}
 	return t.TaskID
+}
+
+// GetResultMediaURL 返回任务结果的安全 URL
+// 下载成功返回本地 MediaURL；已成功或已清理回退到代理；处理中返回空串
+func (t *Task) GetResultMediaURL() string {
+	if t.MediaURL != "" {
+		return t.MediaURL
+	}
+	if t.Status == TaskStatusSuccess || t.MediaStatus == MediaStatusCleaned {
+		return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, t.TaskID)
+	}
+	return ""
 }
 
 // GetResultURL 获取任务结果 URL（视频地址等）
@@ -616,6 +629,8 @@ func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo.SetProgressStr(t.Progress)
 	openAIVideo.CreatedAt = t.CreatedAt
 	openAIVideo.CompletedAt = t.UpdatedAt
-	openAIVideo.SetMetadata("url", t.GetResultURL())
+	if url := t.GetResultMediaURL(); url != "" {
+		openAIVideo.SetMetadata("url", url)
+	}
 	return openAIVideo
 }

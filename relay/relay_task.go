@@ -490,7 +490,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		"metadata": nil,
 		"status":   mapTaskStatusToSimple(task.Status),
 		"task_id":  task.TaskID,
-		"url":      task.GetResultURL(),
+		"url":      task.GetResultMediaURL(),
 	}
 	respBody, _ := common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
@@ -558,7 +558,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Progress:        task.Progress,
 		Properties:      task.Properties,
 		Username:        task.Username,
-		MediaURL:        task.MediaURL,
+		MediaURL:        task.GetResultMediaURL(),
 		MediaStatus:     task.MediaStatus,
 		MediaStartTime:  task.MediaStartTime,
 		MediaFinishTime: task.MediaFinishTime,
