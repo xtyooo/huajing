@@ -20,6 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type TaskSubmitResult struct {
@@ -396,6 +398,17 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 			if err != nil {
 				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
+			}
+			// 统一替换上游 URL 为网关代理地址，仅替换已存在的字段（不新增字段）
+			proxyURL := taskcommon.BuildProxyURL(originTask.TaskID)
+			for _, key := range []string{"url", "video_url", "result_url", "metadata.url"} {
+				if gjson.GetBytes(openAIVideoData, key).Exists() {
+					if d, e := sjson.SetBytes(openAIVideoData, key, proxyURL); e != nil {
+						common.SysError(fmt.Sprintf("videoFetchByIDRespBodyBuilder: sjson.Set(%s) failed: %v", key, e))
+					} else {
+						openAIVideoData = d
+					}
+				}
 			}
 			respBody = openAIVideoData
 			return
