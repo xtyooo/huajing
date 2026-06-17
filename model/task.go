@@ -119,6 +119,17 @@ type Properties struct {
 	Extra             map[string]interface{} `json:"extra,omitempty"`
 }
 
+func (m Properties) Value() (driver.Value, error) {
+	if m.Input == "" && m.UpstreamModelName == "" && m.OriginModelName == "" && len(m.Extra) == 0 {
+		return nil, nil
+	}
+	b, err := common.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(b), nil
+}
+
 func (m *Properties) Scan(val interface{}) error {
 	bytesValue, _ := val.([]byte)
 	if len(bytesValue) == 0 {
