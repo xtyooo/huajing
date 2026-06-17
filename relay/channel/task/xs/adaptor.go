@@ -76,6 +76,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 
 	price, err := model.GetResolutionPrice(info.OriginModelName, resolution)
 	if err != nil || price <= 0 {
+		common.SysError(fmt.Sprintf("xs estimate billing failed for model %s resolution %s: err=%v price=%f", info.OriginModelName, resolution, err, price))
 		return nil
 	}
 
@@ -93,7 +94,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	return fmt.Sprintf("%s%s", a.baseURL, SubmitVideoEndpoint), nil
+	return strings.TrimRight(a.baseURL, "/") + SubmitVideoEndpoint, nil
 }
 
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
@@ -175,6 +176,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.ID = info.PublicTaskID
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
+	if xsResp.CreatedAt > 0 {
+		ov.CreatedAt = xsResp.CreatedAt
+	}
 	ov.Model = info.OriginModelName
 
 	c.JSON(http.StatusOK, ov)
@@ -187,7 +191,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := fmt.Sprintf("%s%s%s", baseUrl, QueryTaskEndpoint, taskID)
+	uri := strings.TrimRight(baseUrl, "/") + QueryTaskEndpoint + taskID
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -226,14 +230,12 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	case "FAILURE", "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = taskcommon.ProgressComplete
-		reason := "task failed"
-		if queryResp.FailReason != nil {
-			if s, ok := queryResp.FailReason.(string); ok && s != "" {
-				reason = s
-			}
+		reason := queryResp.ErrorMsg
+		if reason == "" {
+			reason = parseFailReason(queryResp.FailReason)
 		}
-		if queryResp.ErrorMsg != "" {
-			reason = queryResp.ErrorMsg
+		if reason == "" {
+			reason = "task failed"
 		}
 		taskResult.Reason = reason
 	default:
@@ -262,9 +264,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	if queryResp.Status == "FAILURE" || queryResp.Status == "failed" {
 		reason := queryResp.ErrorMsg
 		if reason == "" {
-			if s, ok := queryResp.FailReason.(string); ok {
-				reason = s
-			}
+			reason = parseFailReason(queryResp.FailReason)
 		}
 		if reason == "" {
 			reason = "task failed"
@@ -280,4 +280,26 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	}
 
 	return jsonData, nil
+}
+
+func parseFailReason(val interface{}) string {
+	if val == nil {
+		return ""
+	}
+	if s, ok := val.(string); ok {
+		return s
+	}
+	if m, ok := val.(map[string]interface{}); ok {
+		if msg, ok := m["message"].(string); ok && msg != "" {
+			return msg
+		}
+		if msg, ok := m["msg"].(string); ok && msg != "" {
+			return msg
+		}
+	}
+	data, err := common.Marshal(val)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }

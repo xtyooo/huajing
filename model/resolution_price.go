@@ -23,7 +23,7 @@ func HasResolutionPricing(modelName string) bool {
 		return false
 	}
 	var option Option
-	result := DB.Where("`key` = ?", ResolutionPriceKey(modelName)).First(&option)
+	result := DB.Where(commonKeyCol+" = ?", ResolutionPriceKey(modelName)).First(&option)
 	if result.Error != nil {
 		return false
 	}
@@ -40,7 +40,7 @@ func GetResolutionPrice(modelName, resolution string) (float64, error) {
 	}
 
 	var option Option
-	result := DB.Where("`key` = ?", ResolutionPriceKey(modelName)).First(&option)
+	result := DB.Where(commonKeyCol+" = ?", ResolutionPriceKey(modelName)).First(&option)
 	if result.Error != nil {
 		return 0, nil
 	}
