@@ -218,7 +218,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	switch queryResp.Status {
 	case "QUEUED", "queued":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = model.TaskStatusQueued
 		taskResult.Progress = taskcommon.ProgressQueued
 	case "PROCESSING", "processing":
 		taskResult.Status = model.TaskStatusInProgress
