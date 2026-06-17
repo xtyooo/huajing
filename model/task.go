@@ -171,12 +171,12 @@ func (t *Task) GetUpstreamTaskID() string {
 }
 
 // GetResultMediaURL 返回任务结果的安全 URL
-// 下载成功返回本地 MediaURL；已成功或已清理回退到代理；处理中返回空串
+// 下载成功返回本地 MediaURL；已成功回退到代理；已清理或处理中返回空串
 func (t *Task) GetResultMediaURL() string {
 	if t.MediaURL != "" {
 		return t.MediaURL
 	}
-	if t.Status == TaskStatusSuccess || t.MediaStatus == MediaStatusCleaned {
+	if t.Status == TaskStatusSuccess {
 		return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, t.TaskID)
 	}
 	return ""

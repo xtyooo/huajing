@@ -399,14 +399,22 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
 			}
-			// 统一替换上游 URL 为网关代理地址，仅替换已存在的字段（不新增字段）
-			proxyURL := taskcommon.BuildProxyURL(originTask.TaskID)
-			for _, key := range []string{"url", "video_url", "result_url", "metadata.url"} {
-				if gjson.GetBytes(openAIVideoData, key).Exists() {
-					if d, e := sjson.SetBytes(openAIVideoData, key, proxyURL); e != nil {
-						common.SysError(fmt.Sprintf("videoFetchByIDRespBodyBuilder: sjson.Set(%s) failed: %v", key, e))
-					} else {
-						openAIVideoData = d
+			if originTask.MediaStatus == model.MediaStatusCleaned {
+				for _, key := range []string{"url", "video_url", "result_url", "metadata.url"} {
+					if gjson.GetBytes(openAIVideoData, key).Exists() {
+						openAIVideoData, _ = sjson.SetBytes(openAIVideoData, key, "")
+					}
+				}
+				openAIVideoData, _ = sjson.SetBytes(openAIVideoData, "message", "视频已被清理")
+			} else {
+				mediaURL := originTask.MediaURL
+				for _, key := range []string{"url", "video_url", "result_url", "metadata.url"} {
+					if gjson.GetBytes(openAIVideoData, key).Exists() {
+						if d, e := sjson.SetBytes(openAIVideoData, key, mediaURL); e != nil {
+							common.SysError(fmt.Sprintf("videoFetchByIDRespBodyBuilder: sjson.Set(%s) failed: %v", key, e))
+						} else {
+							openAIVideoData = d
+						}
 					}
 				}
 			}
