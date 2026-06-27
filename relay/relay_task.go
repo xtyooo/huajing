@@ -581,6 +581,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Username:        task.Username,
 		MediaURL:        task.GetResultMediaURL(),
 		MediaStatus:     task.MediaStatus,
+		MediaStatusDesc: task.MediaStatusText(),
 		MediaStartTime:  task.MediaStartTime,
 		MediaFinishTime: task.MediaFinishTime,
 	}

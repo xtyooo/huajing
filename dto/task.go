@@ -46,6 +46,7 @@ type TaskDto struct {
 	Username        string          `json:"username,omitempty"`
 	MediaURL        string          `json:"media_url,omitempty"`
 	MediaStatus     int             `json:"media_status,omitempty"`
+	MediaStatusDesc string          `json:"media_status_desc,omitempty"`
 	MediaStartTime  int64           `json:"media_start_time,omitempty"`
 	MediaFinishTime int64           `json:"media_finish_time,omitempty"`
 }

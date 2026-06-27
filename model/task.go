@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
 type TaskStatus string
@@ -170,16 +169,29 @@ func (t *Task) GetUpstreamTaskID() string {
 	return t.TaskID
 }
 
-// GetResultMediaURL 返回任务结果的安全 URL
-// 下载成功返回本地 MediaURL；已成功回退到代理；已清理或处理中返回空串
+// GetResultMediaURL 返回任务结果的媒体 URL
+// 仅在媒体下载成功后返回本地 MediaURL；否则（未下载/下载中/失败/已清理）返回空串
 func (t *Task) GetResultMediaURL() string {
-	if t.MediaURL != "" {
-		return t.MediaURL
+	return t.MediaURL
+}
+
+// MediaStatusText 返回媒体下载状态的中文描述
+// 无需下载（NotNeed）及未知状态返回空串
+func (t *Task) MediaStatusText() string {
+	switch t.MediaStatus {
+	case MediaStatusPending:
+		return "待下载"
+	case MediaStatusDownloading:
+		return "下载中"
+	case MediaStatusSuccess:
+		return "下载成功"
+	case MediaStatusFailed:
+		return "下载失败"
+	case MediaStatusCleaned:
+		return "已清理"
+	default:
+		return ""
 	}
-	if t.Status == TaskStatusSuccess {
-		return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, t.TaskID)
-	}
-	return ""
 }
 
 // GetResultURL 获取任务结果 URL（视频地址等）
