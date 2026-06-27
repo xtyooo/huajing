@@ -50,6 +50,7 @@ const defaultBillingSettings: BillingSettings = {
   ExposeRatioEnabled: false,
   'billing_setting.billing_mode': '{}',
   'billing_setting.billing_expr': '{}',
+  'billing_setting.skip_seconds': '{}',
   'tool_price_setting.prices': '{}',
   TopupGroupRatio: '',
   GroupRatio: '',

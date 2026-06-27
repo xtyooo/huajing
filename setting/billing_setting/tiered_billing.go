@@ -16,15 +16,17 @@ const (
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.
-// DB keys: billing_setting.billing_mode, billing_setting.billing_expr
+// DB keys: billing_setting.billing_mode, billing_setting.billing_expr, billing_setting.skip_seconds
 type BillingSetting struct {
 	BillingMode map[string]string `json:"billing_mode"`
 	BillingExpr map[string]string `json:"billing_expr"`
+	SkipSeconds map[string]bool   `json:"skip_seconds"`
 }
 
 var billingSetting = BillingSetting{
 	BillingMode: make(map[string]string),
 	BillingExpr: make(map[string]string),
+	SkipSeconds: make(map[string]bool),
 }
 
 func init() {
@@ -45,6 +47,10 @@ func GetBillingMode(model string) string {
 func GetBillingExpr(model string) (string, bool) {
 	expr, ok := billingSetting.BillingExpr[model]
 	return expr, ok
+}
+
+func GetSkipSeconds(model string) bool {
+	return billingSetting.SkipSeconds[model]
 }
 
 func GetBillingModeCopy() map[string]string {

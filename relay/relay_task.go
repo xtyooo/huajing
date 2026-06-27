@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -195,8 +196,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
-	// 6. 将 OtherRatios 应用到基础额度
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
+	// 6. 将 OtherRatios 应用到基础额度。
+	//    默认行为: seconds/resolution/size 等倍率都乘入额度。
+	//    跳过条件（满足任一即可）:
+	//      - TASK_PRICE_PATCH 环境变量中包含了该模型
+	//      - billing_setting.skip_seconds 中该模型设为 true 且当前为按请求计费模式
+	inPatch := common.StringsContains(constant.TaskPricePatches, modelName)
+	inConfig := info.PriceData.UsePrice && billing_setting.GetSkipSeconds(modelName)
+	if !inPatch && !inConfig {
 		for _, ra := range info.PriceData.OtherRatios {
 			if ra != 1.0 {
 				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)

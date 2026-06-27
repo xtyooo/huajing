@@ -134,6 +134,7 @@ export function ModelMutateDrawer({
   const [resolution480p, setResolution480p] = useState('')
   const [resolution720p, setResolution720p] = useState('')
   const [resolution1080p, setResolution1080p] = useState('')
+  const [skipSeconds, setSkipSeconds] = useState(false)
 
   // Fetch vendors for dropdown
   const { data: vendorsData } = useQuery({
@@ -186,6 +187,7 @@ export function ModelMutateDrawer({
       ExposeRatioEnabled: false,
       'billing_setting.billing_mode': '{}',
       'billing_setting.billing_expr': '{}',
+      'billing_setting.skip_seconds': '{}',
       'tool_price_setting.prices': '{}',
       TopupGroupRatio: '',
       GroupRatio: '',
@@ -363,6 +365,11 @@ export function ModelMutateDrawer({
           setAdvancedOpen(false)
         } else if (price !== undefined && price !== null) {
           setPricingMode('per-request')
+          const skipSecondsMap = safeJsonParse<Record<string, boolean>>(
+            modelSettings?.['billing_setting.skip_seconds'] || '{}',
+            { fallback: {}, silent: true }
+          )
+          setSkipSeconds(!!skipSecondsMap[model.model_name])
           form.reset({
             ...baseModelData,
             price: price.toString(),
@@ -393,6 +400,7 @@ export function ModelMutateDrawer({
       } else {
         // If system settings not loaded yet, just load base model data
         setPricingMode('per-token')
+        setSkipSeconds(false)
         form.reset(baseModelData)
         setAdvancedOpen(false)
       }
@@ -400,6 +408,7 @@ export function ModelMutateDrawer({
       // Pre-fill model name if passed from missing models
       setOldModelName('')
       setPricingMode('per-token')
+      setSkipSeconds(false)
       setPricingSubMode('ratio')
       setPromptPrice('')
       setCompletionPrice('')
@@ -624,6 +633,35 @@ export function ModelMutateDrawer({
               updates.push({
                 key: 'AudioCompletionRatio',
                 value: newAudioCompletionRatio,
+              })
+            }
+
+            // Handle billing_setting.skip_seconds
+            const skipSecondsMap = safeJsonParse<Record<string, boolean>>(
+              modelSettings['billing_setting.skip_seconds'] || '{}',
+              { fallback: {}, silent: true }
+            )
+            if (
+              isEditing &&
+              oldModelName &&
+              oldModelName !== finalModelName
+            ) {
+              delete skipSecondsMap[oldModelName]
+            }
+            delete skipSecondsMap[finalModelName]
+            if (pricingMode === 'per-request' && skipSeconds) {
+              skipSecondsMap[finalModelName] = true
+            }
+            const newSkipSeconds = normalizeJsonString(
+              JSON.stringify(skipSecondsMap)
+            )
+            const currentSkipSeconds = normalizeJsonString(
+              modelSettings['billing_setting.skip_seconds'] || '{}'
+            )
+            if (newSkipSeconds !== currentSkipSeconds) {
+              updates.push({
+                key: 'billing_setting.skip_seconds',
+                value: newSkipSeconds,
               })
             }
 
@@ -987,9 +1025,13 @@ export function ModelMutateDrawer({
                 <Label>{t('Pricing mode')}</Label>
                 <RadioGroup
                   value={pricingMode}
-                  onValueChange={(value) =>
-                    setPricingMode(value as PricingMode)
-                  }
+                  onValueChange={(value) => {
+                    const nextMode = value as PricingMode
+                    if (nextMode !== 'per-request') {
+                      setSkipSeconds(false)
+                    }
+                    setPricingMode(nextMode)
+                  }}
                 >
                   <div className='flex items-center space-x-2'>
                     <RadioGroupItem value='per-token' id='per-token' />
@@ -1013,34 +1055,47 @@ export function ModelMutateDrawer({
               </div>
 
               {pricingMode === 'per-request' ? (
-                <FormField
-                  control={form.control}
-                  name='price'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Fixed price (USD)')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type='text'
-                          placeholder='0.01'
-                          {...field}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            if (validateNumber(value)) {
-                              field.onChange(value)
-                            }
-                          }}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Cost in USD per request, regardless of tokens used.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <>
+                  <FormField
+                    control={form.control}
+                    name='price'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Fixed price (USD)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='text'
+                            placeholder='0.01'
+                            {...field}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              if (validateNumber(value)) {
+                                field.onChange(value)
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Cost in USD per request, regardless of tokens used.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className={sideDrawerSwitchItemClassName()}>
+                    <div className='space-y-0.5'>
+                      <Label className='text-sm font-medium'>
+                        跳过秒数计算
+                      </Label>
+                    </div>
+                    <Switch
+                      checked={skipSeconds}
+                      onCheckedChange={setSkipSeconds}
+                    />
+                  </div>
+                </>
               ) : pricingMode === 'resolution' ? (
                 <div className='space-y-3'>
                   <p className='text-xs text-muted-foreground'>
