@@ -104,6 +104,15 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
+	if !hjResp.OK {
+		taskErr = service.TaskErrorWrapper(
+			fmt.Errorf("hj api error: ok=false, body=%s", string(responseBody)),
+			"submit_failed",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
 	if hjResp.TaskID == "" {
 		taskErr = service.TaskErrorWrapper(
 			fmt.Errorf("hj api error: no task_id in response, body=%s", string(responseBody)),
@@ -117,9 +126,6 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.ID = info.PublicTaskID
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
-	if hjResp.CreatedAt > 0 {
-		ov.CreatedAt = hjResp.CreatedAt
-	}
 	ov.Model = info.OriginModelName
 
 	c.JSON(http.StatusOK, ov)
@@ -155,23 +161,31 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		return nil, errors.Wrap(err, "unmarshal task result failed")
 	}
 
-	taskResult := &relaycommon.TaskInfo{}
+	if !queryResp.OK {
+		return nil, fmt.Errorf("hj query failed: ok=false")
+	}
 
-	switch strings.ToLower(queryResp.Status) {
-	case "queued", "pending":
+	taskResult := &relaycommon.TaskInfo{}
+	status := strings.ToLower(queryResp.Task.Status)
+
+	switch {
+	case status == "queued":
 		taskResult.Status = model.TaskStatusQueued
 		taskResult.Progress = taskcommon.ProgressQueued
-	case "processing", "running", "in_progress":
+	case status == "running":
 		taskResult.Status = model.TaskStatusInProgress
-		taskResult.Progress = taskcommon.ProgressInProgress
-	case "success", "completed", "succeeded":
+		taskResult.Progress = fmt.Sprintf("%d%%", queryResp.Task.Progress)
+	case status == "completed" || status == "success" || status == "succeeded":
 		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = taskcommon.ProgressComplete
-		taskResult.Url = queryResp.ResultURL
-	case "failed", "failure", "error":
+		taskResult.Url = queryResp.Task.VideoURL
+	case status == "failed" || status == "failure" || status == "error":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = taskcommon.ProgressComplete
-		reason := queryResp.ErrorMsg
+		reason := queryResp.Task.LastError
+		if reason == "" {
+			reason = queryResp.Task.Error
+		}
 		if reason == "" {
 			reason = "task failed"
 		}

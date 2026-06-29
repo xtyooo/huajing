@@ -369,16 +369,21 @@ func updateChannelHJBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 
-	type HJBalanceResponse struct {
-		Balance float64 `json:"balance"`
-	}
-	response := HJBalanceResponse{}
+	response := struct {
+		OK      bool `json:"ok"`
+		Balance struct {
+			Balance float64 `json:"balance"`
+		} `json:"balance"`
+	}{}
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
-	channel.UpdateBalance(response.Balance)
-	return response.Balance, nil
+	if !response.OK {
+		return 0, fmt.Errorf("hj balance failed: ok=false")
+	}
+	channel.UpdateBalance(response.Balance.Balance)
+	return response.Balance.Balance, nil
 }
 
 func updateChannelBalance(channel *model.Channel) (float64, error) {
