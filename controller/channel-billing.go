@@ -356,6 +356,31 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	return availableBalanceUsd, nil
 }
 
+func updateChannelHJBalance(channel *model.Channel) (float64, error) {
+	baseURL := channel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = constant.ChannelBaseURLs[channel.Type]
+	}
+	url := fmt.Sprintf("%s/balance", baseURL)
+	headers := http.Header{}
+	headers.Set("X-Seedance-Key", channel.Key)
+	body, err := GetResponseBody("GET", url, channel, headers)
+	if err != nil {
+		return 0, err
+	}
+
+	type HJBalanceResponse struct {
+		Balance float64 `json:"balance"`
+	}
+	response := HJBalanceResponse{}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return 0, err
+	}
+	channel.UpdateBalance(response.Balance)
+	return response.Balance, nil
+}
+
 func updateChannelBalance(channel *model.Channel) (float64, error) {
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
@@ -386,6 +411,8 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		return updateChannelOpenRouterBalance(channel)
 	case constant.ChannelTypeMoonshot:
 		return updateChannelMoonshotBalance(channel)
+	case constant.ChannelTypeHJ:
+		return updateChannelHJBalance(channel)
 	default:
 		return 0, errors.New("尚未实现")
 	}

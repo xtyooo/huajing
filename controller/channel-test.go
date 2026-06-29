@@ -87,6 +87,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		constant.ChannelTypeMuse,
 		constant.ChannelTypeMeAI,
 		constant.ChannelTypeXs,
+		constant.ChannelTypeHJ,
 	}
 	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
 		channelTypeName := constant.GetChannelTypeName(channel.Type)

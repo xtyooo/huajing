@@ -58,6 +58,7 @@ const (
 	ChannelTypeMuse           = 58
 	ChannelTypeMeAI           = 59
 	ChannelTypeXs             = 60
+	ChannelTypeHJ             = 61
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -124,6 +125,7 @@ var ChannelBaseURLs = []string{
 	"https://museai.vip",
 	"https://api.meai.cloud",
 	"https://api.xs-token.com",
+	"http://64.81.114.92:8080/api/gateway/v1", // 61
 }
 
 var ChannelTypeNames = map[int]string{
@@ -184,6 +186,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeMuse:           "MuseAI",
 	ChannelTypeMeAI:           "MeAI",
 	ChannelTypeXs:             "Xs",
+	ChannelTypeHJ:             "HJ",
 }
 
 func GetChannelTypeName(channelType int) string {
