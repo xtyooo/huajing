@@ -10,19 +10,17 @@ type HjUpstreamBody struct {
 }
 
 type HjSubmitResponse struct {
-	OK     bool   `json:"ok"`
+	Error  string `json:"error"`
 	TaskID string `json:"taskId"`
-	ID     string `json:"id"`
 	Status string `json:"status"`
 }
 
 type HjTaskInfo struct {
 	TaskID    string `json:"taskId"`
 	Status    string `json:"status"`
-	Progress  int    `json:"progress"`
-	Error     string `json:"error"`
-	LastError string `json:"lastError"`
-	VideoURL  string `json:"videoUrl"`
+	Progress int    `json:"progress"`
+	Error    string `json:"error"`
+	VideoURL string `json:"videoUrl"`
 }
 
 type HjQueryResponse struct {

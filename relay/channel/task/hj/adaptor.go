@@ -61,7 +61,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	return strings.TrimRight(a.baseURL, "/") + SubmitEndpoint, nil
+	return strings.TrimRight(a.baseURL, "/") + BasePath + SubmitEndpoint, nil
 }
 
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
@@ -87,7 +87,15 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
-	return channel.DoTaskApiRequest(a, c, info, requestBody)
+	resp, err := channel.DoTaskApiRequest(a, c, info, requestBody)
+	if err != nil {
+		return resp, err
+	}
+	// 上游对提交成功返回 202 Accepted，统一转为 200 以通过通用状态码检查
+	if resp != nil && resp.StatusCode == http.StatusAccepted {
+		resp.StatusCode = http.StatusOK
+	}
+	return resp, nil
 }
 
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
@@ -104,9 +112,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	if !hjResp.OK {
+	if hjResp.Error != "" {
 		taskErr = service.TaskErrorWrapper(
-			fmt.Errorf("hj api error: ok=false, body=%s", string(responseBody)),
+			fmt.Errorf("hj api error: %s", hjResp.Error),
 			"submit_failed",
 			http.StatusBadRequest,
 		)
@@ -138,7 +146,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := strings.TrimRight(baseUrl, "/") + QueryEndpoint + taskID
+	uri := strings.TrimRight(baseUrl, "/") + BasePath + QueryEndpoint + taskID
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -182,10 +190,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	case status == "failed" || status == "failure" || status == "error":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = taskcommon.ProgressComplete
-		reason := queryResp.Task.LastError
-		if reason == "" {
-			reason = queryResp.Task.Error
-		}
+		reason := queryResp.Task.Error
 		if reason == "" {
 			reason = "task failed"
 		}

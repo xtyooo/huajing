@@ -7,6 +7,7 @@ var ModelList = []string{
 }
 
 const (
+	BasePath       = "/api/gateway/v1"
 	SubmitEndpoint = "/run"
 	QueryEndpoint  = "/tasks/"
 )

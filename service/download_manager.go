@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
 )
@@ -147,7 +149,9 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	contentType := resp.Header.Get("Content-Type")
 	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s, StausCode: %s", url, contentType, resp.Status))
 	var ext string
-	if strings.ToLower(contentType) == "video/mp4" {
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) {
+		ext = ".mp4"
+	} else if strings.ToLower(contentType) == "video/mp4" {
 		ext = ".mp4"
 	} else {
 		ext = getExtFromContentType(contentType)
