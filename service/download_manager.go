@@ -149,7 +149,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	contentType := resp.Header.Get("Content-Type")
 	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s, StausCode: %s", url, contentType, resp.Status))
 	var ext string
-	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) {
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) || task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeMimo)) {
 		ext = ".mp4"
 	} else if strings.ToLower(contentType) == "video/mp4" {
 		ext = ".mp4"

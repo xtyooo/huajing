@@ -189,12 +189,14 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 }
 
 func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
+	a.baseURL = strings.TrimRight(baseUrl, "/")
+
 	taskID, ok := body["task_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := strings.TrimRight(baseUrl, "/") + "/api/video/batch-status"
+	uri := a.baseURL + "/api/video/batch-status"
 
 	batchReq := MimoBatchReq{TaskIDs: []string{taskID}}
 	reqBytes, err := common.Marshal(batchReq)
@@ -262,6 +264,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			taskResult.Url = videoURL
 		}
 		if coverURL != "" {
+			if strings.HasPrefix(coverURL, "/") {
+				coverURL = a.baseURL + coverURL
+			}
 			taskResult.RemoteUrl = coverURL
 		}
 	case 40:
@@ -282,4 +287,25 @@ func (a *TaskAdaptor) GetModelList() []string {
 
 func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
+}
+
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+	openAIVideo := originTask.ToOpenAIVideo()
+
+	if originTask.Status == model.TaskStatusFailure {
+		reason := originTask.FailReason
+		if reason == "" {
+			reason = "task failed"
+		}
+		openAIVideo.Error = &dto.OpenAIVideoError{
+			Message: reason,
+		}
+	}
+
+	jsonData, err := common.Marshal(openAIVideo)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal openai video failed")
+	}
+
+	return jsonData, nil
 }

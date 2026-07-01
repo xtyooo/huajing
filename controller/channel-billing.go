@@ -406,7 +406,7 @@ func updateChannelMimoBalance(channel *model.Channel) (float64, error) {
 			Credits float64 `json:"credits"`
 		} `json:"data"`
 	}{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}

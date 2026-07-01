@@ -80,6 +80,7 @@ export const CHANNEL_TYPES = {
   59: 'MeAI',
   60: 'Xs',
   61: 'HJ',
+  62: 'Mimo',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
