@@ -38,6 +38,7 @@ import (
 	taskjimeng "github.com/QuantumNous/new-api/relay/channel/task/jimeng"
 	"github.com/QuantumNous/new-api/relay/channel/task/kling"
 	taskmeai "github.com/QuantumNous/new-api/relay/channel/task/meai"
+	taskmimo "github.com/QuantumNous/new-api/relay/channel/task/mimo"
 	taskmuse "github.com/QuantumNous/new-api/relay/channel/task/muse"
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/suno"
@@ -172,6 +173,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskxs.TaskAdaptor{}
 		case constant.ChannelTypeHJ:
 			return &taskhj.TaskAdaptor{}
+		case constant.ChannelTypeMimo:
+			return &taskmimo.TaskAdaptor{}
 		}
 	}
 	return nil

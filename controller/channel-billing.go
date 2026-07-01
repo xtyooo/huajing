@@ -386,6 +386,37 @@ func updateChannelHJBalance(channel *model.Channel) (float64, error) {
 	return response.Balance.Balance, nil
 }
 
+func updateChannelMimoBalance(channel *model.Channel) (float64, error) {
+	baseURL := channel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = constant.ChannelBaseURLs[channel.Type]
+	}
+	url := fmt.Sprintf("%s/api/credits/balance", baseURL)
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+channel.Key)
+	body, err := GetResponseBody("GET", url, channel, headers)
+	if err != nil {
+		return 0, err
+	}
+
+	response := struct {
+		Code int `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			Credits float64 `json:"credits"`
+		} `json:"data"`
+	}{}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return 0, err
+	}
+	if response.Code != 200 {
+		return 0, fmt.Errorf("mimo balance failed: code=%d, msg=%s", response.Code, response.Msg)
+	}
+	channel.UpdateBalance(response.Data.Credits)
+	return response.Data.Credits, nil
+}
+
 func updateChannelBalance(channel *model.Channel) (float64, error) {
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
@@ -418,6 +449,8 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		return updateChannelMoonshotBalance(channel)
 	case constant.ChannelTypeHJ:
 		return updateChannelHJBalance(channel)
+	case constant.ChannelTypeMimo:
+		return updateChannelMimoBalance(channel)
 	default:
 		return 0, errors.New("尚未实现")
 	}
