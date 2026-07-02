@@ -1106,3 +1106,13 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 	}
 	return counts, nil
 }
+
+func GetMimoChannel() (*Channel, error) {
+	var channel Channel
+	err := DB.Where("type = ? AND status = ?", constant.ChannelTypeMimo, common.ChannelStatusEnabled).
+		Order("priority DESC").First(&channel).Error
+	if err != nil {
+		return nil, err
+	}
+	return &channel, nil
+}

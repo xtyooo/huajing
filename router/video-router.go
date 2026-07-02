@@ -41,6 +41,14 @@ func SetVideoRouter(router *gin.Engine) {
 		klingV1Router.GET("/videos/image2video/:task_id", controller.RelayTaskFetch)
 	}
 
+	// Mimo file upload
+	mimoV1Router := router.Group("/v1/mimo")
+	mimoV1Router.Use(middleware.RouteTag("relay"))
+	mimoV1Router.Use(middleware.TokenAuth())
+	{
+		mimoV1Router.POST("/upload", controller.MimoUpload)
+	}
+
 	// Jimeng official API routes - direct mapping to official API format
 	jimengOfficialGroup := router.Group("jimeng")
 	jimengOfficialGroup.Use(middleware.RouteTag("relay"))
