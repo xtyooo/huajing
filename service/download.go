@@ -50,21 +50,36 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 }
 
 func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response, err error) {
+	return DoDownloadRequestWithHeaders(originUrl, nil, reason...)
+}
+
+// DoDownloadRequestWithHeaders downloads a file from originUrl, optionally
+// including custom HTTP headers (e.g. Authorization for authenticated
+// endpoints such as Lingjing /download).
+func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, reason ...string) (resp *http.Response, err error) {
 	if system_setting.EnableWorker() {
 		common.SysLog(fmt.Sprintf("downloading file from worker: %s, reason: %s", originUrl, strings.Join(reason, ", ")))
 		req := &WorkerRequest{
-			URL: originUrl,
-			Key: system_setting.WorkerValidKey,
+			URL:     originUrl,
+			Key:     system_setting.WorkerValidKey,
+			Headers: headers,
 		}
 		return DoWorkerRequest(req)
-	} else {
-		// SSRF防护：验证请求URL（非Worker模式）
-		fetchSetting := system_setting.GetFetchSetting()
-		if err := common.ValidateURLWithFetchSetting(originUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
-			return nil, fmt.Errorf("request reject: %v", err)
-		}
-
-		common.SysLog(fmt.Sprintf("downloading from origin: %s, reason: %s", common.MaskSensitiveInfo(originUrl), strings.Join(reason, ", ")))
-		return GetHttpClient().Get(originUrl)
 	}
+	// SSRF防护：验证请求URL
+	fetchSetting := system_setting.GetFetchSetting()
+	if err := common.ValidateURLWithFetchSetting(originUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+		return nil, fmt.Errorf("request reject: %v", err)
+	}
+
+	common.SysLog(fmt.Sprintf("downloading from origin: %s, reason: %s", common.MaskSensitiveInfo(originUrl), strings.Join(reason, ", ")))
+
+	req, err := http.NewRequest("GET", originUrl, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new request failed: %w", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return GetHttpClient().Do(req)
 }

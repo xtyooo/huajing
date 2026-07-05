@@ -218,8 +218,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "succeeded":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — VideoProxy builds the authenticated
-		// download URL using the upstream task ID (see controller/video_proxy.go).
+		taskResult.Url = fmt.Sprintf("%s/api/open/v1/videos/%d/download", a.baseURL, tResp.ID)
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		reason := tResp.ErrorMessage

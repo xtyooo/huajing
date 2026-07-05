@@ -107,8 +107,16 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	const maxRetries = 3
 	var resp *http.Response
 	var err error
+	var dlHeaders map[string]string
+	// Lingjing's /download endpoint requires Bearer auth — fetch the channel
+	// key so the download can be authenticated. Other platforms ignore this.
+	if isAuthDownloadPlatform(task.Platform) {
+		if ch, chErr := model.CacheGetChannel(task.ChannelId); chErr == nil {
+			dlHeaders = map[string]string{"Authorization": "Bearer " + ch.Key}
+		}
+	}
 	for i := 0; i < maxRetries; i++ {
-		resp, err = DoDownloadRequest(url, "download_task_result")
+		resp, err = DoDownloadRequestWithHeaders(url, dlHeaders, "download_task_result")
 		if err != nil {
 			common.SysLog(fmt.Sprintf("download task %s failed: %v", task.TaskID, err))
 			task.FailReason = err.Error()
@@ -234,6 +242,14 @@ func getKnownExtFromURL(rawURL string) string {
 		return ext
 	}
 	return ""
+}
+
+// isAuthDownloadPlatform returns true for platforms whose result download
+// endpoint requires Bearer authentication (e.g. Lingjing). For these platforms
+// DownloadManager attaches the channel key as an Authorization header when
+// fetching the result file.
+func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
+	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLingjing))
 }
 
 var DownloadManager = &downloadManager{
