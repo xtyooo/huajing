@@ -149,7 +149,11 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	contentType := resp.Header.Get("Content-Type")
 	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s, StausCode: %s", url, contentType, resp.Status))
 	var ext string
-	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) || task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeMimo)) {
+	if urlExt := getKnownExtFromURL(url); urlExt != "" {
+		// When the URL already carries a known media extension (e.g. .png, .mp4),
+		// trust it — it is the most reliable signal for image/video results.
+		ext = urlExt
+	} else if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) || task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeMimo)) {
 		ext = ".mp4"
 	} else if strings.ToLower(contentType) == "video/mp4" {
 		ext = ".mp4"
@@ -200,6 +204,33 @@ func getExtFromURL(rawURL string) string {
 	}
 	ext := strings.ToLower(filepath.Ext(rawURL))
 	if ext != "" {
+		return ext
+	}
+	return ""
+}
+
+// knownMediaExts is a whitelist of media extensions that, when present in the
+// result URL, should be used directly instead of relying on Content-Type.
+var knownMediaExts = map[string]bool{
+	".png":  true,
+	".jpg":  true,
+	".jpeg": true,
+	".webp": true,
+	".gif":  true,
+	".bmp":  true,
+	".mp4":  true,
+	".mov":  true,
+	".webm": true,
+	".m4v":  true,
+}
+
+// getKnownExtFromURL returns the URL's extension only when it is a recognized
+// media type; otherwise it returns "" so the caller falls back to Content-Type
+// or platform-specific defaults. This avoids mistaking arbitrary path segments
+// (e.g. "/v1") for a file extension.
+func getKnownExtFromURL(rawURL string) string {
+	ext := getExtFromURL(rawURL)
+	if knownMediaExts[ext] {
 		return ext
 	}
 	return ""

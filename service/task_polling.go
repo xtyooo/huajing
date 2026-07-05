@@ -549,20 +549,45 @@ func truncateBase64(s string) string {
 	return s[:maxKeep] + "..."
 }
 
+// mediaURLKeys are the flat keys commonly used by upstreams to carry a result
+// media URL (video or image). Checked at the top level and under "response".
+var mediaURLKeys = []string{"video_url", "result_url", "url", "image_url"}
+
 func extractVideoURLFromRawData(data json.RawMessage) string {
 	var m map[string]any
 	if err := common.Unmarshal(data, &m); err != nil {
 		return ""
 	}
-	for _, key := range []string{"video_url", "result_url", "url"} {
+	if u := extractURLFromMap(m); u != "" {
+		return u
+	}
+	if resp, ok := m["response"].(map[string]any); ok {
+		if u := extractURLFromMap(resp); u != "" {
+			return u
+		}
+	}
+	return ""
+}
+
+// extractURLFromMap looks for a result media URL in a decoded JSON object.
+// It checks well-known flat keys first, then the OpenAI-style "data" array
+// (e.g. {"data":[{"url":"..."}]} or {"data":[{"image_url":"..."}]}).
+func extractURLFromMap(m map[string]any) string {
+	for _, key := range mediaURLKeys {
 		if u, ok := m[key].(string); ok && strings.HasPrefix(u, "http") {
 			return u
 		}
 	}
-	if resp, ok := m["response"].(map[string]any); ok {
-		for _, key := range []string{"video_url", "result_url", "url"} {
-			if u, ok := resp[key].(string); ok && strings.HasPrefix(u, "http") {
-				return u
+	if arr, ok := m["data"].([]any); ok {
+		for _, item := range arr {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			for _, key := range []string{"url", "image_url", "video_url"} {
+				if u, ok := obj[key].(string); ok && strings.HasPrefix(u, "http") {
+					return u
+				}
 			}
 		}
 	}

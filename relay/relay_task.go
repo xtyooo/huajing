@@ -368,6 +368,39 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 	return
 }
 
+// overwriteResultMediaURLs replaces every result media URL in the OpenAI video
+// response with newURL (the local MediaURL, or "" when the media was cleaned).
+// It covers well-known flat keys plus the OpenAI-style "data" array so that
+// image tasks ({"data":[{"url":...}]} / {"image_url":...}) are handled too.
+func overwriteResultMediaURLs(data []byte, newURL string) []byte {
+	for _, key := range []string{"url", "video_url", "result_url", "metadata.url", "image_url"} {
+		if gjson.GetBytes(data, key).Exists() {
+			if d, e := sjson.SetBytes(data, key, newURL); e != nil {
+				common.SysError(fmt.Sprintf("overwriteResultMediaURLs: sjson.Set(%s) failed: %v", key, e))
+			} else {
+				data = d
+			}
+		}
+	}
+	// OpenAI-style data array: data[].url / data[].image_url
+	if arr := gjson.GetBytes(data, "data"); arr.IsArray() {
+		arr.ForEach(func(idx, item gjson.Result) bool {
+			for _, sub := range []string{"url", "image_url", "video_url"} {
+				if item.Get(sub).Exists() {
+					path := fmt.Sprintf("data.%d.%s", idx.Int(), sub)
+					if d, e := sjson.SetBytes(data, path, newURL); e != nil {
+						common.SysError(fmt.Sprintf("overwriteResultMediaURLs: sjson.Set(%s) failed: %v", path, e))
+					} else {
+						data = d
+					}
+				}
+			}
+			return true
+		})
+	}
+	return data
+}
+
 func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
 	taskId := c.Param("task_id")
 	if taskId == "" {
@@ -407,23 +440,14 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				return
 			}
 			if originTask.MediaStatus == model.MediaStatusCleaned {
-				for _, key := range []string{"url", "video_url", "result_url", "metadata.url"} {
-					if gjson.GetBytes(openAIVideoData, key).Exists() {
-						openAIVideoData, _ = sjson.SetBytes(openAIVideoData, key, "")
-					}
-				}
+				openAIVideoData = overwriteResultMediaURLs(openAIVideoData, "")
 				openAIVideoData, _ = sjson.SetBytes(openAIVideoData, "message", "视频已被清理")
 			} else {
-				mediaURL := originTask.MediaURL
-				for _, key := range []string{"url", "video_url", "result_url", "metadata.url"} {
-					if gjson.GetBytes(openAIVideoData, key).Exists() {
-						if d, e := sjson.SetBytes(openAIVideoData, key, mediaURL); e != nil {
-							common.SysError(fmt.Sprintf("videoFetchByIDRespBodyBuilder: sjson.Set(%s) failed: %v", key, e))
-						} else {
-							openAIVideoData = d
-						}
-					}
-				}
+				// Never expose the upstream URL to the client. Once the download
+				// has succeeded, return our local media URL; otherwise MediaURL is
+				// empty and the URL fields are blanked out (empty string), matching
+				// the legacy behavior — the upstream link is never leaked.
+				openAIVideoData = overwriteResultMediaURLs(openAIVideoData, originTask.MediaURL)
 			}
 			respBody = openAIVideoData
 			return
