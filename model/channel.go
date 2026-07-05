@@ -1116,3 +1116,13 @@ func GetMimoChannel() (*Channel, error) {
 	}
 	return &channel, nil
 }
+
+func GetLingjingChannel() (*Channel, error) {
+	var channel Channel
+	err := DB.Where("type = ? AND status = ?", constant.ChannelTypeLingjing, common.ChannelStatusEnabled).
+		Order("priority DESC").First(&channel).Error
+	if err != nil {
+		return nil, err
+	}
+	return &channel, nil
+}

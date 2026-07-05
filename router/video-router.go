@@ -49,6 +49,14 @@ func SetVideoRouter(router *gin.Engine) {
 		mimoV1Router.POST("/upload", controller.MimoUpload)
 	}
 
+	// Lingjing reference image upload
+	lingjingV1Router := router.Group("/v1/lingjing")
+	lingjingV1Router.Use(middleware.RouteTag("relay"))
+	lingjingV1Router.Use(middleware.TokenAuth())
+	{
+		lingjingV1Router.POST("/upload", controller.LingjingUpload)
+	}
+
 	// Jimeng official API routes - direct mapping to official API format
 	jimengOfficialGroup := router.Group("jimeng")
 	jimengOfficialGroup.Use(middleware.RouteTag("relay"))

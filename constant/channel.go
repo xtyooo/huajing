@@ -60,6 +60,7 @@ const (
 	ChannelTypeXs             = 60
 	ChannelTypeHJ             = 61
 	ChannelTypeMimo           = 62
+	ChannelTypeLingjing       = 63
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -128,6 +129,7 @@ var ChannelBaseURLs = []string{
 	"https://api.xs-token.com",
 	"http://64.81.114.92:8080/api/gateway/v1", // 61
 	"",  // 62 — Mimo, no default base URL
+	"",  // 63 — Lingjing, no default base URL
 }
 
 var ChannelTypeNames = map[int]string{
@@ -190,6 +192,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeXs:             "Xs",
 	ChannelTypeHJ:             "HJ",
 	ChannelTypeMimo:           "Mimo",
+	ChannelTypeLingjing:       "Lingjing",
 }
 
 func GetChannelTypeName(channelType int) string {
