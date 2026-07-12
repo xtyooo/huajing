@@ -41,7 +41,7 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 	}
 
 	// 序列化worker请求数据
-	workerPayload, err := json.Marshal(req)
+	workerPayload, err := common.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal worker payload: %v", err)
 	}
@@ -66,9 +66,7 @@ func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, r
 		}
 		return DoWorkerRequest(req)
 	}
-	// SSRF防护：验证请求URL
-	fetchSetting := system_setting.GetFetchSetting()
-	if err := common.ValidateURLWithFetchSetting(originUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+	if err := ValidateSSRFProtectedFetchURL(originUrl); err != nil {
 		return nil, fmt.Errorf("request reject: %v", err)
 	}
 
@@ -81,5 +79,5 @@ func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, r
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return GetHttpClient().Do(req)
+	return GetSSRFProtectedHTTPClient().Do(req)
 }

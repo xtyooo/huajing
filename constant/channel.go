@@ -61,6 +61,7 @@ const (
 	ChannelTypeHJ             = 61
 	ChannelTypeMimo           = 62
 	ChannelTypeLingjing       = 63
+	ChannelTypeAdvancedCustom = 64
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -124,12 +125,13 @@ var ChannelBaseURLs = []string{
 	"https://api.openai.com",                    //55
 	"https://api.replicate.com",                 //56
 	"https://chatgpt.com",                       //57
-	"https://museai.vip",
-	"https://api.meai.cloud",
-	"https://api.xs-token.com",
-	"http://64.81.114.92:8080/api/gateway/v1", // 61
-	"",  // 62 — Mimo, no default base URL
-	"",  // 63 — Lingjing, no default base URL
+	"https://museai.vip",                        //58
+	"https://api.meai.cloud",                    //59
+	"https://api.xs-token.com",                  //60
+	"http://64.81.114.92:8080/api/gateway/v1", //61
+	"", //62 Mimo, no default base URL
+	"", //63 Lingjing, no default base URL
+	"", //64 Advanced Custom
 }
 
 var ChannelTypeNames = map[int]string{
@@ -186,13 +188,14 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeDoubaoVideo:    "DoubaoVideo",
 	ChannelTypeSora:           "Sora",
 	ChannelTypeReplicate:      "Replicate",
-	ChannelTypeCodex:          "Codex",
+	ChannelTypeCodex:          "ChatGPT Subscription (Codex)",
 	ChannelTypeMuse:           "MuseAI",
 	ChannelTypeMeAI:           "MeAI",
 	ChannelTypeXs:             "Xs",
 	ChannelTypeHJ:             "HJ",
 	ChannelTypeMimo:           "Mimo",
 	ChannelTypeLingjing:       "Lingjing",
+	ChannelTypeAdvancedCustom: "Advanced Custom",
 }
 
 func GetChannelTypeName(channelType int) string {

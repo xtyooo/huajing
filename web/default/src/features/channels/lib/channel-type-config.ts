@@ -134,6 +134,16 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       baseUrl: 'Default: https://api.replicate.com',
     },
   },
+  64: {
+    id: 64,
+    name: CHANNEL_TYPES[64],
+    icon: 'newapi',
+    hints: {
+      baseUrl: 'Fallback base URL',
+      key: 'Used by route auth templates',
+      models: 'Models exposed by this channel',
+    },
+  },
 }
 
 /**
