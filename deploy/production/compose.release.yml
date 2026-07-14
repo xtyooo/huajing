@@ -1,0 +1,4 @@
+services:
+  new-api:
+    image: ${NEW_API_IMAGE:?NEW_API_IMAGE is required}
+

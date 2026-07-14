@@ -8,6 +8,7 @@ type MediaCleanupConfig struct {
 }
 
 var mediaCleanupConfig atomic.Value
+var mediaCleanupConfigChanged = make(chan struct{}, 1)
 
 func init() {
 	mediaCleanupConfig.Store(MediaCleanupConfig{
@@ -21,5 +22,16 @@ func GetMediaCleanupConfig() MediaCleanupConfig {
 }
 
 func SetMediaCleanupConfig(config MediaCleanupConfig) {
+	previous := GetMediaCleanupConfig()
 	mediaCleanupConfig.Store(config)
+	if previous != config {
+		select {
+		case mediaCleanupConfigChanged <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func MediaCleanupConfigChanged() <-chan struct{} {
+	return mediaCleanupConfigChanged
 }

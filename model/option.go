@@ -206,18 +206,17 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
-	option := Option{
-		Key: key,
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		option := Option{Key: key}
+		if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+			return err
+		}
+		option.Value = value
+		return tx.Save(&option).Error
+	})
+	if err != nil {
+		return err
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
-	// Update OptionMap
 	return updateOptionMap(key, value)
 }
 
@@ -246,7 +245,28 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
+	mediaCleanupHandled := false
+	if interval, hasInterval := values["media_cleanup_setting.cleanup_interval"]; hasInterval {
+		if age, hasAge := values["media_cleanup_setting.cleanup_age"]; hasAge {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap["media_cleanup_setting.cleanup_interval"] = interval
+			common.OptionMap["media_cleanup_setting.cleanup_age"] = age
+			common.OptionMapRWMutex.Unlock()
+			cfg := config.GlobalConfig.Get("media_cleanup_setting")
+			if err := config.UpdateConfigFromMap(cfg, map[string]string{
+				"cleanup_interval": interval,
+				"cleanup_age":      age,
+			}); err != nil {
+				return err
+			}
+			media_cleanup_setting.UpdateAndSync()
+			mediaCleanupHandled = true
+		}
+	}
 	for k, v := range values {
+		if mediaCleanupHandled && (k == "media_cleanup_setting.cleanup_interval" || k == "media_cleanup_setting.cleanup_age") {
+			continue
+		}
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}

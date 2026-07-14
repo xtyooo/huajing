@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { type InvitationRecord } from '../data/schema'
+
+import type { InvitationRecord } from '../types'
 
 type InvitationRecordsContextType = {
   currentRow: InvitationRecord | null
@@ -8,9 +9,14 @@ type InvitationRecordsContextType = {
   triggerRefresh: () => void
 }
 
-const InvitationRecordsContext = React.createContext<InvitationRecordsContextType | null>(null)
+const InvitationRecordsContext =
+  React.createContext<InvitationRecordsContextType | null>(null)
 
-export function InvitationRecordsProvider({ children }: { children: React.ReactNode }) {
+export function InvitationRecordsProvider({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   const [currentRow, setCurrentRow] = useState<InvitationRecord | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
@@ -35,7 +41,9 @@ export const useInvitationRecords = () => {
   const invitationRecordsContext = React.useContext(InvitationRecordsContext)
 
   if (!invitationRecordsContext) {
-    throw new Error('useInvitationRecords has to be used within <InvitationRecordsContext>')
+    throw new Error(
+      'useInvitationRecords has to be used within <InvitationRecordsContext>'
+    )
   }
 
   return invitationRecordsContext

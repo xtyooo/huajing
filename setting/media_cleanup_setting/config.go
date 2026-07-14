@@ -11,8 +11,8 @@ type MediaCleanupSetting struct {
 }
 
 var mediaCleanupSetting = MediaCleanupSetting{
-	CleanupInterval: 180,
-	CleanupAge:      180,
+	CleanupInterval: common.GetMediaCleanupInterval(),
+	CleanupAge:      common.GetMediaCleanupAge(),
 }
 
 func init() {

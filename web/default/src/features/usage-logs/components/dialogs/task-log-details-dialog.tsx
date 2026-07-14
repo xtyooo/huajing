@@ -1,3 +1,4 @@
+import { Copy, Check } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,17 +18,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
-import { Copy, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+
 import type { TaskLog } from '../../types'
 
 interface TaskLogDetailsDialogProps {
@@ -72,7 +73,7 @@ export function TaskLogDetailsDialog(props: TaskLogDetailsDialogProps) {
                   <Copy className='size-4' />
                 )}
               </Button>
-              <pre className='min-w-0 break-all whitespace-pre-wrap pr-10 font-mono text-xs leading-relaxed'>
+              <pre className='min-w-0 pr-10 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap'>
                 {formattedJson}
               </pre>
             </div>

@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -243,7 +244,10 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi {
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeLingjing ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeOpenAI ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSora {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
 		if relayInfo.UpstreamModelName != "" {
@@ -399,6 +403,41 @@ func ResetStuckMediaTasks() {
 	} else {
 		common.SysLog("********** reset stuck media tasks succeeded **********")
 	}
+}
+
+func ResetStuckMediaTasksBefore(cutoff int64) error {
+	return DB.Model(&Task{}).
+		Where("media_status = ? AND media_start_time > 0 AND media_start_time < ?", MediaStatusDownloading, cutoff).
+		Updates(map[string]any{
+			"media_status":     MediaStatusPending,
+			"media_start_time": 0,
+		}).Error
+}
+
+func ResetInvalidSoraMediaDownloads() ([]string, error) {
+	var tasks []Task
+	err := DB.Where("platform = ? AND media_status = ? AND LOWER(media_url) LIKE ?", strconv.Itoa(constant.ChannelTypeSora), MediaStatusSuccess, "%.json").
+		Find(&tasks).Error
+	if err != nil || len(tasks) == 0 {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(tasks))
+	mediaURLs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		ids = append(ids, task.ID)
+		mediaURLs = append(mediaURLs, task.MediaURL)
+	}
+	err = DB.Model(&Task{}).Where("id IN ?", ids).Updates(map[string]any{
+		"media_status":      MediaStatusPending,
+		"media_url":         "",
+		"media_start_time":  0,
+		"media_finish_time": 0,
+		"fail_reason":       "",
+	}).Error
+	if err != nil {
+		return nil, err
+	}
+	return mediaURLs, nil
 }
 
 // HasUnfinishedSyncTasks reports whether at least one async (Suno/video) task is

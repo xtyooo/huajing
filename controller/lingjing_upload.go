@@ -3,9 +3,11 @@ package controller
 import (
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
@@ -33,7 +35,7 @@ func LingjingUpload(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetLingjingChannel()
+	channel, err := getUploadChannel(c, constant.ChannelTypeLingjing)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"detail": "no available Lingjing channel"})
 		return
@@ -81,4 +83,15 @@ func LingjingUpload(c *gin.Context) {
 		}
 	}
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+}
+
+func getUploadChannel(c *gin.Context, channelType int) (*model.Channel, error) {
+	specificChannelID := 0
+	if rawID, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
+		if id, ok := rawID.(string); ok {
+			specificChannelID, _ = strconv.Atoi(id)
+		}
+	}
+	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	return model.GetUploadChannel(channelType, group, specificChannelID)
 }

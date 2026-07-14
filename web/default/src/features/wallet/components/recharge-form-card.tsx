@@ -39,7 +39,6 @@ import { cn } from '@/lib/utils'
 
 import {
   formatCurrency,
-  getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
@@ -229,17 +228,13 @@ export function RechargeFormCard({
                         preset.discount ||
                         topupInfo?.discount?.[preset.value] ||
                         1.0
-                      const {
-                        displayValue,
-                        actualPrice,
-                        savedAmount,
-                        hasDiscount,
-                      } = calculatePresetPricing(
-                        preset.value,
-                        priceRatio,
-                        discount,
-                        usdExchangeRate
-                      )
+                      const { displayValue, hasDiscount } =
+                        calculatePresetPricing(
+                          preset.value,
+                          priceRatio,
+                          discount,
+                          usdExchangeRate
+                        )
                       return (
                         <Button
                           key={preset.value}
@@ -253,7 +248,7 @@ export function RechargeFormCard({
                           onClick={() => onSelectPreset(preset)}
                         >
                           <div className='flex w-full items-center justify-between'>
-                            <div className='text-base flex-1 text-center w-full font-semibold sm:text-lg'>
+                            <div className='w-full flex-1 text-center text-base font-semibold sm:text-lg'>
                               ⚡{formatNumber(displayValue)}
                             </div>
                             {/*{hasDiscount && (*/}
@@ -263,13 +258,13 @@ export function RechargeFormCard({
                             {/*)}*/}
                           </div>
                           {hasDiscount && (
-                              <div className='text-muted-foreground mt-0.5 text-xs sm:text-sm sm:mt-1 w-full text-center flex-1'>
-                                <span>{(discount * 10).toFixed(2)}折</span>
-                                {/* <span>{((1 - discount) * 10).toFixed(1)}折</span> */}
-                                <span className='text-green-600'>
-                                  节省 {((1 - discount) * 100).toFixed(1)}%
-                                </span>
-                              </div>
+                            <div className='text-muted-foreground mt-0.5 w-full flex-1 text-center text-xs sm:mt-1 sm:text-sm'>
+                              <span>{(discount * 10).toFixed(2)}折</span>
+                              {/* <span>{((1 - discount) * 10).toFixed(1)}折</span> */}
+                              <span className='text-green-600'>
+                                节省 {((1 - discount) * 100).toFixed(1)}%
+                              </span>
+                            </div>
                           )}
                           {/*<div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>*/}
                           {/*  Pay {formatCurrency(actualPrice)}*/}

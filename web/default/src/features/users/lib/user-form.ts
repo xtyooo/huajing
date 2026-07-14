@@ -27,7 +27,7 @@ import { quotaUnitsToDollars } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type UserFormData, type User } from '../types'
+import type { UserFormData, User } from '../types'
 
 // ============================================================================
 // Form Schema
@@ -38,7 +38,7 @@ export const userFormSchema = z.object({
   display_name: z.string().optional(),
   password: z.string().optional(),
   role: z.number().optional(),
-  m: z.coerce.number().int().min(1),
+  m: z.number().min(0),
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
@@ -82,7 +82,7 @@ export function transformFormDataToPayload(
     username: data.username,
     display_name: data.display_name || data.username,
     password: data.password || undefined,
-    m: data.m as number | undefined || 0
+    m: data.m || 0,
   }
 
   const role = userId === undefined ? data.role || 1 : (data.role ?? 0)

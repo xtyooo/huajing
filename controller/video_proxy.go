@@ -113,12 +113,25 @@ func VideoProxy(c *gin.Context) {
 		}
 	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
 		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
-		req.Header.Set("Authorization", "Bearer "+channel.Key)
+		apiKey, keyErr := taskChannelKey(channel, task)
+		if keyErr != nil {
+			videoProxyError(c, http.StatusBadGateway, "server_error", "No available channel key")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	case constant.ChannelTypeLingjing:
 		// Lingjing serves the video via an authenticated download endpoint
-		// (no public URL). Proxy it in real-time with the channel key.
+		// (no public URL). Use the key selected when the task was submitted.
 		videoURL = fmt.Sprintf("%s/api/open/v1/videos/%s/download", baseURL, task.GetUpstreamTaskID())
-		req.Header.Set("Authorization", "Bearer "+channel.Key)
+		apiKey := strings.TrimSpace(task.PrivateData.Key)
+		if apiKey == "" {
+			apiKey, _, err = channel.GetNextEnabledKey()
+			if err != nil {
+				videoProxyError(c, http.StatusBadGateway, "server_error", "No available channel key")
+				return
+			}
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	default:
 		// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
 		videoURL = task.GetResultURL()
@@ -185,6 +198,25 @@ func VideoProxy(c *gin.Context) {
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
 	}
+}
+
+func taskChannelKey(channel *model.Channel, task *model.Task) (string, error) {
+	if task != nil {
+		if key := strings.TrimSpace(task.PrivateData.Key); key != "" {
+			return key, nil
+		}
+	}
+	if channel == nil {
+		return "", fmt.Errorf("channel is nil")
+	}
+	key, _, keyErr := channel.GetNextEnabledKey()
+	if keyErr != nil {
+		return "", keyErr
+	}
+	if strings.TrimSpace(key) == "" {
+		return "", fmt.Errorf("channel key is empty")
+	}
+	return key, nil
 }
 
 func writeVideoDataURL(c *gin.Context, dataURL string) error {

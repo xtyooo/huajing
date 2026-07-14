@@ -13,6 +13,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -384,6 +385,37 @@ func CleanupMediaFiles(c *gin.Context) {
 		"success": true,
 		"message": message,
 		"data":    result,
+	})
+}
+
+type mediaCleanupSettingsRequest struct {
+	CleanupInterval int `json:"cleanup_interval"`
+	CleanupAge      int `json:"cleanup_age"`
+}
+
+func SaveMediaCleanupSettings(c *gin.Context) {
+	var request mediaCleanupSettingsRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorMsg(c, "invalid media cleanup settings")
+		return
+	}
+	if request.CleanupInterval < 1 || request.CleanupAge < 1 {
+		common.ApiErrorMsg(c, "cleanup interval and age must be positive integers")
+		return
+	}
+
+	err := model.UpdateOptionsBulk(map[string]string{
+		"media_cleanup_setting.cleanup_interval": strconv.Itoa(request.CleanupInterval),
+		"media_cleanup_setting.cleanup_age":      strconv.Itoa(request.CleanupAge),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "媒体清理设置已保存",
 	})
 }
 

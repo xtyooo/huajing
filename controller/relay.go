@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -501,6 +502,12 @@ func RelayTask(c *gin.Context) {
 
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
+	originalWriter := c.Writer
+	bufferedWriter := newTaskResponseBuffer(originalWriter)
+	c.Writer = bufferedWriter
+	defer func() {
+		c.Writer = originalWriter
+	}()
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
@@ -571,13 +578,10 @@ func RelayTask(c *gin.Context) {
 		logger.LogInfo(c, retryLogStr)
 	}
 
-	// ── 成功：结算 + 日志 + 插入任务 ──
+	// The adaptor writes the upstream success response into bufferedWriter. Keep
+	// it buffered until the task is durable, otherwise an insert failure leaves
+	// the client with a successful task ID that cannot be queried or refunded.
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-			common.SysError("settle task billing error: " + settleErr.Error())
-		}
-		service.LogTaskConsumption(c, relayInfo)
-
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
@@ -605,12 +609,75 @@ func RelayTask(c *gin.Context) {
 		}
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			taskErr = service.TaskErrorWrapperLocal(insertErr, "insert_task_failed", http.StatusInternalServerError)
+		} else {
+			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+				common.SysError("settle task billing error: " + settleErr.Error())
+			}
+			service.LogTaskConsumption(c, relayInfo)
+			c.Writer = originalWriter
+			if flushErr := bufferedWriter.FlushTo(originalWriter); flushErr != nil {
+				common.SysError("write task response error: " + flushErr.Error())
+			}
 		}
 	}
 
 	if taskErr != nil {
+		c.Writer = originalWriter
 		respondTaskError(c, taskErr)
 	}
+}
+
+type taskResponseBuffer struct {
+	gin.ResponseWriter
+	body   bytes.Buffer
+	status int
+	wrote  bool
+}
+
+func newTaskResponseBuffer(writer gin.ResponseWriter) *taskResponseBuffer {
+	return &taskResponseBuffer{ResponseWriter: writer, status: http.StatusOK}
+}
+
+func (w *taskResponseBuffer) WriteHeader(code int) {
+	if !w.wrote && code > 0 {
+		w.status = code
+	}
+}
+
+func (w *taskResponseBuffer) WriteHeaderNow() {
+	if !w.wrote {
+		w.wrote = true
+	}
+}
+
+func (w *taskResponseBuffer) Write(data []byte) (int, error) {
+	w.WriteHeaderNow()
+	return w.body.Write(data)
+}
+
+func (w *taskResponseBuffer) WriteString(data string) (int, error) {
+	w.WriteHeaderNow()
+	return w.body.WriteString(data)
+}
+
+func (w *taskResponseBuffer) Status() int { return w.status }
+
+func (w *taskResponseBuffer) Size() int {
+	if !w.wrote {
+		return -1
+	}
+	return w.body.Len()
+}
+
+func (w *taskResponseBuffer) Written() bool { return w.wrote }
+
+func (w *taskResponseBuffer) Flush() { w.WriteHeaderNow() }
+
+func (w *taskResponseBuffer) FlushTo(writer gin.ResponseWriter) error {
+	writer.WriteHeader(w.status)
+	_, err := writer.Write(w.body.Bytes())
+	return err
 }
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）

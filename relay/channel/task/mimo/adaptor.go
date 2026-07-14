@@ -48,8 +48,17 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 
 	duration := 8
-	if d, ok := raw["duration"].(float64); ok && d > 0 {
-		duration = int(d)
+	if d, ok := raw["duration"].(float64); ok {
+		if d < 0 || d > relaycommon.MaxTaskDurationSeconds {
+			return service.TaskErrorWrapperLocal(
+				fmt.Errorf("duration must be between 0 and %d", relaycommon.MaxTaskDurationSeconds),
+				"invalid_duration",
+				http.StatusBadRequest,
+			)
+		}
+		if d > 0 {
+			duration = int(d)
+		}
 	}
 
 	aspectRatio := "9:16"

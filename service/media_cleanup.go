@@ -18,6 +18,7 @@ import (
 var (
 	mediaCleanupOnce    sync.Once
 	mediaCleanupRunning atomic.Bool
+	cleanMediaByTaskIDs = model.CleanMediaByTaskIDs
 )
 
 var mediaFileNameRegex = regexp.MustCompile(`^(\d{14})_(task_\w+)\.\w+$`)
@@ -36,15 +37,34 @@ func StartMediaCleanupTask() {
 			cfg := common.GetMediaCleanupConfig()
 			common.SysLog(fmt.Sprintf("media cleanup task started: interval=%dm, age=%dm", cfg.CleanupInterval, cfg.CleanupAge))
 
-			RunMediaCleanup()
+			_, _ = RunMediaCleanup()
+			timer := time.NewTimer(mediaCleanupInterval())
+			defer timer.Stop()
 			for {
-				cfg := common.GetMediaCleanupConfig()
-				interval := time.Duration(cfg.CleanupInterval) * time.Minute
-				time.Sleep(interval)
-				RunMediaCleanup()
+				select {
+				case <-timer.C:
+					_, _ = RunMediaCleanup()
+					timer.Reset(mediaCleanupInterval())
+				case <-common.MediaCleanupConfigChanged():
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(mediaCleanupInterval())
+				}
 			}
 		})
 	})
+}
+
+func mediaCleanupInterval() time.Duration {
+	minutes := common.GetMediaCleanupConfig().CleanupInterval
+	if minutes < 1 {
+		minutes = 180
+	}
+	return time.Duration(minutes) * time.Minute
 }
 
 func RunMediaCleanup() (*MediaCleanupResult, error) {
@@ -70,9 +90,12 @@ func RunMediaCleanupWithAge(age time.Duration) (*MediaCleanupResult, error) {
 
 	cutoff := time.Now().Add(-age)
 
-	var toDelete []string
-	var taskIDs []string
-	var freedBytes int64
+	type mediaCleanupCandidate struct {
+		path   string
+		taskID string
+		size   int64
+	}
+	var candidates []mediaCleanupCandidate
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -97,28 +120,78 @@ func RunMediaCleanupWithAge(age time.Duration) (*MediaCleanupResult, error) {
 			if err != nil {
 				continue
 			}
-			toDelete = append(toDelete, filepath.Join(mediaDir, name))
-			taskIDs = append(taskIDs, taskID)
-			freedBytes += info.Size()
+			candidates = append(candidates, mediaCleanupCandidate{
+				path:   filepath.Join(mediaDir, name),
+				taskID: taskID,
+				size:   info.Size(),
+			})
 		}
 	}
 
-	if len(toDelete) == 0 {
+	if len(candidates) == 0 {
 		common.SysLog("media cleanup: no files to clean")
 		return &MediaCleanupResult{DeletedCount: 0, FreedBytes: 0}, nil
 	}
 
-	if err := model.CleanMediaByTaskIDs(taskIDs); err != nil {
-		common.SysError(fmt.Sprintf("media cleanup: update database failed: %v", err))
+	stagingDir, err := os.MkdirTemp(mediaDir, ".cleanup-")
+	if err != nil {
+		return nil, fmt.Errorf("create media cleanup staging dir failed: %v", err)
+	}
+	defer os.Remove(stagingDir)
+
+	type stagedMediaFile struct {
+		mediaCleanupCandidate
+		stagedPath string
+	}
+	var stagedFiles []stagedMediaFile
+	rollback := func() error {
+		var rollbackErr error
+		for i := len(stagedFiles) - 1; i >= 0; i-- {
+			file := stagedFiles[i]
+			if err := os.Rename(file.stagedPath, file.path); err != nil {
+				rollbackErr = fmt.Errorf("restore media file %s failed: %v", file.path, err)
+				common.SysError(rollbackErr.Error())
+			}
+		}
+		return rollbackErr
+	}
+
+	for _, candidate := range candidates {
+		stagedPath := filepath.Join(stagingDir, filepath.Base(candidate.path))
+		if err := os.Rename(candidate.path, stagedPath); err != nil {
+			rollbackErr := rollback()
+			if rollbackErr != nil {
+				return nil, fmt.Errorf("stage media file %s failed: %v; %v", candidate.path, err, rollbackErr)
+			}
+			return nil, fmt.Errorf("stage media file %s failed: %v", candidate.path, err)
+		}
+		stagedFiles = append(stagedFiles, stagedMediaFile{
+			mediaCleanupCandidate: candidate,
+			stagedPath:            stagedPath,
+		})
+	}
+
+	taskIDs := make([]string, 0, len(stagedFiles))
+	for _, file := range stagedFiles {
+		taskIDs = append(taskIDs, file.taskID)
+	}
+	if err := cleanMediaByTaskIDs(taskIDs); err != nil {
+		rollbackErr := rollback()
+		if rollbackErr != nil {
+			return nil, fmt.Errorf("update media cleanup database failed: %v; %v", err, rollbackErr)
+		}
+		return nil, fmt.Errorf("update media cleanup database failed: %v", err)
 	}
 
 	deletedCount := 0
-	for _, path := range toDelete {
-		if err := os.Remove(path); err != nil {
-			common.SysError(fmt.Sprintf("media cleanup: delete file %s failed: %v", path, err))
+	var freedBytes int64
+	for _, file := range stagedFiles {
+		if err := os.Remove(file.stagedPath); err != nil {
+			common.SysError(fmt.Sprintf("media cleanup: delete staged file %s failed: %v", file.stagedPath, err))
 			continue
 		}
 		deletedCount++
+		freedBytes += file.size
 	}
 
 	common.SysLog(fmt.Sprintf("media cleanup: deleted %d files, freed %d bytes", deletedCount, freedBytes))

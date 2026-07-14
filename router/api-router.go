@@ -221,6 +221,7 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 			performanceRoute.POST("/media_cleanup", controller.CleanupMediaFiles)
+			performanceRoute.PUT("/media_cleanup/settings", controller.SaveMediaCleanupSettings)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())

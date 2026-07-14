@@ -179,7 +179,9 @@ export default function SettingsPerformance(props) {
 
   async function cleanupMediaFiles() {
     try {
-      const res = await API.post(`/api/performance/media_cleanup?minutes=${cleanupMinutes}`);
+      const res = await API.post(
+        `/api/performance/media_cleanup?minutes=${cleanupMinutes}`,
+      );
       if (res.data.success) {
         showSuccess(res.data.message);
         fetchStats();
@@ -192,12 +194,31 @@ export default function SettingsPerformance(props) {
   }
 
   async function saveMediaCleanupSettings() {
+    if (
+      !Number.isInteger(cleanupInterval) ||
+      cleanupInterval < 1 ||
+      !Number.isInteger(cleanupAge) ||
+      cleanupAge < 1
+    ) {
+      showError('清理间隔和文件保留时间必须是大于 0 的整数');
+      return;
+    }
+    setLoading(true);
     try {
-      await API.put('/api/option/', { key: 'media_cleanup_setting.cleanup_interval', value: String(cleanupInterval) });
-      await API.put('/api/option/', { key: 'media_cleanup_setting.cleanup_age', value: String(cleanupAge) });
-      showSuccess('媒体清理设置已保存');
+      const res = await API.put('/api/performance/media_cleanup/settings', {
+        cleanup_interval: cleanupInterval,
+        cleanup_age: cleanupAge,
+      });
+      if (!res.data.success) {
+        showError(res.data.message || '保存失败');
+        return;
+      }
+      await props.refresh?.();
+      showSuccess(res.data.message || '媒体清理设置已保存');
     } catch (error) {
       showError('保存失败');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -213,7 +234,11 @@ export default function SettingsPerformance(props) {
   }
 
   async function cleanupLogFiles() {
-    if (logCleanupValue == null || isNaN(logCleanupValue) || logCleanupValue < 1) {
+    if (
+      logCleanupValue == null ||
+      isNaN(logCleanupValue) ||
+      logCleanupValue < 1
+    ) {
       showError(t('请输入有效的数值'));
       return;
     }
@@ -265,7 +290,9 @@ export default function SettingsPerformance(props) {
   }, [props.options]);
 
   useEffect(() => {
-    const val = parseInt(props.options['media_cleanup_setting.cleanup_interval']);
+    const val = parseInt(
+      props.options['media_cleanup_setting.cleanup_interval'],
+    );
     if (!isNaN(val)) {
       setCleanupInterval(val);
     }
@@ -512,24 +539,24 @@ export default function SettingsPerformance(props) {
                   >
                     &nbsp;
                   </Text>
-                <Popconfirm
-                  title={t('确认清理日志文件？')}
-                  content={
-                    logCleanupMode === 'by_count'
-                      ? t(
-                          '将只保留最近 {{value}} 个日志文件，其余将被删除。',
-                          { value: logCleanupValue },
-                        )
-                      : t('将删除 {{value}} 天前的日志文件。', {
-                          value: logCleanupValue,
-                        })
-                  }
-                  onConfirm={cleanupLogFiles}
-                >
-                  <Button type='danger' loading={logCleanupLoading}>
-                    {t('清理日志文件')}
-                  </Button>
-                </Popconfirm>
+                  <Popconfirm
+                    title={t('确认清理日志文件？')}
+                    content={
+                      logCleanupMode === 'by_count'
+                        ? t(
+                            '将只保留最近 {{value}} 个日志文件，其余将被删除。',
+                            { value: logCleanupValue },
+                          )
+                        : t('将删除 {{value}} 天前的日志文件。', {
+                            value: logCleanupValue,
+                          })
+                    }
+                    onConfirm={cleanupLogFiles}
+                  >
+                    <Button type='danger' loading={logCleanupLoading}>
+                      {t('清理日志文件')}
+                    </Button>
+                  </Popconfirm>
                 </div>
               </Col>
             </Row>
@@ -809,7 +836,14 @@ export default function SettingsPerformance(props) {
         </Row>
         <Row gutter={16}>
           <Col span={24}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
               <span>清理</span>
               <InputNumber
                 style={{ width: 100 }}

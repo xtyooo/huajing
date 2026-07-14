@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +29,7 @@ func MimoUpload(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetMimoChannel()
+	channel, err := getUploadChannel(c, constant.ChannelTypeMimo)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "msg": "no available MIMO channel", "data": nil})
 		return

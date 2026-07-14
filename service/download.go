@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,10 @@ type WorkerRequest struct {
 
 // DoWorkerRequest 通过Worker发送请求
 func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
+	return DoWorkerRequestWithContext(context.Background(), req)
+}
+
+func DoWorkerRequestWithContext(ctx context.Context, req *WorkerRequest) (*http.Response, error) {
 	if !system_setting.EnableWorker() {
 		return nil, fmt.Errorf("worker not enabled")
 	}
@@ -46,7 +51,12 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to marshal worker payload: %v", err)
 	}
 
-	return GetHttpClient().Post(workerUrl, "application/json", bytes.NewBuffer(workerPayload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, workerUrl, bytes.NewBuffer(workerPayload))
+	if err != nil {
+		return nil, fmt.Errorf("new worker request failed: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	return GetHttpClient().Do(httpReq)
 }
 
 func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response, err error) {
@@ -57,6 +67,10 @@ func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response,
 // including custom HTTP headers (e.g. Authorization for authenticated
 // endpoints such as Lingjing /download).
 func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, reason ...string) (resp *http.Response, err error) {
+	return DoDownloadRequestWithHeadersContext(context.Background(), originUrl, headers, reason...)
+}
+
+func DoDownloadRequestWithHeadersContext(ctx context.Context, originUrl string, headers map[string]string, reason ...string) (resp *http.Response, err error) {
 	if system_setting.EnableWorker() {
 		common.SysLog(fmt.Sprintf("downloading file from worker: %s, reason: %s", originUrl, strings.Join(reason, ", ")))
 		req := &WorkerRequest{
@@ -64,7 +78,7 @@ func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, r
 			Key:     system_setting.WorkerValidKey,
 			Headers: headers,
 		}
-		return DoWorkerRequest(req)
+		return DoWorkerRequestWithContext(ctx, req)
 	}
 	if err := ValidateSSRFProtectedFetchURL(originUrl); err != nil {
 		return nil, fmt.Errorf("request reject: %v", err)
@@ -72,7 +86,7 @@ func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, r
 
 	common.SysLog(fmt.Sprintf("downloading from origin: %s, reason: %s", common.MaskSensitiveInfo(originUrl), strings.Join(reason, ", ")))
 
-	req, err := http.NewRequest("GET", originUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, originUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}

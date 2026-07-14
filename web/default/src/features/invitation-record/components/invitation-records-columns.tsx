@@ -1,12 +1,16 @@
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { formatTimestamp } from '@/lib/format'
-import { Checkbox } from '@/components/ui/checkbox'
+
 import { DataTableColumnHeader } from '@/components/data-table'
 import { LongText } from '@/components/long-text'
-import { type InvitationRecord } from '../data/schema'
+import { Checkbox } from '@/components/ui/checkbox'
+import { formatTimestamp } from '@/lib/format'
 
-export function useInvitationRecordsColumns(isAdmin: boolean): ColumnDef<InvitationRecord>[] {
+import type { InvitationRecord } from '../types'
+
+export function useInvitationRecordsColumns(
+  isAdmin: boolean
+): ColumnDef<InvitationRecord>[] {
   const { t } = useTranslation()
 
   const columns: ColumnDef<InvitationRecord>[] = [
@@ -14,9 +18,7 @@ export function useInvitationRecordsColumns(isAdmin: boolean): ColumnDef<Invitat
       id: 'select',
       header: ({ table }) => (
         <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected()
-          }
+          checked={table.getIsAllPageRowsSelected()}
           indeterminate={table.getIsSomePageRowsSelected()}
           onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
           aria-label='Select all'
@@ -49,7 +51,7 @@ export function useInvitationRecordsColumns(isAdmin: boolean): ColumnDef<Invitat
       enableGrouping: false,
       enablePinning: false,
       enableResizing: false,
-      enableSorting:false,
+      enableSorting: false,
       enableHiding: false,
       meta: { label: t('ID'), mobileHidden: true },
     },
@@ -80,7 +82,7 @@ export function useInvitationRecordsColumns(isAdmin: boolean): ColumnDef<Invitat
       enableGrouping: false,
       enablePinning: false,
       enableResizing: false,
-      enableSorting:false,
+      enableSorting: false,
       enableHiding: false,
       meta: { label: '邀请人', mobileTitle: true },
     })
@@ -110,88 +112,74 @@ export function useInvitationRecordsColumns(isAdmin: boolean): ColumnDef<Invitat
     enableGrouping: false,
     enablePinning: false,
     enableResizing: false,
-    enableSorting:false,
+    enableSorting: false,
     enableHiding: false,
     meta: { label: '被邀请人', mobileTitle: true },
   })
 
-  columns.push(
-    {
-      accessorKey: 'created_at',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={'邀请时间'} />
-      ),
-      cell: ({ row }) => {
-        const ts = row.getValue('created_at') as number | undefined
-        return (
-          <span className='text-muted-foreground text-sm'>
-            {ts ? formatTimestamp(ts) : '-'}
-          </span>
-        )
-      },
-      enableColumnFilter: false,
-      enableMultiSort: false,
-      enableGlobalFilter: false,
-      enableGrouping: false,
-      enablePinning: false,
-      enableResizing: false,
-      enableSorting:false,
-      enableHiding: false,
-      meta: { label: '邀请时间', mobileHidden: true },
-    }
-  )
+  columns.push({
+    accessorKey: 'created_at',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title={'邀请时间'} />
+    ),
+    cell: ({ row }) => {
+      const ts = row.getValue('created_at') as number | undefined
+      return (
+        <span className='text-muted-foreground text-sm'>
+          {ts ? formatTimestamp(ts) : '-'}
+        </span>
+      )
+    },
+    enableColumnFilter: false,
+    enableMultiSort: false,
+    enableGlobalFilter: false,
+    enableGrouping: false,
+    enablePinning: false,
+    enableResizing: false,
+    enableSorting: false,
+    enableHiding: false,
+    meta: { label: '邀请时间', mobileHidden: true },
+  })
 
-  columns.push(
-    {
-      accessorKey: 'recharge_total',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={'总充值金额'} />
-      ),
-      cell: ({ row }) => {
-        const ts = row.getValue('recharge_total') as number | undefined
-        return (
-          <span className='text-muted-foreground text-sm'>
-            {ts || '0'}
-          </span>
-        )
-      },
-      enableColumnFilter: false,
-      enableMultiSort: false,
-      enableGlobalFilter: false,
-      enableGrouping: false,
-      enablePinning: false,
-      enableResizing: false,
-      enableSorting:false,
-      enableHiding: false,
-      meta: { label: '总充值金额', mobileHidden: true },
-    }
-  )
+  columns.push({
+    accessorKey: 'recharge_total',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title={'总充值金额'} />
+    ),
+    cell: ({ row }) => {
+      const ts = row.getValue('recharge_total') as number | undefined
+      return <span className='text-muted-foreground text-sm'>{ts || '0'}</span>
+    },
+    enableColumnFilter: false,
+    enableMultiSort: false,
+    enableGlobalFilter: false,
+    enableGrouping: false,
+    enablePinning: false,
+    enableResizing: false,
+    enableSorting: false,
+    enableHiding: false,
+    meta: { label: '总充值金额', mobileHidden: true },
+  })
 
-  columns.push(
-    {
-      accessorKey: 'rebate_total',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={'总返点金额'} />
-      ),
-      cell: ({ row }) => {
-        const ts = row.getValue('rebate_total') as number | undefined
-        return (
-          <span className='text-muted-foreground text-sm'>
-            {ts || '0'}
-          </span>
-        )
-      },
-      enableColumnFilter: false,
-      enableMultiSort: false,
-      enableGlobalFilter: false,
-      enableGrouping: false,
-      enablePinning: false,
-      enableResizing: false,
-      enableSorting:false,
-      enableHiding: false,
-      meta: { label: '总返点金额', mobileHidden: true },
-    }
-  )
+  columns.push({
+    accessorKey: 'rebate_total',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title={'总返点金额'} />
+    ),
+    cell: ({ row }) => {
+      const ts = row.getValue('rebate_total') as number | undefined
+      return <span className='text-muted-foreground text-sm'>{ts || '0'}</span>
+    },
+    enableColumnFilter: false,
+    enableMultiSort: false,
+    enableGlobalFilter: false,
+    enableGrouping: false,
+    enablePinning: false,
+    enableResizing: false,
+    enableSorting: false,
+    enableHiding: false,
+    meta: { label: '总返点金额', mobileHidden: true },
+  })
 
   return columns
 }

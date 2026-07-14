@@ -531,7 +531,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 	}
 
-	if !snap.Equal(task.Snapshot()) {
+	if canPersistRealtimeTaskStatus(task.Status) && !snap.Equal(task.Snapshot()) {
 		_, _ = task.UpdateWithStatus(snap.Status)
 	}
 
@@ -555,6 +555,10 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		Data: out,
 	})
 	return respBody
+}
+
+func canPersistRealtimeTaskStatus(status model.TaskStatus) bool {
+	return status != model.TaskStatusSuccess && status != model.TaskStatusFailure
 }
 
 // detectVideoFormat 从 Gemini/Vertex 原始响应中探测视频格式

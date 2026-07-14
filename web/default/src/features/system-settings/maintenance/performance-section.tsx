@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -117,7 +118,12 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
   },
 })
 
-const normalizeFormValues = (values: PerfFormValues): Omit<FlatPerfDefaults, 'media_cleanup_setting.cleanup_interval' | 'media_cleanup_setting.cleanup_age'> => ({
+const normalizeFormValues = (
+  values: PerfFormValues
+): Omit<
+  FlatPerfDefaults,
+  'media_cleanup_setting.cleanup_interval' | 'media_cleanup_setting.cleanup_age'
+> => ({
   'performance_setting.disk_cache_enabled':
     values.performance_setting.disk_cache_enabled,
   'performance_setting.disk_cache_threshold_mb':
@@ -188,6 +194,7 @@ type PerformanceStats = {
 
 export function PerformanceSection(props: Props) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const updateOption = useUpdateOption()
   const [stats, setStats] = useState<PerformanceStats | null>(null)
   const [cleanupMinutes, setCleanupMinutes] = useState(180)
@@ -220,7 +227,9 @@ export function PerformanceSection(props: Props) {
     baselineRef.current = props.defaultValues
     baselineSerializedRef.current = serialized
     form.reset(buildFormDefaults(props.defaultValues))
-    const interval = Number(props.defaultValues['media_cleanup_setting.cleanup_interval'])
+    const interval = Number(
+      props.defaultValues['media_cleanup_setting.cleanup_interval']
+    )
     if (!isNaN(interval)) setCleanupInterval(interval)
     const age = Number(props.defaultValues['media_cleanup_setting.cleanup_age'])
     if (!isNaN(age)) setCleanupAge(age)
@@ -307,7 +316,9 @@ export function PerformanceSection(props: Props) {
 
   const cleanupMediaFiles = async (minutes: number) => {
     try {
-      const res = await api.post(`/api/performance/media_cleanup?minutes=${minutes}`)
+      const res = await api.post(
+        `/api/performance/media_cleanup?minutes=${minutes}`
+      )
       if (res.data.success) {
         toast.success(res.data.message)
         fetchStats()
@@ -318,10 +329,34 @@ export function PerformanceSection(props: Props) {
   }
 
   const saveMediaCleanupSettings = async () => {
+    if (
+      !Number.isInteger(cleanupInterval) ||
+      cleanupInterval < 1 ||
+      !Number.isInteger(cleanupAge) ||
+      cleanupAge < 1
+    ) {
+      toast.error('清理间隔和文件保留时间必须是大于 0 的整数')
+      return
+    }
     try {
-      await api.put('/api/option/', { key: 'media_cleanup_setting.cleanup_interval', value: String(cleanupInterval) })
-      await api.put('/api/option/', { key: 'media_cleanup_setting.cleanup_age', value: String(cleanupAge) })
-      toast.success('媒体清理设置已保存')
+      const res = await api.put('/api/performance/media_cleanup/settings', {
+        cleanup_interval: cleanupInterval,
+        cleanup_age: cleanupAge,
+      })
+      if (!res.data.success) {
+        toast.error(res.data.message || '保存失败')
+        return
+      }
+
+      const nextBaseline = {
+        ...baselineRef.current,
+        'media_cleanup_setting.cleanup_interval': cleanupInterval,
+        'media_cleanup_setting.cleanup_age': cleanupAge,
+      }
+      baselineRef.current = nextBaseline
+      baselineSerializedRef.current = JSON.stringify(nextBaseline)
+      await queryClient.invalidateQueries({ queryKey: ['system-options'] })
+      toast.success(res.data.message || '媒体清理设置已保存')
     } catch {
       toast.error('保存失败')
     }
@@ -786,7 +821,11 @@ export function PerformanceSection(props: Props) {
             />
             <span className='text-sm'>分钟</span>
           </div>
-          <Button variant='outline' size='sm' onClick={saveMediaCleanupSettings}>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={saveMediaCleanupSettings}
+          >
             保存
           </Button>
         </div>
@@ -804,7 +843,10 @@ export function PerformanceSection(props: Props) {
             min={1}
           />
           <span className='text-sm'>分钟以前的媒体文件</span>
-          <AlertDialog open={cleanupDialogOpen} onOpenChange={setCleanupDialogOpen}>
+          <AlertDialog
+            open={cleanupDialogOpen}
+            onOpenChange={setCleanupDialogOpen}
+          >
             <AlertDialogTrigger render={<Button variant='outline' size='sm' />}>
               执行清理
             </AlertDialogTrigger>
@@ -812,15 +854,18 @@ export function PerformanceSection(props: Props) {
               <AlertDialogHeader>
                 <AlertDialogTitle>确认清理过期媒体文件？</AlertDialogTitle>
                 <AlertDialogDescription>
-                  将删除 {cleanupMinutes} 分钟以前的媒体文件并更新对应任务状态，此操作不可撤销。
+                  将删除 {cleanupMinutes}{' '}
+                  分钟以前的媒体文件并更新对应任务状态，此操作不可撤销。
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={() => {
-                  cleanupMediaFiles(cleanupMinutes)
-                  setCleanupDialogOpen(false)
-                }}>
+                <AlertDialogAction
+                  onClick={() => {
+                    cleanupMediaFiles(cleanupMinutes)
+                    setCleanupDialogOpen(false)
+                  }}
+                >
                   确认
                 </AlertDialogAction>
               </AlertDialogFooter>

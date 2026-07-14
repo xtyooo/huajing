@@ -1,8 +1,8 @@
 import { api } from '@/lib/api'
-import { buildQueryParams } from './lib/utils'
+
 import type {
   GetInvitationRecordsParams,
-  GetInvitationRecordsResponse
+  GetInvitationRecordsResponse,
 } from './types'
 
 // ============================================================================
@@ -11,6 +11,16 @@ import type {
 
 function buildApiPath(endpoint: string, isAdmin: boolean): string {
   return isAdmin ? endpoint : `${endpoint}/self`
+}
+
+function buildQueryParams(params: Record<string, unknown>): URLSearchParams {
+  const queryParams = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      queryParams.append(key, String(value))
+    }
+  })
+  return queryParams
 }
 
 async function fetchInvitationRecord(

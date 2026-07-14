@@ -158,6 +158,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if strings.HasPrefix(info.UpstreamModelName, "wf-sd2-933-") {
+				normalizeWFSD2933Request(bodyMap)
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -217,6 +220,76 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	return common.ReaderOnly(storage), nil
+}
+
+func normalizeWFSD2933Request(body map[string]interface{}) {
+	if body == nil {
+		return
+	}
+	if _, ok := body["seconds"]; !ok {
+		if duration, ok := body["duration"]; ok {
+			body["seconds"] = duration
+		}
+	}
+	delete(body, "duration")
+
+	if size, ok := body["size"].(string); ok && strings.TrimSpace(size) != "" {
+		aspectRatio, resolution := wfSD2933VideoDimensions(size)
+		if _, exists := body["aspect_ratio"]; !exists && aspectRatio != "" {
+			body["aspect_ratio"] = aspectRatio
+		}
+		if _, exists := body["resolution"]; !exists && resolution != "" {
+			body["resolution"] = resolution
+		}
+	}
+	delete(body, "size")
+
+	if _, exists := body["image_url"]; !exists {
+		for _, key := range []string{"input_reference", "image"} {
+			if value, ok := body[key].(string); ok && strings.TrimSpace(value) != "" {
+				body["image_url"] = value
+				break
+			}
+		}
+	}
+	delete(body, "input_reference")
+	delete(body, "image")
+
+	if _, exists := body["reference_image_urls"]; !exists {
+		if images, ok := body["images"].([]interface{}); ok && len(images) > 0 {
+			refs := make([]interface{}, 0, len(images))
+			for _, image := range images {
+				if value, ok := image.(string); ok && strings.TrimSpace(value) != "" {
+					refs = append(refs, value)
+				}
+			}
+			if len(refs) > 0 {
+				body["reference_image_urls"] = refs
+			}
+		}
+	}
+	delete(body, "images")
+}
+
+func wfSD2933VideoDimensions(size string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(size)) {
+	case "1280x720", "1792x1024", "720p-16:9":
+		return "16:9", "720p"
+	case "720x1280", "1024x1792", "720p-9:16":
+		return "9:16", "720p"
+	case "960x720", "720p-4:3":
+		return "4:3", "720p"
+	case "720x960", "720p-3:4":
+		return "3:4", "720p"
+	case "720x720", "720p-1:1":
+		return "1:1", "720p"
+	case "1680x720", "720p-21:9":
+		return "21:9", "720p"
+	case "720p":
+		return "", "720p"
+	default:
+		return "", ""
+	}
 }
 
 // DoRequest delegates to common helper.

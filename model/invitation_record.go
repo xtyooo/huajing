@@ -31,26 +31,26 @@ func (invitationRecord *InvitationRecord) Update() error {
 	return DB.Save(invitationRecord).Error
 }
 
-func buildInvitationQuery(queryParams SyncInvitationRecordQueryParams) *gorm.DB {
+func buildInvitationQuery(queryParams SyncInvitationRecordQueryParams, qualifier string) *gorm.DB {
 	query := DB.Model(&InvitationRecord{})
 
 	if queryParams.InviterId != 0 {
-		query = query.Where("inviter_id = ?", queryParams.InviterId)
+		query = query.Where(qualifier+"inviter_id = ?", queryParams.InviterId)
 	}
 	if queryParams.InviterName != "" {
-		query = query.Where("inviter_name = ?", queryParams.InviterName)
+		query = query.Where(qualifier+"inviter_name = ?", queryParams.InviterName)
 	}
 	if queryParams.InviteeId != 0 {
-		query = query.Where("invitee_id = ?", queryParams.InviteeId)
+		query = query.Where(qualifier+"invitee_id = ?", queryParams.InviteeId)
 	}
 	if queryParams.InviteeName != "" {
-		query = query.Where("invitee_name = ?", queryParams.InviteeName)
+		query = query.Where(qualifier+"invitee_name = ?", queryParams.InviteeName)
 	}
 	if queryParams.StartTimestamp != 0 {
-		query = query.Where("created_at >= ?", queryParams.StartTimestamp)
+		query = query.Where(qualifier+"created_at >= ?", queryParams.StartTimestamp)
 	}
 	if queryParams.EndTimestamp != 0 {
-		query = query.Where("created_at <= ?", queryParams.EndTimestamp)
+		query = query.Where(qualifier+"created_at <= ?", queryParams.EndTimestamp)
 	}
 
 	return query
@@ -59,11 +59,12 @@ func buildInvitationQuery(queryParams SyncInvitationRecordQueryParams) *gorm.DB 
 func rebateAggSubQuery() *gorm.DB {
 	return DB.Model(&RebateRecord{}).
 		Select(`
+			inviter_id,
 			invitee_id,
 			SUM(recharge_amount) AS recharge_total,
 			SUM(rebate_amount) AS rebate_total
 		`).
-		Group("invitee_id")
+		Group("inviter_id, invitee_id")
 }
 
 func InvitationRecordGetAllRecord(
@@ -74,7 +75,7 @@ func InvitationRecordGetAllRecord(
 
 	var result []map[string]any
 
-	query := buildInvitationQuery(queryParams)
+	query := buildInvitationQuery(queryParams, "ir.")
 
 	_ = query.
 		Table("invitation_records ir").
@@ -89,7 +90,7 @@ func InvitationRecordGetAllRecord(
 			COALESCE(rr.recharge_total, 0) AS recharge_total,
 			COALESCE(rr.rebate_total, 0) AS rebate_total
 		`).
-		Joins("LEFT JOIN (?) rr ON rr.invitee_id = ir.invitee_id", rebateAggSubQuery()).
+		Joins("LEFT JOIN (?) rr ON rr.inviter_id = ir.inviter_id AND rr.invitee_id = ir.invitee_id", rebateAggSubQuery()).
 		Order("ir.id DESC").
 		Limit(num).
 		Offset(startIdx).
@@ -107,8 +108,8 @@ func InvitationRecordGetAllUserRecord(
 
 	var result []map[string]any
 
-	query := buildInvitationQuery(queryParams).
-		Where("inviter_id = ?", userId)
+	query := buildInvitationQuery(queryParams, "ir.").
+		Where("ir.inviter_id = ?", userId)
 
 	_ = query.
 		Table("invitation_records ir").
@@ -123,7 +124,7 @@ func InvitationRecordGetAllUserRecord(
 			COALESCE(rr.recharge_total, 0) AS recharge_total,
 			COALESCE(rr.rebate_total, 0) AS rebate_total
 		`).
-		Joins("LEFT JOIN (?) rr ON rr.invitee_id = ir.invitee_id", rebateAggSubQuery()).
+		Joins("LEFT JOIN (?) rr ON rr.inviter_id = ir.inviter_id AND rr.invitee_id = ir.invitee_id", rebateAggSubQuery()).
 		Order("ir.id DESC").
 		Limit(num).
 		Offset(startIdx).
@@ -134,13 +135,13 @@ func InvitationRecordGetAllUserRecord(
 
 func InvitationRecordCountAllRecord(queryParams SyncInvitationRecordQueryParams) int64 {
 	var total int64
-	_ = buildInvitationQuery(queryParams).Count(&total).Error
+	_ = buildInvitationQuery(queryParams, "").Count(&total).Error
 	return total
 }
 
 func InvitationRecordCountAllUserRecord(userId int, queryParams SyncInvitationRecordQueryParams) int64 {
 	var total int64
-	_ = buildInvitationQuery(queryParams).
+	_ = buildInvitationQuery(queryParams, "").
 		Where("inviter_id = ?", userId).
 		Count(&total).Error
 	return total

@@ -1,14 +1,11 @@
 /**
  * Utility functions for usage logs feature
  */
-import {
-  getAllInvitationRecords,
-  getUserInvitationRecords
-} from '../api'
+import { getAllInvitationRecords, getUserInvitationRecords } from '../api'
 import type {
   FetchInvitationRecordsConfig,
   GetInvitationRecordsParams,
-  GetInvitationRecordsResponse
+  GetInvitationRecordsResponse,
 } from '../types'
 
 /**
@@ -31,30 +28,13 @@ function timestampToSeconds(ms: number): number {
 }
 
 /**
- * Build query parameters from filters
- */
-export function buildQueryParams(
-  params: Record<string, unknown>
-): URLSearchParams {
-  const queryParams = new URLSearchParams()
-
-  Object.entries(params).forEach(([key, value]) => {
-    // Keep 0 as a valid value, only filter out undefined, null, and empty string
-    if (value !== undefined && value !== null && value !== '') {
-      queryParams.append(key, String(value))
-    }
-  })
-
-  return queryParams
-}
-
-/**
  * Build time range parameters with default values
  * Shared logic for all log types
  */
-function buildTimeRangeParams(
-  searchParams: Record<string, unknown>
-): { start_timestamp?: number; end_timestamp?: number } {
+function buildTimeRangeParams(searchParams: Record<string, unknown>): {
+  start_timestamp?: number
+  end_timestamp?: number
+} {
   const hasTimeParams = searchParams.startTime ?? searchParams.endTime
   const defaultTimeRange = !hasTimeParams ? getDefaultTimeRange() : null
 
@@ -96,7 +76,6 @@ export function buildBaseParams(config: {
     start_timestamp: undefined,
     end_timestamp: undefined,
   }
-
 }
 
 /**
@@ -114,8 +93,12 @@ export function buildApiParams(config: {
   const params: GetInvitationRecordsParams = {
     p: page,
     page_size: pageSize,
-    ...(searchParams.invitee_id ? { invitee_id: Number(searchParams.invitee_id) } : {}),
-    ...(searchParams.invitee_name ? { invitee_name: String(searchParams.invitee_name) } : {}),
+    ...(searchParams.invitee_id
+      ? { invitee_id: Number(searchParams.invitee_id) }
+      : {}),
+    ...(searchParams.invitee_name
+      ? { invitee_name: String(searchParams.invitee_name) }
+      : {}),
     ...(searchParams.group ? { group: String(searchParams.group) } : {}),
     ...(isAdmin && searchParams.inviter_id
       ? { inviter_id: Number(searchParams.inviter_id) }
@@ -144,14 +127,18 @@ export async function fetchInvitationRecords(
   const baseParams = buildBaseParams({
     page,
     pageSize,
-    searchParams
+    searchParams,
   })
 
   const paramsWithFilter = {
-    ...baseParams
+    ...baseParams,
   }
 
   return isAdmin
-    ? await getAllInvitationRecords(paramsWithFilter as GetInvitationRecordsParams)
-    : await getUserInvitationRecords(paramsWithFilter as GetInvitationRecordsParams)
+    ? await getAllInvitationRecords(
+        paramsWithFilter as GetInvitationRecordsParams
+      )
+    : await getUserInvitationRecords(
+        paramsWithFilter as GetInvitationRecordsParams
+      )
 }

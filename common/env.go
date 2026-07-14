@@ -45,7 +45,7 @@ func GetMediaDir() string {
 }
 
 func GetMediaCleanupInterval() int {
-	return GetEnvOrDefault("MEDIA_CLEANUP_INTERVAL", 300)
+	return GetEnvOrDefault("MEDIA_CLEANUP_INTERVAL", 180)
 }
 
 func GetMediaCleanupAge() int {

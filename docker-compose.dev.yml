@@ -26,11 +26,16 @@ services:
       - "3000:3000"
     volumes:
       - dev_data:/data
+      - dev_media:/media
     environment:
       - SQL_DSN=postgresql://root:123456@postgres:5432/new-api
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - BATCH_UPDATE_ENABLED=true
+      - MEDIA_DIR=/media
+      - MEDIA_BASE_URL=http://localhost:3000
+      - MAX_MEDIA_DOWNLOAD_MB=512
+      - MEDIA_DOWNLOAD_TIMEOUT_SECONDS=300
       # Enable only when accessing the dev backend through HTTPS. SESSION_COOKIE_TRUSTED_URL is required when true.
       # - SESSION_COOKIE_SECURE=true
       # - SESSION_COOKIE_TRUSTED_URL=https://example.com,https://admin.example.com
@@ -69,6 +74,7 @@ services:
 
 volumes:
   dev_data:
+  dev_media:
   dev_pg_data:
 
 networks:

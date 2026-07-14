@@ -1,4 +1,13 @@
-import type { InvitationRecord } from './data/schema'
+export interface InvitationRecord {
+  id: number
+  inviter_id: number
+  inviter_name: string
+  invitee_id: number
+  invitee_name: string
+  recharge_total: number
+  rebate_total: number
+  created_at: number
+}
 
 export interface FetchInvitationRecordsConfig {
   isAdmin: boolean

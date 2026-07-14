@@ -24,7 +24,7 @@ import type {
   AdvancedCustomRouteAuth,
 } from '../types'
 
-export const CHANNEL_TYPE_ADVANCED_CUSTOM = 58
+export const CHANNEL_TYPE_ADVANCED_CUSTOM = 64
 
 export const ADVANCED_CUSTOM_CONVERTER_OPTIONS: Array<{
   value: AdvancedCustomConverter

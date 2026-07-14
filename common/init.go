@@ -138,6 +138,8 @@ func initConstantEnv() {
 	constant.StreamingTimeout = GetEnvOrDefault("STREAMING_TIMEOUT", 300)
 	constant.DifyDebug = GetEnvOrDefaultBool("DIFY_DEBUG", true)
 	constant.MaxFileDownloadMB = GetEnvOrDefault("MAX_FILE_DOWNLOAD_MB", 64)
+	constant.MaxMediaDownloadMB = GetEnvOrDefault("MAX_MEDIA_DOWNLOAD_MB", 512)
+	constant.MediaDownloadTimeoutSeconds = GetEnvOrDefault("MEDIA_DOWNLOAD_TIMEOUT_SECONDS", 300)
 	constant.StreamScannerMaxBufferMB = GetEnvOrDefault("STREAM_SCANNER_MAX_BUFFER_MB", 128)
 	// MaxRequestBodyMB 请求体最大大小（解压后），用于防止超大请求/zip bomb导致内存暴涨
 	constant.MaxRequestBodyMB = GetEnvOrDefault("MAX_REQUEST_BODY_MB", 128)

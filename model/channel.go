@@ -1143,3 +1143,18 @@ func GetLingjingChannel() (*Channel, error) {
 	}
 	return &channel, nil
 }
+
+func GetUploadChannel(channelType int, group string, specificChannelID int) (*Channel, error) {
+	query := DB.Where("type = ? AND status = ?", channelType, common.ChannelStatusEnabled)
+	if specificChannelID > 0 {
+		query = query.Where("id = ?", specificChannelID)
+	} else {
+		query = ApplyChannelGroupFilter(query, group)
+	}
+
+	var channel Channel
+	if err := query.Order("priority DESC").First(&channel).Error; err != nil {
+		return nil, err
+	}
+	return &channel, nil
+}

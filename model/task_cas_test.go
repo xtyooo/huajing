@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -243,4 +244,55 @@ func TestUpdateWithStatus_ConcurrentWinner(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, winCount, "exactly one goroutine should win the CAS")
+}
+
+func TestResetStuckMediaTasksBeforeOnlyResetsExpiredDownloads(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	stale := &Task{TaskID: "task_media_stale", MediaStatus: MediaStatusDownloading, MediaStartTime: now - 600, Data: json.RawMessage(`{}`)}
+	fresh := &Task{TaskID: "task_media_fresh", MediaStatus: MediaStatusDownloading, MediaStartTime: now, Data: json.RawMessage(`{}`)}
+	insertTask(t, stale)
+	insertTask(t, fresh)
+
+	require.NoError(t, ResetStuckMediaTasksBefore(now-300))
+
+	var tasks []Task
+	require.NoError(t, DB.Where("id IN ?", []int64{stale.ID, fresh.ID}).Order("id").Find(&tasks).Error)
+	require.Len(t, tasks, 2)
+	assert.Equal(t, MediaStatusPending, tasks[0].MediaStatus)
+	assert.Zero(t, tasks[0].MediaStartTime)
+	assert.Equal(t, MediaStatusDownloading, tasks[1].MediaStatus)
+}
+
+func TestResetInvalidSoraMediaDownloads(t *testing.T) {
+	truncateTables(t)
+	invalid := &Task{
+		TaskID:      "task_invalid_sora_json",
+		Platform:    constant.TaskPlatform("55"),
+		MediaStatus: MediaStatusSuccess,
+		MediaURL:    "https://example.test/media/task.json",
+		Data:        json.RawMessage(`{}`),
+	}
+	valid := &Task{
+		TaskID:      "task_valid_sora_mp4",
+		Platform:    constant.TaskPlatform("55"),
+		MediaStatus: MediaStatusSuccess,
+		MediaURL:    "https://example.test/media/task.mp4",
+		Data:        json.RawMessage(`{}`),
+	}
+	insertTask(t, invalid)
+	insertTask(t, valid)
+
+	mediaURLs, err := ResetInvalidSoraMediaDownloads()
+	require.NoError(t, err)
+	assert.Equal(t, []string{invalid.MediaURL}, mediaURLs)
+
+	var reloadedInvalid Task
+	require.NoError(t, DB.First(&reloadedInvalid, invalid.ID).Error)
+	assert.Equal(t, MediaStatusPending, reloadedInvalid.MediaStatus)
+	assert.Empty(t, reloadedInvalid.MediaURL)
+	var reloadedValid Task
+	require.NoError(t, DB.First(&reloadedValid, valid.ID).Error)
+	assert.Equal(t, MediaStatusSuccess, reloadedValid.MediaStatus)
+	assert.Equal(t, valid.MediaURL, reloadedValid.MediaURL)
 }
