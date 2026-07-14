@@ -169,6 +169,9 @@ zstd -t "$BACKUP_DIR/database/mysql.sql.zst"
 
 install -m 700 "$UPLOAD_PATH" "$MAIN_PATH"
 install -m 600 "$LEGACY_DIR/.env" "$RELEASE_DIR/.env"
+if [[ -d "$LEGACY_DIR/logs" && ! -e "$RELEASE_DIR/logs" ]]; then
+  ln -s "$LEGACY_DIR/logs" "$RELEASE_DIR/logs"
+fi
 printf '%s  %s\n' "$actual_sha256" "main" > "$RELEASE_DIR/SHA256SUMS"
 (cd "$RELEASE_DIR" && sha256sum --check SHA256SUMS)
 
