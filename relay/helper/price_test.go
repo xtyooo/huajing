@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
@@ -62,6 +63,41 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	require.Equal(t, "stream", info.TieredBillingSnapshot.EstimatedTier)
 	require.Equal(t, billing_setting.BillingModeTieredExpr, info.TieredBillingSnapshot.BillingMode)
 	require.Equal(t, common.QuotaPerUnit, info.TieredBillingSnapshot.QuotaPerUnit)
+}
+
+func TestModelPriceHelperRejectsImageSizeAndTieredPricingConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"conflict-model":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"conflict-model":"tier("base", p)"}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "conflict-model",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	pricing := &model.ImageSizePriceSetting{
+		Enabled: true,
+		Setting: map[string]float64{"1k": 0.01, "2k": 0.02, "4k": 0.04},
+	}
+
+	_, err := ModelPriceHelperWithImageSizePricing(ctx, info, 0, &types.TokenCountMeta{
+		ImageGeneration: true,
+		ImageSize:       "1K",
+	}, pricing)
+
+	require.ErrorContains(t, err, "conflicting billing configurations")
 }
 
 func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {

@@ -1,0 +1,275 @@
+package model
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+const (
+	ModelPricingModePerToken   = "per-token"
+	ModelPricingModePerRequest = "per-request"
+	ModelPricingModeResolution = "resolution"
+	ModelPricingModeImageSize  = "image-size"
+)
+
+type ModelPricingMutation struct {
+	Mode                 string             `json:"mode"`
+	Price                *float64           `json:"price,omitempty"`
+	Ratio                *float64           `json:"ratio,omitempty"`
+	CacheRatio           *float64           `json:"cache_ratio,omitempty"`
+	CompletionRatio      *float64           `json:"completion_ratio,omitempty"`
+	ImageRatio           *float64           `json:"image_ratio,omitempty"`
+	AudioRatio           *float64           `json:"audio_ratio,omitempty"`
+	AudioCompletionRatio *float64           `json:"audio_completion_ratio,omitempty"`
+	SkipSeconds          bool               `json:"skip_seconds"`
+	ResolutionPrices     map[string]float64 `json:"resolution_prices,omitempty"`
+	ImageSizePrices      map[string]float64 `json:"image_size_prices,omitempty"`
+}
+
+var pricingConfigMutex sync.RWMutex
+
+func PricingConfigRLock() {
+	pricingConfigMutex.RLock()
+}
+
+func PricingConfigRUnlock() {
+	pricingConfigMutex.RUnlock()
+}
+
+func validateModelPricingMutation(pricing ModelPricingMutation) error {
+	switch pricing.Mode {
+	case ModelPricingModePerToken, ModelPricingModePerRequest, ModelPricingModeResolution, ModelPricingModeImageSize:
+	default:
+		return fmt.Errorf("unsupported model pricing mode %q", pricing.Mode)
+	}
+	for name, value := range map[string]*float64{
+		"price": pricing.Price, "ratio": pricing.Ratio, "cache ratio": pricing.CacheRatio,
+		"completion ratio": pricing.CompletionRatio, "image ratio": pricing.ImageRatio,
+		"audio ratio": pricing.AudioRatio, "audio completion ratio": pricing.AudioCompletionRatio,
+	} {
+		if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0) {
+			return fmt.Errorf("%s must be a finite non-negative number", name)
+		}
+	}
+	if pricing.Mode == ModelPricingModeImageSize {
+		for _, tier := range []string{"1k", "2k", "4k"} {
+			if price := pricing.ImageSizePrices[tier]; math.IsNaN(price) || math.IsInf(price, 0) || price <= 0 {
+				return fmt.Errorf("image size price for tier %s must be greater than 0", strings.ToUpper(tier))
+			}
+		}
+	}
+	return nil
+}
+
+func loadOptionMapForUpdate[T any](tx *gorm.DB, key string) (map[string]T, error) {
+	empty := Option{Key: key, Value: "{}"}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&empty).Error; err != nil {
+		return nil, err
+	}
+	var option Option
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(commonKeyCol+" = ?", key).First(&option).Error; err != nil {
+		return nil, err
+	}
+	values := make(map[string]T)
+	if err := common.UnmarshalJsonStr(option.Value, &values); err != nil {
+		return nil, fmt.Errorf("parse model pricing option %s: %w", key, err)
+	}
+	return values, nil
+}
+
+func marshalOptionValue(value interface{}) (string, error) {
+	data, err := common.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func saveOptionValue(tx *gorm.DB, key string, value interface{}, written map[string]string) error {
+	jsonValue, err := marshalOptionValue(value)
+	if err != nil {
+		return err
+	}
+	if err := tx.Model(&Option{}).Where(commonKeyCol+" = ?", key).Update("value", jsonValue).Error; err != nil {
+		return err
+	}
+	written[key] = jsonValue
+	return nil
+}
+
+func updateModelOptionEntry[T any](tx *gorm.DB, key, modelName, oldModelName string, value *T, written map[string]string) error {
+	values, err := loadOptionMapForUpdate[T](tx, key)
+	if err != nil {
+		return err
+	}
+	if oldModelName != "" && oldModelName != modelName {
+		delete(values, oldModelName)
+	}
+	delete(values, modelName)
+	if value != nil {
+		values[modelName] = *value
+	}
+	return saveOptionValue(tx, key, values, written)
+}
+
+func boolPointer(value bool) *bool {
+	return &value
+}
+
+func disabledPriceSetting() map[string]interface{} {
+	return map[string]interface{}{"enabled": false, "setting": map[string]float64{}}
+}
+
+func saveDynamicPriceSetting(tx *gorm.DB, key string, value interface{}, written map[string]string) error {
+	empty := Option{Key: key, Value: "{}"}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&empty).Error; err != nil {
+		return err
+	}
+	return saveOptionValue(tx, key, value, written)
+}
+
+func persistModelPricing(tx *gorm.DB, modelName, oldModelName string, pricing ModelPricingMutation, written map[string]string) error {
+	numericOptions := []struct {
+		key   string
+		value *float64
+	}{
+		{key: "ModelPrice"}, {key: "ModelRatio"}, {key: "CacheRatio"},
+		{key: "CompletionRatio"}, {key: "ImageRatio"}, {key: "AudioRatio"},
+		{key: "AudioCompletionRatio"},
+	}
+	if pricing.Mode == ModelPricingModePerRequest {
+		numericOptions[0].value = pricing.Price
+	} else if pricing.Mode == ModelPricingModePerToken {
+		numericOptions[1].value = pricing.Ratio
+		numericOptions[2].value = pricing.CacheRatio
+		numericOptions[3].value = pricing.CompletionRatio
+		numericOptions[4].value = pricing.ImageRatio
+		numericOptions[5].value = pricing.AudioRatio
+		numericOptions[6].value = pricing.AudioCompletionRatio
+	}
+	for _, option := range numericOptions {
+		if err := updateModelOptionEntry(tx, option.key, modelName, oldModelName, option.value, written); err != nil {
+			return err
+		}
+	}
+
+	var skipSeconds *bool
+	if pricing.Mode == ModelPricingModePerRequest && pricing.SkipSeconds {
+		skipSeconds = boolPointer(true)
+	}
+	if err := updateModelOptionEntry(tx, "billing_setting.skip_seconds", modelName, oldModelName, skipSeconds, written); err != nil {
+		return err
+	}
+	if pricing.Mode == ModelPricingModeImageSize {
+		if err := updateModelOptionEntry[string](tx, "billing_setting.billing_mode", modelName, oldModelName, nil, written); err != nil {
+			return err
+		}
+		if err := updateModelOptionEntry[string](tx, "billing_setting.billing_expr", modelName, oldModelName, nil, written); err != nil {
+			return err
+		}
+	}
+
+	if oldModelName != "" && oldModelName != modelName {
+		if err := saveDynamicPriceSetting(tx, ResolutionPriceKey(oldModelName), disabledPriceSetting(), written); err != nil {
+			return err
+		}
+		if err := saveDynamicPriceSetting(tx, ImageSizePriceKey(oldModelName), disabledPriceSetting(), written); err != nil {
+			return err
+		}
+	}
+	resolutionSetting := disabledPriceSetting()
+	if pricing.Mode == ModelPricingModeResolution {
+		resolutionSetting = map[string]interface{}{"enabled": true, "setting": pricing.ResolutionPrices}
+	}
+	if err := saveDynamicPriceSetting(tx, ResolutionPriceKey(modelName), resolutionSetting, written); err != nil {
+		return err
+	}
+	imageSizeSetting := disabledPriceSetting()
+	if pricing.Mode == ModelPricingModeImageSize {
+		imageSizeSetting = map[string]interface{}{"enabled": true, "setting": pricing.ImageSizePrices}
+	}
+	return saveDynamicPriceSetting(tx, ImageSizePriceKey(modelName), imageSizeSetting, written)
+}
+
+func refreshPricingOptions(options map[string]string) error {
+	keys := make([]string, 0, len(options))
+	for key := range options {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if err := updateOptionMap(key, options[key]); err != nil {
+			return fmt.Errorf("refresh model pricing option %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
+func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMutation) error {
+	if m == nil || strings.TrimSpace(m.ModelName) == "" {
+		return fmt.Errorf("model name cannot be empty")
+	}
+	if err := validateModelPricingMutation(pricing); err != nil {
+		return err
+	}
+
+	pricingConfigMutex.Lock()
+	defer pricingConfigMutex.Unlock()
+	writtenOptions := make(map[string]string)
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		persistedModelName := ""
+		if m.Id != 0 {
+			var persisted Model
+			if err := tx.Select("id", "model_name").First(&persisted, m.Id).Error; err != nil {
+				return err
+			}
+			persistedModelName = persisted.ModelName
+			if oldModelName != "" && oldModelName != persistedModelName {
+				return fmt.Errorf("model name changed while pricing settings were being edited")
+			}
+		}
+
+		var duplicateCount int64
+		if err := tx.Model(&Model{}).Where("model_name = ? AND id <> ?", m.ModelName, m.Id).Count(&duplicateCount).Error; err != nil {
+			return err
+		}
+		if duplicateCount > 0 {
+			return fmt.Errorf("model name already exists")
+		}
+
+		now := common.GetTimestamp()
+		if m.Id == 0 {
+			m.CreatedTime = now
+			m.UpdatedTime = now
+			originalStatus := m.Status
+			originalSyncOfficial := m.SyncOfficial
+			if err := tx.Create(m).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&Model{}).Where("id = ?", m.Id).Updates(map[string]interface{}{
+				"status": originalStatus, "sync_official": originalSyncOfficial,
+			}).Error; err != nil {
+				return err
+			}
+		} else {
+			m.UpdatedTime = now
+			if err := tx.Model(&Model{}).Where("id = ?", m.Id).
+				Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
+				Updates(m).Error; err != nil {
+				return err
+			}
+		}
+		return persistModelPricing(tx, m.ModelName, persistedModelName, pricing, writtenOptions)
+	})
+	if err != nil {
+		return err
+	}
+	return refreshPricingOptions(writtenOptions)
+}

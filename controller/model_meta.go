@@ -153,6 +153,30 @@ func UpdateModelMeta(c *gin.Context) {
 	common.ApiSuccess(c, &m)
 }
 
+type modelPricingMutationRequest struct {
+	Model        model.Model                `json:"model"`
+	OldModelName string                     `json:"old_model_name"`
+	Pricing      model.ModelPricingMutation `json:"pricing"`
+}
+
+func SaveModelWithPricingMeta(c *gin.Context) {
+	var request modelPricingMutationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if request.Model.ModelName == "" {
+		common.ApiErrorMsg(c, "模型名称不能为空")
+		return
+	}
+	if err := model.SaveModelWithPricing(&request.Model, request.OldModelName, request.Pricing); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.RefreshPricing()
+	common.ApiSuccess(c, &request.Model)
+}
+
 // DeleteModelMeta 删除模型
 func DeleteModelMeta(c *gin.Context) {
 	idStr := c.Param("id")

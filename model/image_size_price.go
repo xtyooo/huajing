@@ -39,34 +39,51 @@ func ImageSizePriceKey(modelName string) string {
 }
 
 func HasImageSizePricing(modelName string) bool {
+	setting, err := LoadImageSizePricing(modelName)
+	return err == nil && setting != nil && setting.Enabled
+}
+
+func LoadImageSizePricing(modelName string) (*ImageSizePriceSetting, error) {
+	PricingConfigRLock()
+	defer PricingConfigRUnlock()
+	return LoadImageSizePricingSnapshot(modelName)
+}
+
+// LoadImageSizePricingSnapshot reads a setting while the caller holds the pricing read lock.
+func LoadImageSizePricingSnapshot(modelName string) (*ImageSizePriceSetting, error) {
 	if modelName == "" {
-		return false
+		return nil, nil
 	}
-	var option Option
-	if result := DB.Where(commonKeyCol+" = ?", ImageSizePriceKey(modelName)).First(&option); result.Error != nil {
-		return false
+	common.OptionMapRWMutex.RLock()
+	value, exists := common.OptionMap[ImageSizePriceKey(modelName)]
+	common.OptionMapRWMutex.RUnlock()
+	if !exists {
+		return nil, nil
 	}
 	var setting ImageSizePriceSetting
-	if err := common.UnmarshalJsonStr(option.Value, &setting); err != nil {
-		return false
+	if err := common.UnmarshalJsonStr(value, &setting); err != nil {
+		return nil, fmt.Errorf("parse image size pricing for model %s: %w", modelName, err)
 	}
-	return setting.Enabled
+	if !setting.Enabled {
+		return nil, nil
+	}
+	return &setting, nil
 }
 
 func GetImageSizePrice(modelName, size string) (float64, string, error) {
-	if modelName == "" {
-		return 0, "", nil
-	}
-	var option Option
-	if result := DB.Where(commonKeyCol+" = ?", ImageSizePriceKey(modelName)).First(&option); result.Error != nil {
-		return 0, "", nil
-	}
-	var setting ImageSizePriceSetting
-	if err := common.UnmarshalJsonStr(option.Value, &setting); err != nil {
+	setting, err := LoadImageSizePricing(modelName)
+	if err != nil {
 		return 0, "", err
 	}
-	if !setting.Enabled {
+	if setting == nil {
 		return 0, "", nil
+	}
+	return GetImageSizePriceFromSetting(modelName, size, setting)
+}
+
+func GetImageSizePriceFromSetting(modelName, size string, setting *ImageSizePriceSetting) (float64, string, error) {
+	if setting == nil || !setting.Enabled {
+		return 0, "", fmt.Errorf("image size pricing is not enabled for model %s", modelName)
 	}
 	if len(setting.Setting) == 0 {
 		return 0, "", fmt.Errorf("image size price setting enabled but no prices configured for model %s", modelName)

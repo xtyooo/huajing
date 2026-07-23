@@ -70,10 +70,27 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
-	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
-	if meta.ImageGeneration && model.HasImageSizePricing(info.OriginModelName) {
+	model.PricingConfigRLock()
+	defer model.PricingConfigRUnlock()
+	var imageSizePricing *model.ImageSizePriceSetting
+	if meta != nil && meta.ImageGeneration {
 		var err error
-		modelPrice, _, err = model.GetImageSizePrice(info.OriginModelName, meta.ImageSize)
+		imageSizePricing, err = model.LoadImageSizePricingSnapshot(info.OriginModelName)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+	}
+	return ModelPriceHelperWithImageSizePricing(c, info, promptTokens, meta, imageSizePricing)
+}
+
+func ModelPriceHelperWithImageSizePricing(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, imageSizePricing *model.ImageSizePriceSetting) (types.PriceData, error) {
+	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	if meta.ImageGeneration && imageSizePricing != nil {
+		if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+			return types.PriceData{}, fmt.Errorf("conflicting billing configurations for model %s: image-size and tiered_expr", info.OriginModelName)
+		}
+		var err error
+		modelPrice, _, err = model.GetImageSizePriceFromSetting(info.OriginModelName, meta.ImageSize, imageSizePricing)
 		if err != nil {
 			return types.PriceData{}, err
 		}
@@ -267,7 +284,10 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 }
 
 func HasModelBillingConfig(modelName string) bool {
-	if model.HasImageSizePricing(modelName) {
+	model.PricingConfigRLock()
+	defer model.PricingConfigRUnlock()
+	imageSizePricing, err := model.LoadImageSizePricingSnapshot(modelName)
+	if err == nil && imageSizePricing != nil {
 		return true
 	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {

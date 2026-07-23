@@ -90,6 +90,27 @@ export async function updateModel(
   return res.data
 }
 
+export async function saveModelWithPricing(data: {
+  model: Partial<Model>
+  old_model_name: string
+  pricing: {
+    mode: 'per-token' | 'per-request' | 'resolution' | 'image-size'
+    price?: number
+    ratio?: number
+    cache_ratio?: number
+    completion_ratio?: number
+    image_ratio?: number
+    audio_ratio?: number
+    audio_completion_ratio?: number
+    skip_seconds: boolean
+    resolution_prices?: Record<string, number>
+    image_size_prices?: Record<string, number>
+  }
+}): Promise<{ success: boolean; message?: string; data?: Model }> {
+  const res = await api.post('/api/models/save', data)
+  return res.data
+}
+
 /**
  * Update model status only
  */

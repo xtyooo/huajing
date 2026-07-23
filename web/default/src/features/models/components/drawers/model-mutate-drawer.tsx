@@ -76,14 +76,16 @@ import {
   useSystemOptions,
   getOptionValue,
 } from '@/features/system-settings/hooks/use-system-options'
-import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
-import { normalizeJsonString } from '@/features/system-settings/models/utils'
 import type { ModelSettings } from '@/features/system-settings/types'
 import { safeJsonParse } from '@/features/system-settings/utils/json-parser'
 
-import { createModel, updateModel, getModel, getVendors } from '../../api'
+import { saveModelWithPricing, getModel, getVendors } from '../../api'
 import { getNameRuleOptions, ENDPOINT_TEMPLATES } from '../../constants'
 import { modelsQueryKeys, vendorsQueryKeys, parseModelTags } from '../../lib'
+import {
+  buildModelPricingMutation,
+  type ModelPricingMode,
+} from '../../lib/model-pricing-options'
 import type { Model } from '../../types'
 
 // Extended schema for ratio configuration (internal form state only)
@@ -109,7 +111,7 @@ const extendedModelFormSchema = z.object({
 
 type ExtendedModelFormValues = z.infer<typeof extendedModelFormSchema>
 
-type PricingMode = 'per-token' | 'per-request' | 'resolution' | 'image-size'
+type PricingMode = ModelPricingMode
 type PricingSubMode = 'ratio' | 'price'
 
 type ModelMutateDrawerProps = {
@@ -165,8 +167,6 @@ export function ModelMutateDrawer({
 
   // Fetch system options for ratio configuration
   const { data: systemOptionsData } = useSystemOptions()
-
-  const updateOption = useUpdateOption()
 
   // Get model settings from system options
   const modelSettings = useMemo(() => {
@@ -526,312 +526,48 @@ export function ModelMutateDrawer({
           ...modelData
         } = submitData
 
-        const response =
-          isEditing && currentModelId
-            ? await updateModel({ ...modelData, id: currentModelId })
-            : await createModel(modelData)
+        const pricing = buildModelPricingMutation({
+          mode: pricingMode,
+          values: {
+            price,
+            ratio,
+            cacheRatio,
+            completionRatio,
+            imageRatio,
+            audioRatio,
+            audioCompletionRatio,
+          },
+          skipSeconds,
+          resolutionPrices: {
+            '480p': resolution480p,
+            '720p': resolution720p,
+            '1080p': resolution1080p,
+          },
+          imageSizePrices: {
+            '1k': imageSize1k,
+            '2k': imageSize2k,
+            '4k': imageSize4k,
+          },
+        })
+        const response = await saveModelWithPricing({
+          model: modelData,
+          old_model_name: isEditing ? oldModelName : '',
+          pricing,
+        })
 
-        if (response.success) {
-          // Handle ratio configuration updates in system settings
-          const finalModelName = values.model_name
-          const hasRatioConfig =
-            (pricingMode === 'per-request' &&
-              values.price &&
-              values.price !== '') ||
-            (pricingMode === 'per-token' &&
-              (values.ratio ||
-                values.cacheRatio ||
-                values.completionRatio ||
-                values.imageRatio ||
-                values.audioRatio ||
-                values.audioCompletionRatio)) ||
-            pricingMode === 'resolution' ||
-            pricingMode === 'image-size'
-
-          // Always process system settings updates if we have modelSettings
-          // This ensures we can remove stale entries even when clearing all pricing fields
-          if (modelSettings) {
-            // Read existing configurations
-            const priceMap = safeJsonParse<Record<string, number>>(
-              modelSettings.ModelPrice,
-              { fallback: {}, silent: true }
-            )
-            const ratioMap = safeJsonParse<Record<string, number>>(
-              modelSettings.ModelRatio,
-              { fallback: {}, silent: true }
-            )
-            const cacheMap = safeJsonParse<Record<string, number>>(
-              modelSettings.CacheRatio,
-              { fallback: {}, silent: true }
-            )
-            const completionMap = safeJsonParse<Record<string, number>>(
-              modelSettings.CompletionRatio,
-              { fallback: {}, silent: true }
-            )
-            const imageMap = safeJsonParse<Record<string, number>>(
-              modelSettings.ImageRatio,
-              { fallback: {}, silent: true }
-            )
-            const audioMap = safeJsonParse<Record<string, number>>(
-              modelSettings.AudioRatio,
-              { fallback: {}, silent: true }
-            )
-            const audioCompletionMap = safeJsonParse<Record<string, number>>(
-              modelSettings.AudioCompletionRatio,
-              { fallback: {}, silent: true }
-            )
-
-            // Remove old model name entries if model name changed (always, even if no new config)
-            if (isEditing && oldModelName && oldModelName !== finalModelName) {
-              delete priceMap[oldModelName]
-              delete ratioMap[oldModelName]
-              delete cacheMap[oldModelName]
-              delete completionMap[oldModelName]
-              delete imageMap[oldModelName]
-              delete audioMap[oldModelName]
-              delete audioCompletionMap[oldModelName]
-            }
-
-            // Remove current model name from all maps first (always, to handle mode switches or clearing)
-            // This ensures stale entries are removed even when user clears all fields
-            delete priceMap[finalModelName]
-            delete ratioMap[finalModelName]
-            delete cacheMap[finalModelName]
-            delete completionMap[finalModelName]
-            delete imageMap[finalModelName]
-            delete audioMap[finalModelName]
-            delete audioCompletionMap[finalModelName]
-
-            // Only add new entries if user provided new configuration
-            if (hasRatioConfig) {
-              if (
-                pricingMode === 'per-request' &&
-                values.price &&
-                values.price !== ''
-              ) {
-                priceMap[finalModelName] = Number.parseFloat(values.price)
-              } else if (pricingMode === 'per-token') {
-                if (values.ratio && values.ratio !== '') {
-                  ratioMap[finalModelName] = Number.parseFloat(values.ratio)
-                }
-                if (values.cacheRatio && values.cacheRatio !== '') {
-                  cacheMap[finalModelName] = Number.parseFloat(
-                    values.cacheRatio
-                  )
-                }
-                if (values.completionRatio && values.completionRatio !== '') {
-                  completionMap[finalModelName] = Number.parseFloat(
-                    values.completionRatio
-                  )
-                }
-                if (values.imageRatio && values.imageRatio !== '') {
-                  imageMap[finalModelName] = Number.parseFloat(
-                    values.imageRatio
-                  )
-                }
-                if (values.audioRatio && values.audioRatio !== '') {
-                  audioMap[finalModelName] = Number.parseFloat(
-                    values.audioRatio
-                  )
-                }
-                if (
-                  values.audioCompletionRatio &&
-                  values.audioCompletionRatio !== ''
-                ) {
-                  audioCompletionMap[finalModelName] = Number.parseFloat(
-                    values.audioCompletionRatio
-                  )
-                }
-              }
-            }
-
-            // Update system options if there are changes
-            const updates: Array<{ key: string; value: string }> = []
-
-            const newModelPrice = normalizeJsonString(JSON.stringify(priceMap))
-            if (
-              newModelPrice !== normalizeJsonString(modelSettings.ModelPrice)
-            ) {
-              updates.push({ key: 'ModelPrice', value: newModelPrice })
-            }
-
-            const newModelRatio = normalizeJsonString(JSON.stringify(ratioMap))
-            if (
-              newModelRatio !== normalizeJsonString(modelSettings.ModelRatio)
-            ) {
-              updates.push({ key: 'ModelRatio', value: newModelRatio })
-            }
-
-            const newCacheRatio = normalizeJsonString(JSON.stringify(cacheMap))
-            if (
-              newCacheRatio !== normalizeJsonString(modelSettings.CacheRatio)
-            ) {
-              updates.push({ key: 'CacheRatio', value: newCacheRatio })
-            }
-
-            const newCompletionRatio = normalizeJsonString(
-              JSON.stringify(completionMap)
-            )
-            if (
-              newCompletionRatio !==
-              normalizeJsonString(modelSettings.CompletionRatio)
-            ) {
-              updates.push({
-                key: 'CompletionRatio',
-                value: newCompletionRatio,
-              })
-            }
-
-            const newImageRatio = normalizeJsonString(JSON.stringify(imageMap))
-            if (
-              newImageRatio !== normalizeJsonString(modelSettings.ImageRatio)
-            ) {
-              updates.push({ key: 'ImageRatio', value: newImageRatio })
-            }
-
-            const newAudioRatio = normalizeJsonString(JSON.stringify(audioMap))
-            if (
-              newAudioRatio !== normalizeJsonString(modelSettings.AudioRatio)
-            ) {
-              updates.push({ key: 'AudioRatio', value: newAudioRatio })
-            }
-
-            const newAudioCompletionRatio = normalizeJsonString(
-              JSON.stringify(audioCompletionMap)
-            )
-            if (
-              newAudioCompletionRatio !==
-              normalizeJsonString(modelSettings.AudioCompletionRatio)
-            ) {
-              updates.push({
-                key: 'AudioCompletionRatio',
-                value: newAudioCompletionRatio,
-              })
-            }
-
-            // Handle billing_setting.skip_seconds
-            const skipSecondsMap = safeJsonParse<Record<string, boolean>>(
-              modelSettings['billing_setting.skip_seconds'] || '{}',
-              { fallback: {}, silent: true }
-            )
-            if (isEditing && oldModelName && oldModelName !== finalModelName) {
-              delete skipSecondsMap[oldModelName]
-            }
-            delete skipSecondsMap[finalModelName]
-            if (pricingMode === 'per-request' && skipSeconds) {
-              skipSecondsMap[finalModelName] = true
-            }
-            const newSkipSeconds = normalizeJsonString(
-              JSON.stringify(skipSecondsMap)
-            )
-            const currentSkipSeconds = normalizeJsonString(
-              modelSettings['billing_setting.skip_seconds'] || '{}'
-            )
-            if (newSkipSeconds !== currentSkipSeconds) {
-              updates.push({
-                key: 'billing_setting.skip_seconds',
-                value: newSkipSeconds,
-              })
-            }
-
-            // Apply all updates (including deletions when clearing fields)
-            for (const update of updates) {
-              await updateOption.mutateAsync(update)
-            }
-
-            // Handle resolution price setting
-            const resolutionKey = `resolution_price_setting.${finalModelName}`
-            if (isEditing && oldModelName && oldModelName !== finalModelName) {
-              const oldKey = `resolution_price_setting.${oldModelName}`
-              const oldExists = systemOptionsData?.data?.find(
-                (option) => option.key === oldKey
-              )
-              if (oldExists) {
-                await updateOption.mutateAsync({
-                  key: oldKey,
-                  value: JSON.stringify({ enabled: false, setting: {} }),
-                })
-              }
-            }
-            if (pricingMode === 'resolution') {
-              await updateOption.mutateAsync({
-                key: resolutionKey,
-                value: JSON.stringify({
-                  enabled: true,
-                  setting: {
-                    ...(resolution480p
-                      ? { '480p': Number.parseFloat(resolution480p) }
-                      : {}),
-                    ...(resolution720p
-                      ? { '720p': Number.parseFloat(resolution720p) }
-                      : {}),
-                    ...(resolution1080p
-                      ? { '1080p': Number.parseFloat(resolution1080p) }
-                      : {}),
-                  },
-                }),
-              })
-            } else {
-              const exists = systemOptionsData?.data?.find(
-                (option) => option.key === resolutionKey
-              )
-              if (exists) {
-                await updateOption.mutateAsync({
-                  key: resolutionKey,
-                  value: JSON.stringify({ enabled: false, setting: {} }),
-                })
-              }
-            }
-
-            const imageSizeKey = `image_size_price_setting.${finalModelName}`
-            if (isEditing && oldModelName && oldModelName !== finalModelName) {
-              const oldKey = `image_size_price_setting.${oldModelName}`
-              const oldExists = systemOptionsData?.data?.find(
-                (option) => option.key === oldKey
-              )
-              if (oldExists) {
-                await updateOption.mutateAsync({
-                  key: oldKey,
-                  value: JSON.stringify({ enabled: false, setting: {} }),
-                })
-              }
-            }
-            if (pricingMode === 'image-size') {
-              await updateOption.mutateAsync({
-                key: imageSizeKey,
-                value: JSON.stringify({
-                  enabled: true,
-                  setting: {
-                    '1k': Number.parseFloat(imageSize1k),
-                    '2k': Number.parseFloat(imageSize2k),
-                    '4k': Number.parseFloat(imageSize4k),
-                  },
-                }),
-              })
-            } else {
-              const exists = systemOptionsData?.data?.find(
-                (option) => option.key === imageSizeKey
-              )
-              if (exists) {
-                await updateOption.mutateAsync({
-                  key: imageSizeKey,
-                  value: JSON.stringify({ enabled: false, setting: {} }),
-                })
-              }
-            }
-          }
-
-          toast.success(
-            isEditing
-              ? 'Model updated successfully'
-              : 'Model created successfully'
-          )
-          queryClient.invalidateQueries({ queryKey: modelsQueryKeys.lists() })
-          queryClient.invalidateQueries({ queryKey: ['system-options'] })
-          onOpenChange(false)
-        } else {
+        if (!response.success) {
           toast.error(response.message || 'Operation failed')
+          return
         }
+
+        toast.success(
+          isEditing
+            ? 'Model updated successfully'
+            : 'Model created successfully'
+        )
+        queryClient.invalidateQueries({ queryKey: modelsQueryKeys.lists() })
+        queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        onOpenChange(false)
       } catch (error: unknown) {
         toast.error((error as Error)?.message || 'Operation failed')
       } finally {
@@ -845,8 +581,6 @@ export function ModelMutateDrawer({
       onOpenChange,
       pricingMode,
       oldModelName,
-      modelSettings,
-      updateOption,
       skipSeconds,
       resolution480p,
       resolution720p,
@@ -854,7 +588,6 @@ export function ModelMutateDrawer({
       imageSize1k,
       imageSize2k,
       imageSize4k,
-      systemOptionsData?.data,
       t,
     ]
   )

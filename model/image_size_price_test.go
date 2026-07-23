@@ -3,8 +3,11 @@ package model
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestResolveImageSizeTier(t *testing.T) {
@@ -45,11 +48,7 @@ func TestResolveImageSizeTierRejectsInvalidSize(t *testing.T) {
 }
 
 func TestGetImageSizePrice(t *testing.T) {
-	testDB := useOptionTestDB(t)
-	require.NoError(t, testDB.Create(&Option{
-		Key:   ImageSizePriceKey("image-model"),
-		Value: `{"enabled":true,"setting":{"1k":0.01,"2k":0.02,"4k":0.04}}`,
-	}).Error)
+	setImageSizePricingOptionForTest(t, "image-model", `{"enabled":true,"setting":{"1k":0.01,"2k":0.02,"4k":0.04}}`)
 
 	price, tier, err := GetImageSizePrice("image-model", "3168x1344")
 
@@ -57,4 +56,53 @@ func TestGetImageSizePrice(t *testing.T) {
 	assert.Equal(t, "2k", tier)
 	assert.Equal(t, 0.02, price)
 	assert.True(t, HasImageSizePricing("image-model"))
+}
+
+func TestLoadImageSizePricingReturnsInvalidJSONError(t *testing.T) {
+	setImageSizePricingOptionForTest(t, "broken-model", `{not-json}`)
+
+	setting, err := LoadImageSizePricing("broken-model")
+
+	require.Error(t, err)
+	assert.Nil(t, setting)
+}
+
+func TestLoadImageSizePricingUsesMemoryWhenDatabaseIsUnavailable(t *testing.T) {
+	setImageSizePricingOptionForTest(t, "image-model", `{"enabled":true,"setting":{"1k":0.01,"2k":0.02,"4k":0.04}}`)
+
+	brokenDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := brokenDB.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	previousDB := DB
+	DB = brokenDB
+	t.Cleanup(func() { DB = previousDB })
+
+	setting, err := LoadImageSizePricing("image-model")
+
+	require.NoError(t, err)
+	require.NotNil(t, setting)
+	assert.Equal(t, 0.02, setting.Setting["2k"])
+}
+
+func setImageSizePricingOptionForTest(t *testing.T, modelName, value string) {
+	t.Helper()
+	key := ImageSizePriceKey(modelName)
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	previousValue, existed := common.OptionMap[key]
+	common.OptionMap[key] = value
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[key] = previousValue
+		} else {
+			delete(common.OptionMap, key)
+		}
+	})
 }
