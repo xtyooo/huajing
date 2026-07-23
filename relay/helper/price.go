@@ -210,6 +210,9 @@ func ModelPriceHelperWithImageSizePricing(c *gin.Context, info *relaycommon.Rela
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
+	model.PricingConfigRLock()
+	defer model.PricingConfigRUnlock()
+
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	if model.HasResolutionPricing(info.OriginModelName) {

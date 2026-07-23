@@ -2,6 +2,7 @@ package model
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
@@ -132,5 +133,68 @@ func TestSaveModelWithImagePricingClearsTieredConfiguration(t *testing.T) {
 		require.NoError(t, common.UnmarshalJsonStr(option.Value, &values))
 		assert.NotContains(t, values, existing.ModelName)
 		assert.Contains(t, values, "other")
+	}
+}
+
+func TestPricingOptionKeyClassification(t *testing.T) {
+	for _, key := range []string{
+		"ModelPrice",
+		"ModelRatio",
+		"billing_setting.billing_mode",
+		"billing_setting.billing_expr",
+		"billing_setting.skip_seconds",
+		ImageSizePriceKey("image-model"),
+		ResolutionPriceKey("video-model"),
+	} {
+		t.Run(key, func(t *testing.T) {
+			assert.True(t, isPricingOptionKey(key))
+		})
+	}
+	assert.False(t, isPricingOptionKey("SystemName"))
+}
+
+func TestUpdateOptionPricingWaitsForPersistenceWriter(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+
+	pricingPersistenceMutex.Lock()
+	locked := true
+	t.Cleanup(func() {
+		if locked {
+			pricingPersistenceMutex.Unlock()
+		}
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- UpdateOption("ModelPrice", `{"concurrent-model":0.02}`)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+		t.Fatal("pricing update completed while another pricing writer held the persistence lock")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	pricingPersistenceMutex.Unlock()
+	locked = false
+	require.NoError(t, <-done)
+}
+
+func TestPricingPersistenceDoesNotBlockRuntimeReaders(t *testing.T) {
+	pricingPersistenceMutex.Lock()
+	defer pricingPersistenceMutex.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		PricingConfigRLock()
+		PricingConfigRUnlock()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("runtime pricing reader was blocked by persistence work")
 	}
 }

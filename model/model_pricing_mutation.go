@@ -33,7 +33,33 @@ type ModelPricingMutation struct {
 	ImageSizePrices      map[string]float64 `json:"image_size_prices,omitempty"`
 }
 
-var pricingConfigMutex sync.RWMutex
+var (
+	pricingConfigMutex      sync.RWMutex
+	pricingPersistenceMutex sync.Mutex
+)
+
+func isPricingOptionKey(key string) bool {
+	switch key {
+	case "ModelPrice", "ModelRatio", "CacheRatio", "CreateCacheRatio",
+		"CompletionRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio",
+		"GroupRatio", "GroupGroupRatio", "SelfUseModeEnabled", "PreConsumedQuota",
+		"QuotaPerUnit", "quota_setting.enable_free_model_pre_consume",
+		"billing_setting.billing_mode", "billing_setting.billing_expr", "billing_setting.skip_seconds":
+		return true
+	default:
+		return strings.HasPrefix(key, imageSizePriceSettingPrefix) ||
+			strings.HasPrefix(key, resolutionPriceSettingPrefix)
+	}
+}
+
+func hasPricingOptionKeys(values map[string]string) bool {
+	for key := range values {
+		if isPricingOptionKey(key) {
+			return true
+		}
+	}
+	return false
+}
 
 func PricingConfigRLock() {
 	pricingConfigMutex.RLock()
@@ -220,8 +246,8 @@ func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMut
 		return err
 	}
 
-	pricingConfigMutex.Lock()
-	defer pricingConfigMutex.Unlock()
+	pricingPersistenceMutex.Lock()
+	defer pricingPersistenceMutex.Unlock()
 	writtenOptions := make(map[string]string)
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		persistedModelName := ""
@@ -271,5 +297,7 @@ func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMut
 	if err != nil {
 		return err
 	}
+	pricingConfigMutex.Lock()
+	defer pricingConfigMutex.Unlock()
 	return refreshPricingOptions(writtenOptions)
 }

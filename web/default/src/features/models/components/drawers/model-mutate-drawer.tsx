@@ -257,13 +257,13 @@ export function ModelMutateDrawer({
 
   const validateNumber = (value: string) => {
     if (value === '') return true
-    return !Number.isNaN(Number.parseFloat(value))
+    return Number.isFinite(Number(value))
   }
 
   const validateNonNegative = (value: string) => {
     if (value === '') return true
-    const n = Number.parseFloat(value)
-    return !Number.isNaN(n) && n >= 0
+    const n = Number(value)
+    return Number.isFinite(n) && n >= 0
   }
 
   const handlePromptPriceChange = (value: string) => {
@@ -298,6 +298,16 @@ export function ModelMutateDrawer({
     if (open && isEditing && modelData?.data) {
       const model = modelData.data
       setOldModelName(model.model_name)
+      setPricingSubMode('ratio')
+      setSkipSeconds(false)
+      setPromptPrice('')
+      setCompletionPrice('')
+      setResolution480p('')
+      setResolution720p('')
+      setResolution1080p('')
+      setImageSize1k('')
+      setImageSize2k('')
+      setImageSize4k('')
 
       // Base model data reset
       const baseModelData = {
@@ -490,14 +500,18 @@ export function ModelMutateDrawer({
     async (values: ExtendedModelFormValues): Promise<void> => {
       setIsSubmitting(true)
       try {
+        if (isEditing && !modelSettings) {
+          throw new Error(t('Pricing settings are still loading'))
+        }
+
         if (pricingMode === 'image-size') {
           const imageSizePrices = [imageSize1k, imageSize2k, imageSize4k]
           if (
             imageSizePrices.some(
               (price) =>
                 price === '' ||
-                !Number.isFinite(Number.parseFloat(price)) ||
-                Number.parseFloat(price) <= 0
+                !Number.isFinite(Number(price)) ||
+                Number(price) <= 0
             )
           ) {
             throw new Error(
@@ -589,6 +603,7 @@ export function ModelMutateDrawer({
       imageSize2k,
       imageSize4k,
       t,
+      modelSettings,
     ]
   )
 
@@ -1358,7 +1373,11 @@ export function ModelMutateDrawer({
           >
             {t('Cancel')}
           </SheetClose>
-          <Button form='model-form' type='submit' disabled={isSubmitting}>
+          <Button
+            form='model-form'
+            type='submit'
+            disabled={isSubmitting || (isEditing && !modelSettings)}
+          >
             {isSubmitting && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {isEditing ? t('Update Model') : t('Save changes')}
           </Button>

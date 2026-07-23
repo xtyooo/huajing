@@ -56,13 +56,13 @@ export type ModelPricingMutation = {
 }
 
 const numberOrUndefined = (value?: string) =>
-  value === undefined || value === '' ? undefined : Number.parseFloat(value)
+  value === undefined || value.trim() === '' ? undefined : Number(value)
 
 const parsePriceMap = (prices: Record<string, string>) =>
   Object.fromEntries(
     Object.entries(prices)
       .filter(([, value]) => value !== '')
-      .map(([key, value]) => [key, Number.parseFloat(value)])
+      .map(([key, value]) => [key, Number(value)])
   )
 
 export function buildModelPricingMutation({

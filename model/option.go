@@ -188,11 +188,31 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
-	options, _ := AllOption()
+	pricingPersistenceMutex.Lock()
+	defer pricingPersistenceMutex.Unlock()
+
+	options, err := AllOption()
+	if err != nil {
+		common.SysLog("failed to load options from database: " + err.Error())
+		return
+	}
+	pricingOptions := make([]*Option, 0)
 	for _, option := range options {
+		if isPricingOptionKey(option.Key) {
+			pricingOptions = append(pricingOptions, option)
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+
+	pricingConfigMutex.Lock()
+	defer pricingConfigMutex.Unlock()
+	for _, option := range pricingOptions {
+		if err := updateOptionMap(option.Key, option.Value); err != nil {
+			common.SysLog("failed to update pricing option map: " + err.Error())
 		}
 	}
 }
@@ -206,6 +226,11 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	isPricingUpdate := isPricingOptionKey(key)
+	if isPricingUpdate {
+		pricingPersistenceMutex.Lock()
+		defer pricingPersistenceMutex.Unlock()
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		option := Option{Key: key}
 		if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
@@ -216,6 +241,10 @@ func UpdateOption(key string, value string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if isPricingUpdate {
+		pricingConfigMutex.Lock()
+		defer pricingConfigMutex.Unlock()
 	}
 	return updateOptionMap(key, value)
 }
@@ -228,6 +257,11 @@ func UpdateOption(key string, value string) error {
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
+	}
+	isPricingUpdate := hasPricingOptionKeys(values)
+	if isPricingUpdate {
+		pricingPersistenceMutex.Lock()
+		defer pricingPersistenceMutex.Unlock()
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
@@ -244,6 +278,10 @@ func UpdateOptionsBulk(values map[string]string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if isPricingUpdate {
+		pricingConfigMutex.Lock()
+		defer pricingConfigMutex.Unlock()
 	}
 	mediaCleanupHandled := false
 	if interval, hasInterval := values["media_cleanup_setting.cleanup_interval"]; hasInterval {
