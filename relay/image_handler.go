@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -43,6 +44,15 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
 	adaptor.Init(info)
+
+	imageN := uint(1)
+	if request.N != nil {
+		imageN = *request.N
+	}
+	imageAction := constant.TaskActionImageGenerate
+	if info.RelayMode == relayconstant.RelayModeImagesEdits {
+		imageAction = constant.TaskActionImageEdit
+	}
 
 	var requestBody io.Reader
 
@@ -111,16 +121,56 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
+	cacheImages := !info.IsStream
+	imageCacheSession := service.ImageCacheSessionFromContext(c)
+	cacheSessionManagedByController := imageCacheSession != nil
+	if cacheImages && imageCacheSession == nil {
+		imageCacheSession = service.NewImageCacheSession(service.ImageCacheParams{
+			UserID:            info.UserId,
+			ChannelID:         info.ChannelId,
+			Quota:             info.PriceData.QuotaToPreConsume,
+			Group:             info.UsingGroup,
+			Action:            imageAction,
+			Prompt:            request.Prompt,
+			ModelName:         info.OriginModelName,
+			UpstreamModelName: info.UpstreamModelName,
+			CreatedAt:         info.StartTime.Unix(),
+		})
+	}
+	var responseBuffer *imageResponseBuffer
+	if cacheImages {
+		if err := imageCacheSession.Begin(); err != nil {
+			logger.LogError(c, fmt.Sprintf("create image task failed: %v", err))
+			return types.NewError(fmt.Errorf("failed to create image task"), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		if err := imageCacheSession.SetAttempt(info.ChannelId, info.UpstreamModelName); err != nil {
+			logger.LogError(c, fmt.Sprintf("update image task attempt failed: %v", err))
+			return types.NewError(fmt.Errorf("failed to update image task"), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !cacheSessionManagedByController {
+			defer imageCacheSession.Fail(fmt.Errorf("image response processing failed"))
+		}
+		responseBuffer = newImageResponseBuffer(c.Writer)
+		c.Writer = responseBuffer
+		defer func() { c.Writer = responseBuffer.ResponseWriter }()
+	}
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
+	if responseBuffer != nil {
+		c.Writer = responseBuffer.ResponseWriter
+	}
 	if newAPIError != nil {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
-
-	imageN := uint(1)
-	if request.N != nil {
-		imageN = *request.N
+	var cachedBody []byte
+	if responseBuffer != nil {
+		cachedBody, err = imageCacheSession.CacheResponse(responseBuffer.body.Bytes())
+		if err != nil {
+			c.Writer.Header().Del("Content-Length")
+			logger.LogError(c, fmt.Sprintf("cache image response failed: %v", err))
+			return types.NewError(fmt.Errorf("failed to cache generated image"), types.ErrorCodeBadResponseBody, types.ErrOptionWithSkipRetry())
+		}
 	}
 
 	if usage.(*dto.Usage).TotalTokens == 0 {
@@ -148,5 +198,66 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	if responseBuffer != nil {
+		if err := responseBuffer.FlushTo(cachedBody); err != nil {
+			logger.LogError(c, fmt.Sprintf("write cached image response failed: %v", err))
+		}
+	}
 	return nil
+}
+
+type imageResponseBuffer struct {
+	gin.ResponseWriter
+	body   bytes.Buffer
+	status int
+	wrote  bool
+}
+
+func newImageResponseBuffer(writer gin.ResponseWriter) *imageResponseBuffer {
+	return &imageResponseBuffer{ResponseWriter: writer, status: http.StatusOK}
+}
+
+func (w *imageResponseBuffer) WriteHeader(code int) {
+	if w.wrote || code <= 0 {
+		return
+	}
+	w.status = code
+	w.wrote = true
+}
+
+func (w *imageResponseBuffer) WriteHeaderNow() {
+	if !w.wrote {
+		w.WriteHeader(w.status)
+	}
+}
+
+func (w *imageResponseBuffer) Write(data []byte) (int, error) {
+	w.WriteHeaderNow()
+	return w.body.Write(data)
+}
+
+func (w *imageResponseBuffer) WriteString(data string) (int, error) {
+	w.WriteHeaderNow()
+	return w.body.WriteString(data)
+}
+
+func (w *imageResponseBuffer) Status() int { return w.status }
+
+func (w *imageResponseBuffer) Size() int {
+	if !w.wrote {
+		return -1
+	}
+	return w.body.Len()
+}
+
+func (w *imageResponseBuffer) Written() bool { return w.wrote }
+
+func (w *imageResponseBuffer) Flush() { w.WriteHeaderNow() }
+
+func (w *imageResponseBuffer) FlushTo(body []byte) error {
+	w.ResponseWriter.Header().Del("Transfer-Encoding")
+	w.ResponseWriter.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	w.ResponseWriter.WriteHeader(w.status)
+	_, err := w.ResponseWriter.Write(body)
+	return err
 }

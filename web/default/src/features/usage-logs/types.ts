@@ -294,6 +294,9 @@ export interface TaskLog {
   other?: string
   created_at?: number
   updated_at?: number
+  media_url?: string
+  media_status?: number
+  media_status_desc?: string
 }
 
 // ============================================================================

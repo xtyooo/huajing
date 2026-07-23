@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,8 @@ type taskPollingFetchAdaptor struct {
 	blockStarted chan struct{}
 	releaseBlock chan struct{}
 	blockOnce    sync.Once
+	responseBody []byte
+	taskInfo     *relaycommon.TaskInfo
 }
 
 func (a *taskPollingFetchAdaptor) Init(_ *relaycommon.RelayInfo) {}
@@ -52,6 +55,13 @@ func (a *taskPollingFetchAdaptor) FetchTask(_ string, _ string, body map[string]
 		}
 	}
 
+	if len(a.responseBody) > 0 {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(a.responseBody)),
+		}, nil
+	}
+
 	response := dto.TaskResponse[model.Task]{
 		Code: dto.TaskSuccessCode,
 		Data: model.Task{
@@ -71,6 +81,9 @@ func (a *taskPollingFetchAdaptor) FetchTask(_ string, _ string, body map[string]
 }
 
 func (a *taskPollingFetchAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+	if a.taskInfo != nil {
+		return a.taskInfo, nil
+	}
 	return &relaycommon.TaskInfo{Status: model.TaskStatusInProgress}, nil
 }
 
@@ -98,6 +111,22 @@ func seedTaskPollingChannel(t *testing.T, id int, disableSleep bool) {
 		Name:   "polling_channel",
 		Key:    "sk-test",
 		Status: common.ChannelStatusEnabled,
+	}
+	if disableSleep {
+		ch.SetOtherSettings(dto.ChannelOtherSettings{DisableTaskPollingSleep: true})
+	}
+	require.NoError(t, model.DB.Create(ch).Error)
+}
+
+func seedTaskPollingChannelWithType(t *testing.T, id int, channelType int, disableSleep bool) {
+	t.Helper()
+	ch := &model.Channel{
+		Id:      id,
+		Type:    channelType,
+		Name:    "polling_channel",
+		Key:     "sk-test",
+		Status:  common.ChannelStatusEnabled,
+		BaseURL: lo.ToPtr("https://example.com"),
 	}
 	if disableSleep {
 		ch.SetOtherSettings(dto.ChannelOtherSettings{DisableTaskPollingSleep: true})
@@ -330,4 +359,41 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.ElementsMatch(t, []string{"upstream_sleepy_1", "upstream_fast_1", "upstream_fast_2"}, adaptor.fetchedTaskIDs())
+}
+
+func TestUpdateVideoTasksKuaiBypassesMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 401
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeKuai, true)
+	task := seedPollingTask(t, channelID, "task_public_kuai", "upstream_kuai")
+	task.Platform = constant.TaskPlatform("65")
+	require.NoError(t, model.DB.Save(task).Error)
+
+	directURL := "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/result.mp4?X-Tos-Expires=86400"
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"id":"upstream_kuai","status":"completed","metadata":{"url":"` + directURL + `"}}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+			Url:      directURL,
+		},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), constant.TaskPlatform("65"), map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
+	assert.Equal(t, model.MediaStatusNotNeed, reloaded.MediaStatus)
+	assert.Equal(t, directURL, reloaded.MediaURL)
+	assert.Equal(t, directURL, reloaded.PrivateData.ResultURL)
 }

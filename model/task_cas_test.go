@@ -264,6 +264,41 @@ func TestResetStuckMediaTasksBeforeOnlyResetsExpiredDownloads(t *testing.T) {
 	assert.Equal(t, MediaStatusDownloading, tasks[1].MediaStatus)
 }
 
+func TestResetStuckMediaTasksFailsInterruptedImageTask(t *testing.T) {
+	truncateTables(t)
+	imageTask := &Task{
+		TaskID:         "task_interrupted_image",
+		Platform:       constant.TaskPlatformImage,
+		Status:         TaskStatusInProgress,
+		Progress:       "0%",
+		MediaStatus:    MediaStatusDownloading,
+		MediaStartTime: time.Now().Unix(),
+		Data:           json.RawMessage(`{}`),
+	}
+	videoTask := &Task{
+		TaskID:         "task_interrupted_video",
+		Platform:       constant.TaskPlatform("55"),
+		Status:         TaskStatusInProgress,
+		Progress:       "0%",
+		MediaStatus:    MediaStatusDownloading,
+		MediaStartTime: time.Now().Unix(),
+		Data:           json.RawMessage(`{}`),
+	}
+	insertTask(t, imageTask)
+	insertTask(t, videoTask)
+
+	ResetStuckMediaTasks()
+
+	require.NoError(t, DB.First(imageTask, imageTask.ID).Error)
+	require.NoError(t, DB.First(videoTask, videoTask.ID).Error)
+	assert.Equal(t, TaskStatus(TaskStatusFailure), imageTask.Status)
+	assert.Equal(t, "100%", imageTask.Progress)
+	assert.Equal(t, MediaStatusFailed, imageTask.MediaStatus)
+	assert.NotZero(t, imageTask.FinishTime)
+	assert.NotEmpty(t, imageTask.FailReason)
+	assert.Equal(t, MediaStatusPending, videoTask.MediaStatus)
+}
+
 func TestResetInvalidSoraMediaDownloads(t *testing.T) {
 	truncateTables(t)
 	invalid := &Task{

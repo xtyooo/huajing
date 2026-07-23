@@ -247,7 +247,9 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeLingjing ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeOpenAI ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSora {
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSora ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeKuai ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSD0717 {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
 		if relayInfo.UpstreamModelName != "" {
@@ -366,6 +368,7 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
 	err := DB.Where("progress != ?", "100%").
 		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
+		Where("platform != ?", constant.TaskPlatformImage).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
@@ -380,7 +383,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Where("platform != ?", constant.TaskPlatformImage).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -397,7 +400,22 @@ func GetPendingMediaTasks(limit int) []*Task {
 }
 
 func ResetStuckMediaTasks() {
-	err := DB.Model(&Task{}).Where("media_status = ?", MediaStatusDownloading).Update("media_status", MediaStatusPending).Error
+	err := DB.Model(&Task{}).
+		Where("media_status = ? AND platform != ?", MediaStatusDownloading, constant.TaskPlatformImage).
+		Update("media_status", MediaStatusPending).Error
+	if err == nil {
+		now := time.Now().Unix()
+		err = DB.Model(&Task{}).
+			Where("media_status = ? AND platform = ?", MediaStatusDownloading, constant.TaskPlatformImage).
+			Updates(map[string]any{
+				"status":            TaskStatusFailure,
+				"progress":          "100%",
+				"finish_time":       now,
+				"media_status":      MediaStatusFailed,
+				"media_finish_time": now,
+				"fail_reason":       "图片任务因服务重启中断，请重新生成",
+			}).Error
+	}
 	if err != nil {
 		common.SysError(fmt.Sprintf("reset stuck media tasks failed: %v", err))
 	} else {
@@ -407,7 +425,7 @@ func ResetStuckMediaTasks() {
 
 func ResetStuckMediaTasksBefore(cutoff int64) error {
 	return DB.Model(&Task{}).
-		Where("media_status = ? AND media_start_time > 0 AND media_start_time < ?", MediaStatusDownloading, cutoff).
+		Where("media_status = ? AND platform != ? AND media_start_time > 0 AND media_start_time < ?", MediaStatusDownloading, constant.TaskPlatformImage, cutoff).
 		Updates(map[string]any{
 			"media_status":     MediaStatusPending,
 			"media_start_time": 0,
@@ -450,6 +468,7 @@ func HasUnfinishedSyncTasks() bool {
 		Where("progress != ?", "100%").
 		Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
+		Where("platform != ?", constant.TaskPlatformImage).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0

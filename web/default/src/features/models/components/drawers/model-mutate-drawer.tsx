@@ -109,7 +109,7 @@ const extendedModelFormSchema = z.object({
 
 type ExtendedModelFormValues = z.infer<typeof extendedModelFormSchema>
 
-type PricingMode = 'per-token' | 'per-request' | 'resolution'
+type PricingMode = 'per-token' | 'per-request' | 'resolution' | 'image-size'
 type PricingSubMode = 'ratio' | 'price'
 
 type ModelMutateDrawerProps = {
@@ -137,6 +137,9 @@ export function ModelMutateDrawer({
   const [resolution480p, setResolution480p] = useState('')
   const [resolution720p, setResolution720p] = useState('')
   const [resolution1080p, setResolution1080p] = useState('')
+  const [imageSize1k, setImageSize1k] = useState('')
+  const [imageSize2k, setImageSize2k] = useState('')
+  const [imageSize4k, setImageSize4k] = useState('')
   const [skipSeconds, setSkipSeconds] = useState(false)
 
   // Fetch vendors for dropdown
@@ -259,8 +262,8 @@ export function ModelMutateDrawer({
 
   const validateNonNegative = (value: string) => {
     if (value === '') return true
-    const n = parseFloat(value)
-    return !isNaN(n) && n >= 0
+    const n = Number.parseFloat(value)
+    return !Number.isNaN(n) && n >= 0
   }
 
   const handlePromptPriceChange = (value: string) => {
@@ -358,10 +361,21 @@ export function ModelMutateDrawer({
         const audioRatio = audioMap[modelName]
         const audioCompletionRatio = audioCompletionMap[modelName]
 
-        // Check resolution pricing first
+        const imageSizeKey = `image_size_price_setting.${modelName}`
+        const imageSizeOption = systemOptionsData?.data?.find(
+          (option) => option.key === imageSizeKey
+        )
+        const imageSizeSetting = imageSizeOption
+          ? safeJsonParse<{
+              enabled: boolean
+              setting: Record<string, number>
+            }>(imageSizeOption.value, { fallback: undefined, silent: true })
+          : undefined
+
+        // Check custom pricing modes first
         const resolutionKey = `resolution_price_setting.${modelName}`
         const resolutionOption = systemOptionsData?.data?.find(
-          (o: any) => o.key === resolutionKey
+          (option) => option.key === resolutionKey
         )
         const resolutionSetting = resolutionOption
           ? safeJsonParse<{
@@ -371,14 +385,17 @@ export function ModelMutateDrawer({
           : undefined
 
         // Determine pricing mode
-        if (resolutionSetting?.enabled) {
+        if (imageSizeSetting?.enabled) {
+          setPricingMode('image-size')
+          setImageSize1k(imageSizeSetting.setting['1k']?.toString() || '')
+          setImageSize2k(imageSizeSetting.setting['2k']?.toString() || '')
+          setImageSize4k(imageSizeSetting.setting['4k']?.toString() || '')
+          form.reset(baseModelData)
+          setAdvancedOpen(false)
+        } else if (resolutionSetting?.enabled) {
           setPricingMode('resolution')
-          setResolution480p(
-            resolutionSetting.setting['480p']?.toString() || ''
-          )
-          setResolution720p(
-            resolutionSetting.setting['720p']?.toString() || ''
-          )
+          setResolution480p(resolutionSetting.setting['480p']?.toString() || '')
+          setResolution720p(resolutionSetting.setting['720p']?.toString() || '')
           setResolution1080p(
             resolutionSetting.setting['1080p']?.toString() || ''
           )
@@ -436,6 +453,9 @@ export function ModelMutateDrawer({
       setResolution480p('')
       setResolution720p('')
       setResolution1080p('')
+      setImageSize1k('')
+      setImageSize2k('')
+      setImageSize4k('')
       setAdvancedOpen(false)
       form.reset({
         model_name: currentRow?.model_name || '',
@@ -456,12 +476,36 @@ export function ModelMutateDrawer({
         audioCompletionRatio: '',
       })
     }
-  }, [open, isEditing, modelData, currentRow, form, modelSettings])
+  }, [
+    open,
+    isEditing,
+    modelData,
+    currentRow,
+    form,
+    modelSettings,
+    systemOptionsData?.data,
+  ])
 
   const onSubmit = useCallback(
     async (values: ExtendedModelFormValues): Promise<void> => {
       setIsSubmitting(true)
       try {
+        if (pricingMode === 'image-size') {
+          const imageSizePrices = [imageSize1k, imageSize2k, imageSize4k]
+          if (
+            imageSizePrices.some(
+              (price) =>
+                price === '' ||
+                !Number.isFinite(Number.parseFloat(price)) ||
+                Number.parseFloat(price) <= 0
+            )
+          ) {
+            throw new Error(
+              t('Please configure prices greater than 0 for 1K, 2K, and 4K')
+            )
+          }
+        }
+
         const submitData = {
           ...values,
           id: isEditing ? currentModelId : undefined,
@@ -501,7 +545,8 @@ export function ModelMutateDrawer({
                 values.imageRatio ||
                 values.audioRatio ||
                 values.audioCompletionRatio)) ||
-            pricingMode === 'resolution'
+            pricingMode === 'resolution' ||
+            pricingMode === 'image-size'
 
           // Always process system settings updates if we have modelSettings
           // This ensures we can remove stale entries even when clearing all pricing fields
@@ -669,11 +714,7 @@ export function ModelMutateDrawer({
               modelSettings['billing_setting.skip_seconds'] || '{}',
               { fallback: {}, silent: true }
             )
-            if (
-              isEditing &&
-              oldModelName &&
-              oldModelName !== finalModelName
-            ) {
+            if (isEditing && oldModelName && oldModelName !== finalModelName) {
               delete skipSecondsMap[oldModelName]
             }
             delete skipSecondsMap[finalModelName]
@@ -700,14 +741,10 @@ export function ModelMutateDrawer({
 
             // Handle resolution price setting
             const resolutionKey = `resolution_price_setting.${finalModelName}`
-            if (
-              isEditing &&
-              oldModelName &&
-              oldModelName !== finalModelName
-            ) {
+            if (isEditing && oldModelName && oldModelName !== finalModelName) {
               const oldKey = `resolution_price_setting.${oldModelName}`
               const oldExists = systemOptionsData?.data?.find(
-                (o: any) => o.key === oldKey
+                (option) => option.key === oldKey
               )
               if (oldExists) {
                 await updateOption.mutateAsync({
@@ -723,24 +760,61 @@ export function ModelMutateDrawer({
                   enabled: true,
                   setting: {
                     ...(resolution480p
-                      ? { '480p': parseFloat(resolution480p) }
+                      ? { '480p': Number.parseFloat(resolution480p) }
                       : {}),
                     ...(resolution720p
-                      ? { '720p': parseFloat(resolution720p) }
+                      ? { '720p': Number.parseFloat(resolution720p) }
                       : {}),
                     ...(resolution1080p
-                      ? { '1080p': parseFloat(resolution1080p) }
+                      ? { '1080p': Number.parseFloat(resolution1080p) }
                       : {}),
                   },
                 }),
               })
             } else {
               const exists = systemOptionsData?.data?.find(
-                (o: any) => o.key === resolutionKey
+                (option) => option.key === resolutionKey
               )
               if (exists) {
                 await updateOption.mutateAsync({
                   key: resolutionKey,
+                  value: JSON.stringify({ enabled: false, setting: {} }),
+                })
+              }
+            }
+
+            const imageSizeKey = `image_size_price_setting.${finalModelName}`
+            if (isEditing && oldModelName && oldModelName !== finalModelName) {
+              const oldKey = `image_size_price_setting.${oldModelName}`
+              const oldExists = systemOptionsData?.data?.find(
+                (option) => option.key === oldKey
+              )
+              if (oldExists) {
+                await updateOption.mutateAsync({
+                  key: oldKey,
+                  value: JSON.stringify({ enabled: false, setting: {} }),
+                })
+              }
+            }
+            if (pricingMode === 'image-size') {
+              await updateOption.mutateAsync({
+                key: imageSizeKey,
+                value: JSON.stringify({
+                  enabled: true,
+                  setting: {
+                    '1k': Number.parseFloat(imageSize1k),
+                    '2k': Number.parseFloat(imageSize2k),
+                    '4k': Number.parseFloat(imageSize4k),
+                  },
+                }),
+              })
+            } else {
+              const exists = systemOptionsData?.data?.find(
+                (option) => option.key === imageSizeKey
+              )
+              if (exists) {
+                await updateOption.mutateAsync({
+                  key: imageSizeKey,
                   value: JSON.stringify({ enabled: false, setting: {} }),
                 })
               }
@@ -773,9 +847,15 @@ export function ModelMutateDrawer({
       oldModelName,
       modelSettings,
       updateOption,
+      skipSeconds,
       resolution480p,
       resolution720p,
       resolution1080p,
+      imageSize1k,
+      imageSize2k,
+      imageSize4k,
+      systemOptionsData?.data,
+      t,
     ]
   )
 
@@ -1077,10 +1157,16 @@ export function ModelMutateDrawer({
                       {t('Resolution (per second)')}
                     </Label>
                   </div>
+                  <div className='flex items-center space-x-2'>
+                    <RadioGroupItem value='image-size' id='mode-image-size' />
+                    <Label htmlFor='mode-image-size' className='font-normal'>
+                      {t('Image size (per image)')}
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
 
-              {pricingMode === 'per-request' ? (
+              {pricingMode === 'per-request' && (
                 <>
                   <FormField
                     control={form.control}
@@ -1122,9 +1208,10 @@ export function ModelMutateDrawer({
                     />
                   </div>
                 </>
-              ) : pricingMode === 'resolution' ? (
+              )}
+              {pricingMode === 'resolution' && (
                 <div className='space-y-3'>
-                  <p className='text-xs text-muted-foreground'>
+                  <p className='text-muted-foreground text-xs'>
                     {t('Price per second (USD)')}
                   </p>
                   <div className='flex items-center space-x-3'>
@@ -1163,7 +1250,38 @@ export function ModelMutateDrawer({
                     />
                   </div>
                 </div>
-              ) : (
+              )}
+              {pricingMode === 'image-size' && (
+                <div className='space-y-3'>
+                  <div className='grid grid-cols-3 gap-3'>
+                    {[
+                      { label: '1K', value: imageSize1k, set: setImageSize1k },
+                      { label: '2K', value: imageSize2k, set: setImageSize2k },
+                      { label: '4K', value: imageSize4k, set: setImageSize4k },
+                    ].map((item) => (
+                      <div key={item.label} className='space-y-1.5'>
+                        <Label className='text-xs'>{item.label}</Label>
+                        <Input
+                          type='text'
+                          inputMode='decimal'
+                          placeholder='0.01'
+                          value={item.value}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            if (validateNonNegative(value)) item.set(value)
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Price per generated image in USD. Requests without a size use the 1K price.'
+                    )}
+                  </p>
+                </div>
+              )}
+              {pricingMode === 'per-token' && (
                 <>
                   <div className='space-y-4'>
                     <Label>{t('Input mode')}</Label>

@@ -168,6 +168,8 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		MaxTokens:       1584,
 		ImagePriceRatio: sizeRatio * qualityRatio,
 		BillingRatios:   map[string]float64{"n": float64(imageN)},
+		ImageSize:       i.Size,
+		ImageGeneration: true,
 	}
 }
 

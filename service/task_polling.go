@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -537,13 +538,23 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		} else if taskResult.Url != "" {
 			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
 			task.PrivateData.ResultURL = taskResult.Url
-			task.MediaStatus = model.MediaStatusPending
-			needsDownload = true
+			if taskBypassesMediaCache(task) {
+				task.MediaURL = taskResult.Url
+				task.MediaStatus = model.MediaStatusNotNeed
+			} else {
+				task.MediaStatus = model.MediaStatusPending
+				needsDownload = true
+			}
 		} else if dataURL := extractVideoURLFromRawData(task.Data); dataURL != "" {
 			// URL embedded in raw response Data but not captured by adaptor (e.g. Sora)
 			task.PrivateData.ResultURL = dataURL
-			task.MediaStatus = model.MediaStatusPending
-			needsDownload = true
+			if taskBypassesMediaCache(task) {
+				task.MediaURL = dataURL
+				task.MediaStatus = model.MediaStatusNotNeed
+			} else {
+				task.MediaStatus = model.MediaStatusPending
+				needsDownload = true
+			}
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
@@ -603,6 +614,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	return nil
+}
+
+func taskBypassesMediaCache(task *model.Task) bool {
+	if task == nil {
+		return false
+	}
+	return task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeKuai))
 }
 
 func redactVideoResponseBody(body []byte) []byte {

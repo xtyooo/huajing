@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Music } from 'lucide-react'
+import { Download, Music } from 'lucide-react'
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +29,11 @@ import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
-import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
+import {
+  taskActionMapper,
+  taskPlatformMapper,
+  taskStatusMapper,
+} from '../../lib/mappers'
 import type { TaskLog } from '../../types'
 import {
   AudioPreviewDialog,
@@ -86,6 +90,40 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
         open={open}
         onOpenChange={setOpen}
         clips={clips as AudioClip[]}
+      />
+    </>
+  )
+}
+
+function TaskIdCell({ log }: { log: TaskLog }) {
+  const { t } = useTranslation()
+  const [dialogOpen, setDialogOpen] = useState(false)
+  if (!log.task_id) {
+    return <span className='text-muted-foreground/60 text-xs'>-</span>
+  }
+  return (
+    <>
+      <button
+        type='button'
+        className='flex max-w-[170px] flex-col gap-0.5 text-left'
+        onClick={() => setDialogOpen(true)}
+      >
+        <StatusBadge
+          label={log.task_id}
+          variant='neutral'
+          size='sm'
+          copyable={false}
+          className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
+        />
+        <span className='text-muted-foreground/60 truncate text-[11px]'>
+          {t(taskPlatformMapper.getLabel(log.platform, log.platform))} ·{' '}
+          {t(taskActionMapper.getLabel(log.action))}
+        </span>
+      </button>
+      <TaskLogDetailsDialog
+        log={log}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
       />
     </>
   )
@@ -168,37 +206,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       accessorKey: 'task_id',
       header: t('Task ID'),
       cell: ({ row }) => {
-        const log = row.original
-        const taskId = row.getValue('task_id') as string
-        const [dialogOpen, setDialogOpen] = useState(false)
-        if (!taskId) {
-          return <span className='text-muted-foreground/60 text-xs'>-</span>
-        }
-        return (
-          <>
-            <button
-              type='button'
-              className='flex max-w-[170px] flex-col gap-0.5 text-left'
-              onClick={() => setDialogOpen(true)}
-            >
-              <StatusBadge
-                label={taskId}
-                variant='neutral'
-                size='sm'
-                copyable={false}
-                className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
-              />
-              <span className='text-muted-foreground/60 truncate text-[11px]'>
-                {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
-              </span>
-            </button>
-            <TaskLogDetailsDialog
-              log={log}
-              open={dialogOpen}
-              onOpenChange={setDialogOpen}
-            />
-          </>
-        )
+        return <TaskIdCell log={row.original} />
       },
       meta: { mobileTitle: true },
     },
@@ -259,6 +267,30 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
           log.action === TASK_ACTIONS.REMIX_GENERATE
         const isSuccess = status === TASK_STATUS.SUCCESS
         const isUrl = failReason?.startsWith('http')
+        const isImageTask =
+          log.action === TASK_ACTIONS.IMAGE_GENERATE ||
+          log.action === TASK_ACTIONS.IMAGE_EDIT
+        const mediaUrl =
+          typeof log.media_url === 'string' &&
+          /^https?:\/\//.test(log.media_url)
+            ? log.media_url
+            : ''
+
+        if (isSuccess && isImageTask && mediaUrl) {
+          return (
+            <a
+              href={mediaUrl}
+              target='_blank'
+              rel='noopener noreferrer'
+              download
+              className='hover:bg-muted inline-flex size-8 items-center justify-center rounded-md'
+              title={t('Download')}
+              aria-label={t('Download')}
+            >
+              <Download className='size-4' aria-hidden='true' />
+            </a>
+          )
+        }
 
         if (isSuccess && isVideoTask && isUrl) {
           const videoUrl = `/v1/videos/${log.task_id}/content`

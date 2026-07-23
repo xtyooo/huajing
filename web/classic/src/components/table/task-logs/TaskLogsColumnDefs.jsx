@@ -33,10 +33,13 @@ import {
   Hash,
   Video,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import {
   TASK_ACTION_FIRST_TAIL_GENERATE,
   TASK_ACTION_GENERATE,
+  TASK_ACTION_IMAGE_EDIT,
+  TASK_ACTION_IMAGE_GENERATE,
   TASK_ACTION_REFERENCE_GENERATE,
   TASK_ACTION_TEXT_GENERATE,
   TASK_ACTION_REMIX_GENERATE,
@@ -134,6 +137,18 @@ const renderType = (type, t) => {
           {t('视频Remix')}
         </Tag>
       );
+    case TASK_ACTION_IMAGE_GENERATE:
+      return (
+        <Tag color='blue' shape='circle' prefixIcon={<Sparkles size={14} />}>
+          {t('生成图片')}
+        </Tag>
+      );
+    case TASK_ACTION_IMAGE_EDIT:
+      return (
+        <Tag color='orange' shape='circle' prefixIcon={<Sparkles size={14} />}>
+          {t('编辑图片')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='white' shape='circle' prefixIcon={<HelpCircle size={14} />}>
@@ -159,6 +174,12 @@ const renderPlatform = (platform, t) => {
       return (
         <Tag color='green' shape='circle'>
           Suno
+        </Tag>
+      );
+    case 'image':
+      return (
+        <Tag color='blue' shape='circle'>
+          Image
         </Tag>
       );
     default:
@@ -301,15 +322,10 @@ export const getTaskLogsColumns = ({
         const displayText = String(record.username || userId || '?');
         return (
           <Space>
-            <Avatar
-              size='extra-small'
-              color={stringToColor(displayText)}
-            >
+            <Avatar size='extra-small' color={stringToColor(displayText)}>
               {displayText.slice(0, 1)}
             </Avatar>
-            <Typography.Text>
-              {displayText}
-            </Typography.Text>
+            <Typography.Text>{displayText}</Typography.Text>
           </Space>
         );
       },
@@ -414,9 +430,34 @@ export const getTaskLogsColumns = ({
           record.action === TASK_ACTION_FIRST_TAIL_GENERATE ||
           record.action === TASK_ACTION_REFERENCE_GENERATE ||
           record.action === TASK_ACTION_REMIX_GENERATE;
+        const isImageTask =
+          record.action === TASK_ACTION_IMAGE_GENERATE ||
+          record.action === TASK_ACTION_IMAGE_EDIT;
         const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
-        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const hasResultUrl =
+          typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const mediaUrl =
+          typeof record.media_url === 'string' &&
+          /^https?:\/\//.test(record.media_url)
+            ? record.media_url
+            : '';
+        if (isSuccess && isImageTask && mediaUrl) {
+          return (
+            <Tooltip content={t('点击下载图片')}>
+              <a
+                href={mediaUrl}
+                target='_blank'
+                rel='noopener noreferrer'
+                download
+                className='inline-flex items-center gap-1'
+              >
+                <Download size={14} />
+                {t('下载图片')}
+              </a>
+            </Tooltip>
+          );
+        }
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a

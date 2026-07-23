@@ -71,6 +71,15 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	if meta.ImageGeneration && model.HasImageSizePricing(info.OriginModelName) {
+		var err error
+		modelPrice, _, err = model.GetImageSizePrice(info.OriginModelName, meta.ImageSize)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		usePrice = true
+		meta.ImagePriceRatio = 0
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
@@ -258,6 +267,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 }
 
 func HasModelBillingConfig(modelName string) bool {
+	if model.HasImageSizePricing(modelName) {
+		return true
+	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
 		return true
 	}

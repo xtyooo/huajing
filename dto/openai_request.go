@@ -193,6 +193,36 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	}
 	tokenCountMeta.CombineText = strings.Join(texts, "\n")
 	tokenCountMeta.Files = fileMeta
+	tokenCountMeta.ImageSize = r.Size
+	if len(r.ExtraBody) > 0 {
+		var extraBody struct {
+			Google struct {
+				ImageConfig struct {
+					ImageSize      string `json:"imageSize"`
+					ImageSizeSnake string `json:"image_size"`
+				} `json:"image_config"`
+			} `json:"google"`
+		}
+		if err := common.Unmarshal(r.ExtraBody, &extraBody); err == nil {
+			if extraBody.Google.ImageConfig.ImageSizeSnake != "" {
+				tokenCountMeta.ImageSize = extraBody.Google.ImageConfig.ImageSizeSnake
+			} else if extraBody.Google.ImageConfig.ImageSize != "" {
+				tokenCountMeta.ImageSize = extraBody.Google.ImageConfig.ImageSize
+			}
+		}
+	}
+	tokenCountMeta.ImageGeneration = tokenCountMeta.ImageSize != ""
+	if len(r.Modalities) > 0 {
+		var modalities []string
+		if err := common.Unmarshal(r.Modalities, &modalities); err == nil {
+			for _, modality := range modalities {
+				if strings.EqualFold(modality, "image") {
+					tokenCountMeta.ImageGeneration = true
+					break
+				}
+			}
+		}
+	}
 	return &tokenCountMeta
 }
 

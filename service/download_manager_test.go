@@ -110,7 +110,25 @@ func TestUnexpectedMediaContentTypeRecognizesProviderAuthError(t *testing.T) {
 	assert.False(t, isUnexpectedMediaContentType("application/octet-stream"))
 }
 
-func TestResolveSoraMediaDownloadTargetUsesUpstreamURLAndTaskKey(t *testing.T) {
+func TestResolveSoraMediaDownloadTargetUsesDirectResultURL(t *testing.T) {
+	task := &model.Task{
+		ChannelId: 38,
+		Platform:  constant.TaskPlatform("55"),
+		TaskID:    "task_public",
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "https://ngrok3.zhoushurencz1.top/videos/result.mp4",
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://ngrok3.zhoushurencz1.top/videos/result.mp4", target.URL)
+	require.Len(t, target.Headers, 1)
+	assert.Nil(t, target.Headers[0])
+}
+
+func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing.T) {
 	previousMemoryCache := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = false
 	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
@@ -157,6 +175,21 @@ func TestRetryableMediaDownloadStatus(t *testing.T) {
 	assert.True(t, isRetryableMediaDownloadStatus(http.StatusTooManyRequests))
 	assert.True(t, isRetryableMediaDownloadStatus(http.StatusBadGateway))
 	assert.False(t, isRetryableMediaDownloadStatus(http.StatusUnauthorized))
+}
+
+func TestDownloadManagerChannelSlotHonorsConfiguredConcurrency(t *testing.T) {
+	t.Setenv("MEDIA_DOWNLOAD_CHANNEL_CONCURRENCY", "2")
+	dm := &downloadManager{
+		sem:        make(chan struct{}, downloadBatchSize),
+		channelSem: make(map[int]chan struct{}),
+	}
+
+	require.True(t, dm.tryAcquireChannelSlot(76))
+	require.True(t, dm.tryAcquireChannelSlot(76))
+	assert.False(t, dm.tryAcquireChannelSlot(76))
+
+	dm.releaseChannelSlot(76)
+	assert.True(t, dm.tryAcquireChannelSlot(76))
 }
 
 func TestStreamMediaDownloadToFile(t *testing.T) {

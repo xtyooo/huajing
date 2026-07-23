@@ -101,10 +101,33 @@ func (r *GeminiChatRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	}
 
 	inputText := strings.Join(inputTexts, "\n")
+	imageSize := ""
+	if len(r.GenerationConfig.ImageConfig) > 0 {
+		var imageConfig struct {
+			ImageSize      string `json:"imageSize"`
+			ImageSizeSnake string `json:"image_size"`
+		}
+		if err := common.Unmarshal(r.GenerationConfig.ImageConfig, &imageConfig); err == nil {
+			imageSize = imageConfig.ImageSizeSnake
+			if imageSize == "" {
+				imageSize = imageConfig.ImageSize
+			}
+		}
+	}
+	imageGeneration := imageSize != ""
+	for _, modality := range r.GenerationConfig.ResponseModalities {
+		if strings.EqualFold(modality, "image") {
+			imageGeneration = true
+			break
+		}
+	}
+
 	return &types.TokenCountMeta{
-		CombineText: inputText,
-		Files:       files,
-		MaxTokens:   maxTokens,
+		CombineText:     inputText,
+		Files:           files,
+		MaxTokens:       maxTokens,
+		ImageSize:       imageSize,
+		ImageGeneration: imageGeneration,
 	}
 }
 

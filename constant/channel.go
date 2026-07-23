@@ -62,6 +62,8 @@ const (
 	ChannelTypeMimo           = 62
 	ChannelTypeLingjing       = 63
 	ChannelTypeAdvancedCustom = 64
+	ChannelTypeKuai           = 65
+	ChannelTypeSD0717         = 66
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -129,9 +131,11 @@ var ChannelBaseURLs = []string{
 	"https://api.meai.cloud",                    //59
 	"https://api.xs-token.com",                  //60
 	"http://64.81.114.92:8080/api/gateway/v1", //61
-	"", //62 Mimo, no default base URL
-	"", //63 Lingjing, no default base URL
-	"", //64 Advanced Custom
+	"",                       //62 Mimo, no default base URL
+	"",                       //63 Lingjing, no default base URL
+	"",                       //64 Advanced Custom
+	"https://api.pro666.top", //65 Kuai
+	"https://aivideo.beauty", //66 sd0717
 }
 
 var ChannelTypeNames = map[int]string{
@@ -196,6 +200,8 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeMimo:           "Mimo",
 	ChannelTypeLingjing:       "Lingjing",
 	ChannelTypeAdvancedCustom: "Advanced Custom",
+	ChannelTypeKuai:           "kuai",
+	ChannelTypeSD0717:         "sd0717",
 }
 
 func GetChannelTypeName(channelType int) string {

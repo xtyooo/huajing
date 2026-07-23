@@ -36,12 +36,14 @@ import (
 	taskGemini "github.com/QuantumNous/new-api/relay/channel/task/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
 	taskhj "github.com/QuantumNous/new-api/relay/channel/task/hj"
-	tasklingjing "github.com/QuantumNous/new-api/relay/channel/task/lingjing"
 	taskjimeng "github.com/QuantumNous/new-api/relay/channel/task/jimeng"
 	"github.com/QuantumNous/new-api/relay/channel/task/kling"
+	taskkuai "github.com/QuantumNous/new-api/relay/channel/task/kuai"
+	tasklingjing "github.com/QuantumNous/new-api/relay/channel/task/lingjing"
 	taskmeai "github.com/QuantumNous/new-api/relay/channel/task/meai"
 	taskmimo "github.com/QuantumNous/new-api/relay/channel/task/mimo"
 	taskmuse "github.com/QuantumNous/new-api/relay/channel/task/muse"
+	tasksd0717 "github.com/QuantumNous/new-api/relay/channel/task/sd0717"
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/suno"
 	taskvertex "github.com/QuantumNous/new-api/relay/channel/task/vertex"
@@ -181,6 +183,10 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskmimo.TaskAdaptor{}
 		case constant.ChannelTypeLingjing:
 			return &tasklingjing.TaskAdaptor{}
+		case constant.ChannelTypeKuai:
+			return &taskkuai.TaskAdaptor{}
+		case constant.ChannelTypeSD0717:
+			return &tasksd0717.TaskAdaptor{}
 		}
 	}
 	return nil

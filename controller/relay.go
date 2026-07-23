@@ -128,7 +128,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
 	var meta *types.TokenCountMeta
-	if needSensitiveCheck || needCountToken {
+	if needSensitiveCheck || needCountToken || model.HasImageSizePricing(relayInfo.OriginModelName) {
 		meta = request.GetTokenCountMeta()
 	} else {
 		meta = fastTokenCountMetaForPricing(request)
@@ -178,6 +178,39 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
 	}()
+
+	if relayFormat == types.RelayFormatOpenAIImage && !relayInfo.IsStream {
+		imageRequest, ok := request.(*dto.ImageRequest)
+		if ok {
+			action := constant.TaskActionImageGenerate
+			if relayInfo.RelayMode == relayconstant.RelayModeImagesEdits {
+				action = constant.TaskActionImageEdit
+			}
+			session, sessionErr := service.BeginImageCacheSession(service.ImageCacheParams{
+				UserID:    relayInfo.UserId,
+				Quota:     priceData.QuotaToPreConsume,
+				Group:     relayInfo.UsingGroup,
+				Action:    action,
+				Prompt:    imageRequest.Prompt,
+				ModelName: relayInfo.OriginModelName,
+				CreatedAt: relayInfo.StartTime.Unix(),
+			})
+			if sessionErr != nil {
+				newAPIError = types.NewError(fmt.Errorf("failed to create image task"), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+				return
+			}
+			service.AttachImageCacheSession(c, session)
+			defer func() {
+				if !session.Finished() {
+					if newAPIError != nil {
+						session.Fail(newAPIError)
+					} else {
+						session.Fail(fmt.Errorf("image request ended before caching completed"))
+					}
+				}
+			}()
+		}
+	}
 
 	retryParam := &service.RetryParam{
 		Ctx:         c,

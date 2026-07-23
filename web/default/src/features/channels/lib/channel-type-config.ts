@@ -144,6 +144,32 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'Models exposed by this channel',
     },
   },
+  65: {
+    id: 65,
+    name: CHANNEL_TYPES[65],
+    icon: 'volcengine',
+    defaultBaseUrl: 'https://api.pro666.top',
+    hints: {
+      baseUrl: 'Default: https://api.pro666.top',
+      key: 'Bearer API key',
+      models: 'doubao-seedance-2-0-fast-260128,doubao-seedance-2-0-260128',
+      other:
+        'Video task channel; result URL is passed through directly without local caching.',
+    },
+  },
+  66: {
+    id: 66,
+    name: CHANNEL_TYPES[66],
+    icon: 'openai',
+    defaultBaseUrl: 'https://aivideo.beauty',
+    hints: {
+      baseUrl: 'Default: https://aivideo.beauty',
+      key: 'Bearer API key',
+      models: 'aivide-2.0 or sd0717',
+      other:
+        'Video task channel. Upstream uses POST /v2/generate and GET /v2/generate/{task_id}.',
+    },
+  },
 }
 
 /**

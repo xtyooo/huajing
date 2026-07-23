@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,15 +21,18 @@ import (
 )
 
 const (
-	downloadBatchSize    = 50
+	downloadBatchSize    = 100
+	downloadScanLimit    = downloadBatchSize * 5
 	downloadPollInterval = 15 * time.Second
 	mediaDownloadRetries = 5
 	mediaStatusRetries   = 3
 )
 
 type downloadManager struct {
-	wakeChan chan struct{}
-	sem      chan struct{}
+	wakeChan   chan struct{}
+	sem        chan struct{}
+	channelMu  sync.Mutex
+	channelSem map[int]chan struct{}
 }
 
 func (dm *downloadManager) WakeUp() {
@@ -72,18 +76,70 @@ func (dm *downloadManager) processPending() {
 	if err := model.ResetStuckMediaTasksBefore(time.Now().Add(-staleAfter).Unix()); err != nil {
 		common.SysLog(fmt.Sprintf("reset timed out media tasks failed: %v", err))
 	}
-	tasks := model.GetPendingMediaTasks(downloadBatchSize)
+	tasks := model.GetPendingMediaTasks(downloadScanLimit)
 	for _, task := range tasks {
 		task := task
-		if !task.CompareAndSwapMediaStatus(model.MediaStatusPending, model.MediaStatusDownloading) {
+		if !dm.tryAcquireGlobalSlot() {
+			return
+		}
+		if !dm.tryAcquireChannelSlot(task.ChannelId) {
+			dm.releaseGlobalSlot()
 			continue
 		}
-		dm.sem <- struct{}{}
+		if !task.CompareAndSwapMediaStatus(model.MediaStatusPending, model.MediaStatusDownloading) {
+			dm.releaseChannelSlot(task.ChannelId)
+			dm.releaseGlobalSlot()
+			continue
+		}
 		gopool.Go(func() {
-			defer func() { <-dm.sem }()
+			defer func() {
+				dm.releaseChannelSlot(task.ChannelId)
+				dm.releaseGlobalSlot()
+			}()
 			dm.downloadTaskResult(task)
 		})
 	}
+}
+
+func (dm *downloadManager) tryAcquireGlobalSlot() bool {
+	select {
+	case dm.sem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (dm *downloadManager) releaseGlobalSlot() {
+	<-dm.sem
+}
+
+func (dm *downloadManager) tryAcquireChannelSlot(channelID int) bool {
+	sem := dm.getChannelSemaphore(channelID)
+	select {
+	case sem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (dm *downloadManager) releaseChannelSlot(channelID int) {
+	<-dm.getChannelSemaphore(channelID)
+}
+
+func (dm *downloadManager) getChannelSemaphore(channelID int) chan struct{} {
+	dm.channelMu.Lock()
+	defer dm.channelMu.Unlock()
+	if dm.channelSem == nil {
+		dm.channelSem = make(map[int]chan struct{})
+	}
+	if sem, ok := dm.channelSem[channelID]; ok {
+		return sem
+	}
+	sem := make(chan struct{}, mediaDownloadChannelConcurrency())
+	dm.channelSem[channelID] = sem
+	return sem
 }
 
 func (dm *downloadManager) downloadTaskResult(task *model.Task) {
@@ -247,6 +303,17 @@ func mediaDownloadTimeout() time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+func mediaDownloadChannelConcurrency() int {
+	concurrency := common.GetEnvOrDefault("MEDIA_DOWNLOAD_CHANNEL_CONCURRENCY", downloadBatchSize)
+	if concurrency < 1 {
+		return 1
+	}
+	if concurrency > downloadBatchSize {
+		return downloadBatchSize
+	}
+	return concurrency
+}
+
 func waitForMediaDownloadRetry(ctx context.Context, retryIndex int) bool {
 	timer := time.NewTimer(time.Duration(retryIndex+1) * 2 * time.Second)
 	defer timer.Stop()
@@ -334,6 +401,17 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 	if task == nil {
 		return mediaDownloadTarget{}, fmt.Errorf("task is nil")
 	}
+	if resultURL := strings.TrimSpace(task.PrivateData.ResultURL); resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
+		target := mediaDownloadTarget{URL: resultURL, Headers: []map[string]string{nil}}
+		if isAuthDownloadPlatform(task.Platform) {
+			channel, err := model.CacheGetChannel(task.ChannelId)
+			if err != nil {
+				return mediaDownloadTarget{}, err
+			}
+			target.Headers = mediaDownloadAuthHeaders(task, channel)
+		}
+		return target, nil
+	}
 	if isSoraContentPlatform(task.Platform) {
 		channel, err := model.CacheGetChannel(task.ChannelId)
 		if err != nil {
@@ -360,6 +438,14 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		target.Headers = mediaDownloadAuthHeaders(task, channel)
 	}
 	return target, nil
+}
+
+func isTaskProxyResultURL(rawURL string, taskID string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return parsed.Path == "/v1/videos/"+taskID+"/content"
 }
 
 func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[string]string {
@@ -418,7 +504,22 @@ func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {
 func updateMediaStatusWithRetry(task *model.Task, status int) error {
 	var err error
 	for attempt := 0; attempt < mediaStatusRetries; attempt++ {
-		err = task.UpdateMediaStatus(status)
+		if task.Platform == constant.TaskPlatformImage && (status == model.MediaStatusSuccess || status == model.MediaStatusFailed) {
+			now := time.Now().Unix()
+			task.UpdatedAt = now
+			task.MediaStatus = status
+			task.MediaFinishTime = now
+			task.FinishTime = now
+			task.Progress = "100%"
+			if status == model.MediaStatusSuccess {
+				task.Status = model.TaskStatusSuccess
+			} else {
+				task.Status = model.TaskStatusFailure
+			}
+			err = task.Update()
+		} else {
+			err = task.UpdateMediaStatus(status)
+		}
 		if err == nil {
 			return nil
 		}
@@ -535,6 +636,7 @@ func taskDownloadKey(task *model.Task) (string, error) {
 }
 
 var DownloadManager = &downloadManager{
-	wakeChan: make(chan struct{}, 1),
-	sem:      make(chan struct{}, downloadBatchSize),
+	wakeChan:   make(chan struct{}, 1),
+	sem:        make(chan struct{}, downloadBatchSize),
+	channelSem: make(map[int]chan struct{}),
 }
