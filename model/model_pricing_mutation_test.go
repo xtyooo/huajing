@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -136,6 +137,59 @@ func TestSaveModelWithImagePricingClearsTieredConfiguration(t *testing.T) {
 	}
 }
 
+func TestSaveModelWithPerRequestPricingClearsTieredConfiguration(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+	existing := &Model{ModelName: "tiered-fixed", Status: 1, SyncOfficial: 1}
+	require.NoError(t, existing.Insert())
+	require.NoError(t, DB.Create(&Option{Key: "billing_setting.billing_mode", Value: `{"tiered-fixed":"tiered_expr","other":"tiered_expr"}`}).Error)
+	require.NoError(t, DB.Create(&Option{Key: "billing_setting.billing_expr", Value: `{"tiered-fixed":"tier(\"base\", p)","other":"tier(\"base\", p)"}`}).Error)
+
+	err := SaveModelWithPricing(existing, existing.ModelName, ModelPricingMutation{
+		Mode:  ModelPricingModePerRequest,
+		Price: float64Pointer(0.03),
+	})
+
+	require.NoError(t, err)
+	for _, key := range []string{"billing_setting.billing_mode", "billing_setting.billing_expr"} {
+		var option Option
+		require.NoError(t, DB.Where(commonKeyCol+" = ?", key).First(&option).Error)
+		var values map[string]string
+		require.NoError(t, common.UnmarshalJsonStr(option.Value, &values))
+		assert.NotContains(t, values, existing.ModelName)
+		assert.Contains(t, values, "other")
+	}
+}
+
+func TestSaveModelWithPricingRenamesCreateCacheRatio(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+	savedCreateCacheRatios := ratio_setting.CreateCacheRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(savedCreateCacheRatios))
+	})
+	existing := &Model{ModelName: "old-cache-model", Status: 1, SyncOfficial: 1}
+	require.NoError(t, existing.Insert())
+	require.NoError(t, DB.Create(&Option{Key: "CreateCacheRatio", Value: `{"old-cache-model":1.7,"other":1.1}`}).Error)
+
+	updated := *existing
+	updated.ModelName = "new-cache-model"
+	err := SaveModelWithPricing(&updated, existing.ModelName, ModelPricingMutation{
+		Mode:  ModelPricingModePerToken,
+		Ratio: float64Pointer(1),
+	})
+
+	require.NoError(t, err)
+	var option Option
+	require.NoError(t, DB.Where(commonKeyCol+" = ?", "CreateCacheRatio").First(&option).Error)
+	var ratios map[string]float64
+	require.NoError(t, common.UnmarshalJsonStr(option.Value, &ratios))
+	assert.NotContains(t, ratios, existing.ModelName)
+	assert.Equal(t, 1.7, ratios[updated.ModelName])
+	assert.Equal(t, 1.1, ratios["other"])
+	ratio, ok := ratio_setting.GetCreateCacheRatio(updated.ModelName)
+	assert.True(t, ok)
+	assert.Equal(t, 1.7, ratio)
+}
+
 func TestPricingOptionKeyClassification(t *testing.T) {
 	for _, key := range []string{
 		"ModelPrice",
@@ -197,4 +251,79 @@ func TestPricingPersistenceDoesNotBlockRuntimeReaders(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 		t.Fatal("runtime pricing reader was blocked by persistence work")
 	}
+}
+
+func TestUpdateOptionRejectsInvalidPricingBeforeDatabaseWrite(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+	})
+
+	const validPrices = `{"protected-model":0.03}`
+	require.NoError(t, UpdateOption("ModelPrice", validPrices))
+
+	err := UpdateOption("ModelPrice", `{not-json}`)
+
+	require.Error(t, err)
+	var option Option
+	require.NoError(t, DB.Where(commonKeyCol+" = ?", "ModelPrice").First(&option).Error)
+	assert.JSONEq(t, validPrices, option.Value)
+	price, ok := ratio_setting.GetModelPrice("protected-model", false)
+	assert.True(t, ok)
+	assert.Equal(t, 0.03, price)
+	common.OptionMapRWMutex.RLock()
+	assert.JSONEq(t, validPrices, common.OptionMap["ModelPrice"])
+	common.OptionMapRWMutex.RUnlock()
+}
+
+func TestUpdateOptionsBulkRejectsInvalidPricingBeforeAnyWrite(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+	require.NoError(t, DB.Create(&Option{Key: "SystemName", Value: "before"}).Error)
+
+	err := UpdateOptionsBulk(map[string]string{
+		"SystemName": "after",
+		"ModelPrice": `{not-json}`,
+	})
+
+	require.Error(t, err)
+	var option Option
+	require.NoError(t, DB.Where(commonKeyCol+" = ?", "SystemName").First(&option).Error)
+	assert.Equal(t, "before", option.Value)
+}
+
+func TestLoadOptionsIgnoresInvalidPricingWithoutClearingRuntimeState(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+	})
+
+	const validPrices = `{"protected-model":0.03}`
+	require.NoError(t, UpdateOption("ModelPrice", validPrices))
+	require.NoError(t, DB.Model(&Option{}).
+		Where(commonKeyCol+" = ?", "ModelPrice").
+		Update("value", `{not-json}`).Error)
+
+	loadOptionsFromDatabase()
+
+	price, ok := ratio_setting.GetModelPrice("protected-model", false)
+	assert.True(t, ok)
+	assert.Equal(t, 0.03, price)
+	common.OptionMapRWMutex.RLock()
+	assert.JSONEq(t, validPrices, common.OptionMap["ModelPrice"])
+	common.OptionMapRWMutex.RUnlock()
+}
+
+func TestUpdateOptionRejectsIncompleteEnabledImageSizePricing(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+
+	err := UpdateOption(ImageSizePriceKey("broken-image-model"), `{"enabled":true,"setting":{"1k":0.01,"2k":0.02}}`)
+
+	require.ErrorContains(t, err, "4K")
+	var count int64
+	require.NoError(t, DB.Model(&Option{}).
+		Where(commonKeyCol+" = ?", ImageSizePriceKey("broken-image-model")).
+		Count(&count).Error)
+	assert.Zero(t, count)
 }

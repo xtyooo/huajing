@@ -211,6 +211,10 @@ func loadOptionsFromDatabase() {
 	pricingConfigMutex.Lock()
 	defer pricingConfigMutex.Unlock()
 	for _, option := range pricingOptions {
+		if err := validatePricingOptionValue(option.Key, option.Value); err != nil {
+			common.SysLog("ignored invalid pricing option from database: " + err.Error())
+			continue
+		}
 		if err := updateOptionMap(option.Key, option.Value); err != nil {
 			common.SysLog("failed to update pricing option map: " + err.Error())
 		}
@@ -228,6 +232,9 @@ func SyncOptions(frequency int) {
 func UpdateOption(key string, value string) error {
 	isPricingUpdate := isPricingOptionKey(key)
 	if isPricingUpdate {
+		if err := validatePricingOptionValue(key, value); err != nil {
+			return err
+		}
 		pricingPersistenceMutex.Lock()
 		defer pricingPersistenceMutex.Unlock()
 	}
@@ -260,6 +267,13 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	isPricingUpdate := hasPricingOptionKeys(values)
 	if isPricingUpdate {
+		for key, value := range values {
+			if isPricingOptionKey(key) {
+				if err := validatePricingOptionValue(key, value); err != nil {
+					return err
+				}
+			}
+		}
 		pricingPersistenceMutex.Lock()
 		defer pricingPersistenceMutex.Unlock()
 	}

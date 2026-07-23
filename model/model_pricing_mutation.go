@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -59,6 +60,79 @@ func hasPricingOptionKeys(values map[string]string) bool {
 		}
 	}
 	return false
+}
+
+func validatePricingOptionValue(key, value string) error {
+	switch key {
+	case "ModelPrice", "ModelRatio", "CacheRatio", "CreateCacheRatio",
+		"CompletionRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio", "GroupRatio":
+		return validatePricingJSONMap[float64](key, value)
+	case "GroupGroupRatio":
+		return validatePricingJSONMap[map[string]float64](key, value)
+	case "billing_setting.billing_mode", "billing_setting.billing_expr":
+		return validatePricingJSONMap[string](key, value)
+	case "billing_setting.skip_seconds":
+		return validatePricingJSONMap[bool](key, value)
+	case "SelfUseModeEnabled", "quota_setting.enable_free_model_pre_consume":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("invalid pricing option %s: %w", key, err)
+		}
+		return nil
+	case "PreConsumedQuota":
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("invalid pricing option %s: %w", key, err)
+		}
+		return nil
+	case "QuotaPerUnit":
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return fmt.Errorf("invalid pricing option %s", key)
+		}
+		return nil
+	default:
+		if strings.HasPrefix(key, imageSizePriceSettingPrefix) {
+			var setting ImageSizePriceSetting
+			if err := common.UnmarshalJsonStr(value, &setting); err != nil {
+				return fmt.Errorf("invalid pricing option %s: %w", key, err)
+			}
+			if setting.Enabled {
+				for _, tier := range []string{"1k", "2k", "4k"} {
+					price := setting.Setting[tier]
+					if math.IsNaN(price) || math.IsInf(price, 0) || price <= 0 {
+						return fmt.Errorf("invalid pricing option %s: %s price must be greater than 0", key, strings.ToUpper(tier))
+					}
+				}
+			}
+			return nil
+		}
+		if strings.HasPrefix(key, resolutionPriceSettingPrefix) {
+			var setting ResolutionPriceSetting
+			if err := common.UnmarshalJsonStr(value, &setting); err != nil {
+				return fmt.Errorf("invalid pricing option %s: %w", key, err)
+			}
+			if setting.Enabled && len(setting.Setting) == 0 {
+				return fmt.Errorf("invalid pricing option %s: enabled setting has no prices", key)
+			}
+			for resolution, price := range setting.Setting {
+				if strings.TrimSpace(resolution) == "" || math.IsNaN(price) || math.IsInf(price, 0) || price <= 0 {
+					return fmt.Errorf("invalid pricing option %s: resolution prices must be finite and greater than 0", key)
+				}
+			}
+			return nil
+		}
+		return nil
+	}
+}
+
+func validatePricingJSONMap[T any](key, value string) error {
+	var parsed map[string]T
+	if err := common.UnmarshalJsonStr(value, &parsed); err != nil {
+		return fmt.Errorf("invalid pricing option %s: %w", key, err)
+	}
+	if parsed == nil {
+		return fmt.Errorf("invalid pricing option %s: expected a JSON object", key)
+	}
+	return nil
 }
 
 func PricingConfigRLock() {
@@ -145,6 +219,23 @@ func updateModelOptionEntry[T any](tx *gorm.DB, key, modelName, oldModelName str
 	return saveOptionValue(tx, key, values, written)
 }
 
+func renameModelOptionEntry[T any](tx *gorm.DB, key, modelName, oldModelName string, written map[string]string) error {
+	if oldModelName == "" || oldModelName == modelName {
+		return nil
+	}
+	values, err := loadOptionMapForUpdate[T](tx, key)
+	if err != nil {
+		return err
+	}
+	value, exists := values[oldModelName]
+	delete(values, oldModelName)
+	delete(values, modelName)
+	if exists {
+		values[modelName] = value
+	}
+	return saveOptionValue(tx, key, values, written)
+}
+
 func boolPointer(value bool) *bool {
 	return &value
 }
@@ -162,6 +253,9 @@ func saveDynamicPriceSetting(tx *gorm.DB, key string, value interface{}, written
 }
 
 func persistModelPricing(tx *gorm.DB, modelName, oldModelName string, pricing ModelPricingMutation, written map[string]string) error {
+	if err := renameModelOptionEntry[float64](tx, "CreateCacheRatio", modelName, oldModelName, written); err != nil {
+		return err
+	}
 	numericOptions := []struct {
 		key   string
 		value *float64
@@ -193,13 +287,13 @@ func persistModelPricing(tx *gorm.DB, modelName, oldModelName string, pricing Mo
 	if err := updateModelOptionEntry(tx, "billing_setting.skip_seconds", modelName, oldModelName, skipSeconds, written); err != nil {
 		return err
 	}
-	if pricing.Mode == ModelPricingModeImageSize {
-		if err := updateModelOptionEntry[string](tx, "billing_setting.billing_mode", modelName, oldModelName, nil, written); err != nil {
-			return err
-		}
-		if err := updateModelOptionEntry[string](tx, "billing_setting.billing_expr", modelName, oldModelName, nil, written); err != nil {
-			return err
-		}
+	// This endpoint only accepts the four non-tiered modes above. Remove any
+	// previous tiered expression so the selected mode becomes effective.
+	if err := updateModelOptionEntry[string](tx, "billing_setting.billing_mode", modelName, oldModelName, nil, written); err != nil {
+		return err
+	}
+	if err := updateModelOptionEntry[string](tx, "billing_setting.billing_expr", modelName, oldModelName, nil, written); err != nil {
+		return err
 	}
 
 	if oldModelName != "" && oldModelName != modelName {
@@ -231,6 +325,9 @@ func refreshPricingOptions(options map[string]string) error {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		if err := validatePricingOptionValue(key, options[key]); err != nil {
+			return fmt.Errorf("validate model pricing option %s: %w", key, err)
+		}
 		if err := updateOptionMap(key, options[key]); err != nil {
 			return fmt.Errorf("refresh model pricing option %s: %w", key, err)
 		}

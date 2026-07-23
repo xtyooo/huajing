@@ -19,46 +19,57 @@ func ResolutionPriceKey(modelName string) string {
 }
 
 func HasResolutionPricing(modelName string) bool {
+	setting, err := LoadResolutionPricing(modelName)
+	return err == nil && setting != nil && setting.Enabled
+}
+
+func LoadResolutionPricing(modelName string) (*ResolutionPriceSetting, error) {
+	PricingConfigRLock()
+	defer PricingConfigRUnlock()
+	return LoadResolutionPricingSnapshot(modelName)
+}
+
+// LoadResolutionPricingSnapshot reads a setting while the caller holds the pricing read lock.
+func LoadResolutionPricingSnapshot(modelName string) (*ResolutionPriceSetting, error) {
 	if modelName == "" {
-		return false
+		return nil, nil
 	}
-	var option Option
-	result := DB.Where(commonKeyCol+" = ?", ResolutionPriceKey(modelName)).First(&option)
-	if result.Error != nil {
-		return false
+	common.OptionMapRWMutex.RLock()
+	value, exists := common.OptionMap[ResolutionPriceKey(modelName)]
+	common.OptionMapRWMutex.RUnlock()
+	if !exists {
+		return nil, nil
 	}
 	var setting ResolutionPriceSetting
-	if err := common.UnmarshalJsonStr(option.Value, &setting); err != nil {
-		return false
+	if err := common.UnmarshalJsonStr(value, &setting); err != nil {
+		return nil, fmt.Errorf("parse resolution pricing for model %s: %w", modelName, err)
 	}
-	return setting.Enabled
+	if !setting.Enabled {
+		return nil, nil
+	}
+	return &setting, nil
 }
 
 func GetResolutionPrice(modelName, resolution string) (float64, error) {
-	if modelName == "" {
+	setting, err := LoadResolutionPricing(modelName)
+	if err != nil {
+		return 0, err
+	}
+	if setting == nil {
 		return 0, nil
 	}
+	return GetResolutionPriceFromSetting(modelName, resolution, setting)
+}
 
-	var option Option
-	result := DB.Where(commonKeyCol+" = ?", ResolutionPriceKey(modelName)).First(&option)
-	if result.Error != nil {
-		return 0, nil
+func GetResolutionPriceFromSetting(modelName, resolution string, setting *ResolutionPriceSetting) (float64, error) {
+	if setting == nil || !setting.Enabled {
+		return 0, fmt.Errorf("resolution pricing is not enabled for model %s", modelName)
 	}
-
-	var setting ResolutionPriceSetting
-	if err := common.UnmarshalJsonStr(option.Value, &setting); err != nil {
-		return 0, nil
-	}
-
-	if !setting.Enabled {
-		return 0, nil
-	}
-
 	if len(setting.Setting) == 0 {
 		return 0, fmt.Errorf("resolution price setting enabled but no prices configured for model %s", modelName)
 	}
 
-	resolution = strings.ToLower(resolution)
+	resolution = strings.ToLower(strings.TrimSpace(resolution))
 	price, ok := setting.Setting[resolution]
 	if !ok {
 		return 0, fmt.Errorf("resolution price setting enabled but resolution %q not configured for model %s", resolution, modelName)

@@ -85,6 +85,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 func ModelPriceHelperWithImageSizePricing(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, imageSizePricing *model.ImageSizePriceSetting) (types.PriceData, error) {
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	imageSizePricingApplied := false
 	if meta.ImageGeneration && imageSizePricing != nil {
 		if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 			return types.PriceData{}, fmt.Errorf("conflicting billing configurations for model %s: image-size and tiered_expr", info.OriginModelName)
@@ -95,6 +96,7 @@ func ModelPriceHelperWithImageSizePricing(c *gin.Context, info *relaycommon.Rela
 			return types.PriceData{}, err
 		}
 		usePrice = true
+		imageSizePricingApplied = true
 		meta.ImagePriceRatio = 0
 	}
 
@@ -180,6 +182,7 @@ func ModelPriceHelperWithImageSizePricing(c *gin.Context, info *relaycommon.Rela
 		CompletionRatio:      completionRatio,
 		GroupRatioInfo:       groupRatioInfo,
 		UsePrice:             usePrice,
+		ImageSizePricing:     imageSizePricingApplied,
 		CacheRatio:           cacheRatio,
 		ImageRatio:           imageRatio,
 		AudioRatio:           audioRatio,
@@ -215,7 +218,11 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	if model.HasResolutionPricing(info.OriginModelName) {
+	resolutionPricing, err := model.LoadResolutionPricingSnapshot(info.OriginModelName)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+	if resolutionPricing != nil {
 		return types.PriceData{
 			GroupRatioInfo: groupRatioInfo,
 		}, nil

@@ -325,6 +325,12 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		noteQuotaClamp(relayInfo, clamp)
 	}
 
+	if summary.TotalTokens == 0 && relayInfo.PriceData.ImageSizePricing {
+		// Image-size pricing is selected from the request before relay. Some
+		// compatible image responses omit usage entirely, but a successful
+		// response must still settle the selected fixed price.
+		summary.TotalTokens = 1
+	}
 	if summary.TotalTokens == 0 {
 		summary.Quota = 0
 	} else if !ratio.IsZero() && summary.Quota == 0 {

@@ -740,3 +740,25 @@ func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverri
 	summary = calculateTextQuotaSummary(ctx, relayInfo, usage)
 	require.Equal(t, 120000, summary.Quota)
 }
+
+func TestCalculateTextQuotaSummaryImageSizePriceSurvivesMissingUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "image-chat-model",
+		PriceData: types.PriceData{
+			ModelPrice:       0.04,
+			UsePrice:         true,
+			ImageSizePricing: true,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
+
+	require.Equal(t, 20000, summary.Quota)
+	require.Equal(t, 1, summary.TotalTokens)
+}
