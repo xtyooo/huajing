@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,6 +69,87 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, messageSummary.CacheCreationTokens1h, chatSummary.CacheCreationTokens1h)
 	require.True(t, chatSummary.IsClaudeUsageSemantic)
 	require.Equal(t, 1488, chatSummary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryMultipliesImageGenerationCallSurcharge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("image_generation_call", true)
+	ctx.Set("image_generation_call_count", 2)
+	ctx.Set("image_generation_call_quality", "low")
+	ctx.Set("image_generation_call_size", "1024x1024")
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "o1",
+		PriceData: types.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: 1,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{PromptTokens: 1, TotalTokens: 1})
+	want := decimal.NewFromFloat(summary.ImageGenerationCallPrice).
+		Mul(decimal.NewFromInt(2)).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+
+	require.Equal(t, 2, summary.ImageGenerationCallCount)
+	require.True(t, want.Equal(summary.ToolCallSurchargeQuota))
+}
+
+func TestFixedPriceImageCallSurchargeIsNotMultipliedTwice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("image_generation_call", true)
+	ctx.Set("image_generation_call_count", 2)
+	ctx.Set("image_generation_call_quality", "low")
+	ctx.Set("image_generation_call_size", "1024x1024")
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "o1",
+		PriceData: types.PriceData{
+			UsePrice:        true,
+			ModelPrice:      1,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+			CompletionRatio: 1,
+		},
+	}
+	relayInfo.PriceData.AddOtherRatio("n", 2)
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{PromptTokens: 1, TotalTokens: 1})
+	wantPerCall := decimal.NewFromFloat(summary.ImageGenerationCallPrice).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	wantFinalQuota, _ := common.QuotaFromDecimalChecked(
+		decimal.NewFromFloat(relayInfo.PriceData.ModelPrice).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+			Add(wantPerCall).
+			Mul(decimal.NewFromInt(2)),
+	)
+
+	require.True(t, wantPerCall.Equal(summary.ToolCallSurchargeQuota))
+	require.Equal(t, wantFinalQuota, summary.Quota)
+}
+
+func TestImageSizePricingSkipsBuiltInImageCallSurcharge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("image_generation_call", true)
+	ctx.Set("image_generation_call_count", 2)
+	ctx.Set("image_generation_call_quality", "low")
+	ctx.Set("image_generation_call_size", "1024x1024")
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "image-model",
+		PriceData: types.PriceData{
+			UsePrice:         true,
+			ImageSizePricing: true,
+			ModelPrice:       0.02,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+	relayInfo.PriceData.AddOtherRatio("n", 2)
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{TotalTokens: 1})
+
+	require.True(t, summary.ToolCallSurchargeQuota.IsZero())
+	require.Zero(t, summary.ImageGenerationCallPrice)
 }
 
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {

@@ -160,6 +160,35 @@ func TestSaveModelWithPerRequestPricingClearsTieredConfiguration(t *testing.T) {
 	}
 }
 
+func TestSaveModelWithTieredPricingPreservesExistingExpression(t *testing.T) {
+	useModelPricingMutationTestDB(t)
+	existing := &Model{ModelName: "tiered-preserved", Description: "before", Status: 1, SyncOfficial: 1}
+	require.NoError(t, existing.Insert())
+	const modeValue = `{"tiered-preserved":"tiered_expr","other":"tiered_expr"}`
+	const exprValue = `{"tiered-preserved":"tier(\"base\", p)","other":"tier(\"base\", c)"}`
+	require.NoError(t, DB.Create(&Option{Key: "billing_setting.billing_mode", Value: modeValue}).Error)
+	require.NoError(t, DB.Create(&Option{Key: "billing_setting.billing_expr", Value: exprValue}).Error)
+
+	updated := *existing
+	updated.Description = "after"
+	err := SaveModelWithPricing(&updated, existing.ModelName, ModelPricingMutation{
+		Mode: ModelPricingModeTiered,
+	})
+
+	require.NoError(t, err)
+	for key, want := range map[string]string{
+		"billing_setting.billing_mode": modeValue,
+		"billing_setting.billing_expr": exprValue,
+	} {
+		var option Option
+		require.NoError(t, DB.Where(commonKeyCol+" = ?", key).First(&option).Error)
+		assert.JSONEq(t, want, option.Value)
+	}
+	var saved Model
+	require.NoError(t, DB.First(&saved, existing.Id).Error)
+	assert.Equal(t, "after", saved.Description)
+}
+
 func TestSaveModelWithPricingRenamesCreateCacheRatio(t *testing.T) {
 	useModelPricingMutationTestDB(t)
 	savedCreateCacheRatios := ratio_setting.CreateCacheRatio2JSONString()

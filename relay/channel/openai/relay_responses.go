@@ -34,10 +34,8 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	if responsesResponse.HasImageGenerationCall() {
-		c.Set("image_generation_call", true)
-		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
-		c.Set("image_generation_call_size", responsesResponse.GetSize())
+	if imageCallCount := setResponsesImageGenerationContext(c, &responsesResponse); imageCallCount > 0 {
+		updateOpenAIImageCount(info, imageCallCount)
 	}
 
 	// 写入新的 response body
@@ -79,6 +77,11 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	var completedImageCalls int64
+	var finalImageCalls int64
+	var finalResponseSeen bool
+	var completedImageQuality string
+	var completedImageSize string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -91,8 +94,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
-		case "response.completed":
+		case "response.completed", "response.done", "response.incomplete":
 			if streamResponse.Response != nil {
+				finalResponseSeen = true
+				finalImageCalls = streamResponse.Response.ImageGenerationCallCount()
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
 						usage.PromptTokens = streamResponse.Response.Usage.InputTokens
@@ -108,11 +113,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 						usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
 					}
 				}
-				if streamResponse.Response.HasImageGenerationCall() {
-					c.Set("image_generation_call", true)
-					c.Set("image_generation_call_quality", streamResponse.Response.GetQuality())
-					c.Set("image_generation_call_size", streamResponse.Response.GetSize())
-				}
+				setResponsesImageGenerationContext(c, streamResponse.Response)
 			}
 		case "response.output_text.delta":
 			// 处理输出文本
@@ -120,6 +121,15 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		case dto.ResponsesOutputTypeItemDone:
 			// 函数调用处理
 			if streamResponse.Item != nil {
+				if streamResponse.Item.IsSuccessfulImageGenerationCall() {
+					completedImageCalls++
+					if completedImageQuality == "" {
+						completedImageQuality = streamResponse.Item.Quality
+					}
+					if completedImageSize == "" {
+						completedImageSize = streamResponse.Item.Size
+					}
+				}
 				switch streamResponse.Item.Type {
 				case dto.BuildInCallWebSearchCall:
 					if info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
@@ -131,6 +141,26 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+
+	if finalResponseSeen {
+		updateOpenAIImageCount(info, finalImageCalls)
+	} else if info != nil && info.StreamStatus != nil {
+		upstreamFinished := info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone ||
+			info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF
+		requestedN := 1.0
+		if n, ok := info.PriceData.OtherRatios()["n"]; ok {
+			requestedN = n
+		}
+		if upstreamFinished || float64(completedImageCalls) > requestedN {
+			updateOpenAIImageCount(info, completedImageCalls)
+		}
+	}
+	if !finalResponseSeen && completedImageCalls > 0 {
+		c.Set("image_generation_call", true)
+		c.Set("image_generation_call_count", int(completedImageCalls))
+		c.Set("image_generation_call_quality", completedImageQuality)
+		c.Set("image_generation_call_size", completedImageSize)
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
@@ -149,4 +179,19 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+func setResponsesImageGenerationContext(c *gin.Context, response *dto.OpenAIResponsesResponse) int64 {
+	if c == nil || response == nil {
+		return 0
+	}
+	count := response.ImageGenerationCallCount()
+	if count <= 0 {
+		return 0
+	}
+	c.Set("image_generation_call", true)
+	c.Set("image_generation_call_count", int(count))
+	c.Set("image_generation_call_quality", response.GetQuality())
+	c.Set("image_generation_call_size", response.GetSize())
+	return count
 }

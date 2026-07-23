@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
@@ -321,15 +322,29 @@ func (o *OpenAIResponsesResponse) GetOpenAIError() *types.OpenAIError {
 }
 
 func (o *OpenAIResponsesResponse) HasImageGenerationCall() bool {
-	if len(o.Output) == 0 {
-		return false
-	}
+	return o.ImageGenerationCallCount() > 0
+}
+
+func (o *OpenAIResponsesResponse) ImageGenerationCallCount() int64 {
+	var count int64
 	for _, output := range o.Output {
-		if output.Type == ResponsesOutputTypeImageGenerationCall {
-			return true
+		if output.IsSuccessfulImageGenerationCall() {
+			count++
 		}
 	}
-	return false
+	return count
+}
+
+func (r *ResponsesOutput) IsSuccessfulImageGenerationCall() bool {
+	if r == nil || r.Type != ResponsesOutputTypeImageGenerationCall {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(r.Status)) {
+	case "", "completed", "succeeded":
+		return true
+	default:
+		return false
+	}
 }
 
 func (o *OpenAIResponsesResponse) GetQuality() string {
@@ -337,7 +352,7 @@ func (o *OpenAIResponsesResponse) GetQuality() string {
 		return ""
 	}
 	for _, output := range o.Output {
-		if output.Type == ResponsesOutputTypeImageGenerationCall {
+		if output.IsSuccessfulImageGenerationCall() {
 			return output.Quality
 		}
 	}
@@ -349,7 +364,7 @@ func (o *OpenAIResponsesResponse) GetSize() string {
 		return ""
 	}
 	for _, output := range o.Output {
-		if output.Type == ResponsesOutputTypeImageGenerationCall {
+		if output.IsSuccessfulImageGenerationCall() {
 			return output.Size
 		}
 	}

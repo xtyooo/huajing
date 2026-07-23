@@ -22,6 +22,7 @@ export type ModelPricingMode =
   | 'per-request'
   | 'resolution'
   | 'image-size'
+  | 'tiered_expr'
 
 type PricingValues = {
   price?: string

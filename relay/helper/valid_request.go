@@ -307,6 +307,10 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 	if textRequest.Model == "" {
 		return nil, errors.New("model is required")
 	}
+	if textRequest.GetTokenCountMeta().ImageGeneration && textRequest.N != nil &&
+		(*textRequest.N <= 0 || *textRequest.N > dto.MaxImageN) {
+		return nil, fmt.Errorf("n must be an integer between 1 and %d", dto.MaxImageN)
+	}
 	if textRequest.WebSearchOptions != nil {
 		if textRequest.WebSearchOptions.SearchContextSize != "" {
 			validSizes := map[string]bool{
@@ -356,6 +360,10 @@ func GetAndValidateGeminiRequest(c *gin.Context) (*dto.GeminiChatRequest, error)
 	}
 	if exceedsMaxTokensLimit(request.GenerationConfig.MaxOutputTokens) {
 		return nil, errors.New("maxOutputTokens is invalid")
+	}
+	if request.GetTokenCountMeta().ImageGeneration && request.GenerationConfig.CandidateCount != nil &&
+		(*request.GenerationConfig.CandidateCount <= 0 || *request.GenerationConfig.CandidateCount > dto.MaxImageN) {
+		return nil, fmt.Errorf("candidateCount must be an integer between 1 and %d", dto.MaxImageN)
 	}
 
 	//if c.Query("alt") == "sse" {

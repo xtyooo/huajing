@@ -223,6 +223,9 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 			}
 		}
 	}
+	if tokenCountMeta.ImageGeneration && r.N != nil && *r.N > 0 {
+		tokenCountMeta.BillingRatios = map[string]float64{"n": float64(*r.N)}
+	}
 	return &tokenCountMeta
 }
 
@@ -967,11 +970,21 @@ func (r *OpenAIResponsesRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		texts = append(texts, string(r.Tools))
 	}
 
-	return &types.TokenCountMeta{
+	meta := &types.TokenCountMeta{
 		CombineText: strings.Join(texts, "\n"),
 		Files:       fileMeta,
 		MaxTokens:   int(lo.FromPtrOr(r.MaxOutputTokens, uint(0))),
 	}
+	for _, tool := range r.GetToolsMap() {
+		if common.Interface2String(tool["type"]) != "image_generation" {
+			continue
+		}
+		meta.ImageGeneration = true
+		meta.ImageSize = common.Interface2String(tool["size"])
+		meta.BillingRatios = map[string]float64{"n": 1}
+		break
+	}
+	return meta
 }
 
 func (r *OpenAIResponsesRequest) IsStream(c *gin.Context) bool {

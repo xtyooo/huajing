@@ -77,10 +77,12 @@ func geminiResponseUsageText(response *dto.GeminiChatResponse) string {
 }
 
 func buildUsageFromGeminiResponse(c *gin.Context, info *relaycommon.RelayInfo, response *dto.GeminiChatResponse) dto.Usage {
+	imageCount := geminiResponseInlineImageCount(response)
+	updateGeminiImageCount(info, imageCount)
 	metadata := response.GetUsageMetadata()
 	if dto.HasGeminiUsageMetadataTokens(metadata) {
 		usage := buildUsageFromGeminiMetadata(metadata, info.GetEstimatePromptTokens())
-		patchGeminiZeroCompletionUsage(c, info, &usage, geminiResponseUsageText(response), geminiResponseInlineImageCount(response))
+		patchGeminiZeroCompletionUsage(c, info, &usage, geminiResponseUsageText(response), imageCount)
 		return usage
 	}
 	usage := service.ResponseText2Usage(c, geminiResponseUsageText(response), info.UpstreamModelName, info.GetEstimatePromptTokens())
@@ -95,12 +97,19 @@ func geminiResponseInlineImageCount(response *dto.GeminiChatResponse) int {
 	count := 0
 	for _, candidate := range response.Candidates {
 		for _, part := range candidate.Content.Parts {
-			if part.InlineData != nil && part.InlineData.MimeType != "" {
+			if part.InlineData != nil && strings.HasPrefix(strings.ToLower(part.InlineData.MimeType), "image/") {
 				count++
 			}
 		}
 	}
 	return count
+}
+
+func updateGeminiImageCount(info *relaycommon.RelayInfo, count int) {
+	if info == nil || !info.PriceData.UsePrice || count <= 0 || count > dto.MaxImageN {
+		return
+	}
+	info.PriceData.AddOtherRatio("n", float64(count))
 }
 
 func responseGeminiChat2OpenAI(c *gin.Context, response *dto.GeminiChatResponse) *dto.OpenAITextResponse {
@@ -152,7 +161,7 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		// 统计图片数量
 		for _, candidate := range geminiResponse.Candidates {
 			for _, part := range candidate.Content.Parts {
-				if part.InlineData != nil && part.InlineData.MimeType != "" {
+				if part.InlineData != nil && strings.HasPrefix(strings.ToLower(part.InlineData.MimeType), "image/") {
 					imageCount++
 				}
 				if part.Text != "" {
@@ -172,6 +181,17 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			sr.Stop(fmt.Errorf("gemini callback stopped"))
 		}
 	})
+	if info != nil && info.StreamStatus != nil {
+		upstreamFinished := info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone ||
+			info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF
+		requestedN := 1.0
+		if n, ok := info.PriceData.OtherRatios()["n"]; ok {
+			requestedN = n
+		}
+		if upstreamFinished || float64(imageCount) > requestedN {
+			updateGeminiImageCount(info, imageCount)
+		}
+	}
 
 	if !hasBillableUsageMetadata {
 		if info.ReceivedResponseCount > 0 {
@@ -463,6 +483,7 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	// each image has fixed 258 tokens
 	const imageTokens = 258
 	generatedImages := len(openAIResponse.Data)
+	updateGeminiImageCount(info, generatedImages)
 
 	usage := &dto.Usage{
 		PromptTokens:     imageTokens * generatedImages, // each generated image has fixed 258 tokens

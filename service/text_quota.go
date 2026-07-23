@@ -54,6 +54,7 @@ type textQuotaSummary struct {
 	FileSearchCallCount      int
 	AudioInputPrice          float64
 	ImageGenerationCallPrice float64
+	ImageGenerationCallCount int
 	ToolCallSurchargeQuota   decimal.Decimal
 }
 
@@ -128,11 +129,22 @@ func calculateTextToolCallSurcharge(ctx *gin.Context, relayInfo *relaycommon.Rel
 		}
 	}
 
-	if ctx.GetBool("image_generation_call") {
+	if ctx.GetBool("image_generation_call") && !relayInfo.PriceData.ImageSizePricing {
+		summary.ImageGenerationCallCount = ctx.GetInt("image_generation_call_count")
+		if summary.ImageGenerationCallCount <= 0 {
+			summary.ImageGenerationCallCount = 1
+		}
+		billedCallCount := summary.ImageGenerationCallCount
+		if relayInfo.PriceData.UsePrice && relayInfo.PriceData.HasOtherRatio("n") {
+			// Fixed-price requests apply n to the complete quota below, so the
+			// per-call surcharge must stay at one unit here.
+			billedCallCount = 1
+		}
 		summary.ImageGenerationCallPrice = operation_setting.GetGPTImage1PriceOnceCall(ctx.GetString("image_generation_call_quality"), ctx.GetString("image_generation_call_size"))
 		surcharge = surcharge.Add(decimal.NewFromFloat(summary.ImageGenerationCallPrice).
 			Mul(dGroupRatio).
-			Mul(dQuotaPerUnit))
+			Mul(dQuotaPerUnit).
+			Mul(decimal.NewFromInt(int64(billedCallCount))))
 	}
 
 	return surcharge
@@ -391,7 +403,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", decimal.NewFromFloat(summary.AudioInputPrice).Div(decimal.NewFromInt(1000000)).Mul(decimal.NewFromInt(int64(summary.AudioTokens))).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 	if summary.ImageGenerationCallPrice > 0 {
-		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
+		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 调用 %d 次，调用花费 %s", summary.ImageGenerationCallCount, decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromInt(int64(summary.ImageGenerationCallCount))).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
 	if summary.TotalTokens == 0 {
@@ -460,6 +472,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if summary.ImageGenerationCallPrice > 0 {
 		other["image_generation_call"] = true
+		other["image_generation_call_count"] = summary.ImageGenerationCallCount
 		other["image_generation_call_price"] = summary.ImageGenerationCallPrice
 	}
 	if summary.CacheCreationTokens > 0 {

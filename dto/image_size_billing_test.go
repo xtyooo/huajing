@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,34 @@ func TestOpenAICompatibleImageBillingMetaReadsGoogleImageConfig(t *testing.T) {
 
 	assert.True(t, meta.ImageGeneration)
 	assert.Equal(t, "4K", meta.ImageSize)
+}
+
+func TestOpenAIResponsesImageBillingMetaUsesImageGenerationToolSize(t *testing.T) {
+	request := OpenAIResponsesRequest{
+		Tools: json.RawMessage(`[{"type":"image_generation","size":"2048x2048"}]`),
+	}
+
+	meta := request.GetTokenCountMeta()
+
+	assert.True(t, meta.ImageGeneration)
+	assert.Equal(t, "2048x2048", meta.ImageSize)
+}
+
+func TestImageChatBillingMetaIncludesRequestedImageCount(t *testing.T) {
+	openAIN := 3
+	openAIRequest := GeneralOpenAIRequest{
+		N:          &openAIN,
+		Size:       "2K",
+		Modalities: json.RawMessage(`["image"]`),
+	}
+	assert.Equal(t, 3.0, openAIRequest.GetTokenCountMeta().BillingRatios["n"])
+
+	geminiN := 2
+	geminiRequest := GeminiChatRequest{
+		GenerationConfig: GeminiChatGenerationConfig{
+			CandidateCount:     &geminiN,
+			ResponseModalities: []string{"IMAGE"},
+		},
+	}
+	assert.Equal(t, 2.0, geminiRequest.GetTokenCountMeta().BillingRatios["n"])
 }

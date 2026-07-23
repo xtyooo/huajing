@@ -122,13 +122,17 @@ func (r *GeminiChatRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		}
 	}
 
-	return &types.TokenCountMeta{
+	meta := &types.TokenCountMeta{
 		CombineText:     inputText,
 		Files:           files,
 		MaxTokens:       maxTokens,
 		ImageSize:       imageSize,
 		ImageGeneration: imageGeneration,
 	}
+	if imageGeneration && r.GenerationConfig.CandidateCount != nil && *r.GenerationConfig.CandidateCount > 0 {
+		meta.BillingRatios = map[string]float64{"n": float64(*r.GenerationConfig.CandidateCount)}
+	}
+	return meta
 }
 
 func (r *GeminiChatRequest) IsStream(c *gin.Context) bool {

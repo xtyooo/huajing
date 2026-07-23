@@ -94,7 +94,12 @@ export async function saveModelWithPricing(data: {
   model: Partial<Model>
   old_model_name: string
   pricing: {
-    mode: 'per-token' | 'per-request' | 'resolution' | 'image-size'
+    mode:
+      | 'per-token'
+      | 'per-request'
+      | 'resolution'
+      | 'image-size'
+      | 'tiered_expr'
     price?: number
     ratio?: number
     cache_ratio?: number

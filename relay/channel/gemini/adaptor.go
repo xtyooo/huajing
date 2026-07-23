@@ -101,14 +101,22 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		},
 	}
 
+	// An explicit 1K/2K/4K size controls the upstream output tier. This must
+	// take priority over quality so generation and billing use the same tier.
+	imageSize := ""
+	switch strings.ToUpper(size) {
+	case "1K", "2K", "4K":
+		imageSize = strings.ToUpper(size)
+	}
+
 	// Set imageSize when quality parameter is specified
 	// Map quality parameter to imageSize (only supported by Standard and Ultra models)
 	// quality values: auto, high, medium, low (for gpt-image-1), hd, standard (for dall-e-3)
 	// imageSize values: 1K (default), 2K
 	// https://ai.google.dev/gemini-api/docs/imagen
 	// https://platform.openai.com/docs/api-reference/images/create
-	if request.Quality != "" {
-		imageSize := "1K" // default
+	if imageSize == "" && request.Quality != "" {
+		imageSize = "1K" // default
 		switch request.Quality {
 		case "hd", "high":
 			imageSize = "2K"
@@ -120,8 +128,8 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			// unknown quality value, default to 1K
 			imageSize = "1K"
 		}
-		geminiRequest.Parameters.ImageSize = imageSize
 	}
+	geminiRequest.Parameters.ImageSize = imageSize
 
 	return geminiRequest, nil
 }

@@ -2,10 +2,12 @@ package helper
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/dto"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -68,5 +70,29 @@ func TestMaxTokensBounds(t *testing.T) {
 		_, err := GetAndValidateResponsesRequest(c)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "max_output_tokens is invalid")
+	})
+}
+
+func TestImageGenerationCountBounds(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newJSONContext := func(t *testing.T, body string) *gin.Context {
+		t.Helper()
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/relay", bytes.NewBufferString(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		return c
+	}
+
+	t.Run("openai image chat rejects excessive n", func(t *testing.T) {
+		body := fmt.Sprintf(`{"model":"image-model","messages":[{"role":"user","content":"draw"}],"modalities":["image"],"size":"2K","n":%d}`, dto.MaxImageN+1)
+		_, err := GetAndValidateTextRequest(newJSONContext(t, body), relayconstant.RelayModeChatCompletions)
+		require.ErrorContains(t, err, fmt.Sprintf("n must be an integer between 1 and %d", dto.MaxImageN))
+	})
+
+	t.Run("gemini image generation rejects excessive candidate count", func(t *testing.T) {
+		body := fmt.Sprintf(`{"contents":[{"parts":[{"text":"draw"}]}],"generationConfig":{"candidateCount":%d,"responseModalities":["IMAGE"],"imageConfig":{"imageSize":"2K"}}}`, dto.MaxImageN+1)
+		_, err := GetAndValidateGeminiRequest(newJSONContext(t, body))
+		require.ErrorContains(t, err, fmt.Sprintf("candidateCount must be an integer between 1 and %d", dto.MaxImageN))
 	})
 }

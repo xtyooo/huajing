@@ -18,6 +18,7 @@ const (
 	ModelPricingModePerRequest = "per-request"
 	ModelPricingModeResolution = "resolution"
 	ModelPricingModeImageSize  = "image-size"
+	ModelPricingModeTiered     = "tiered_expr"
 )
 
 type ModelPricingMutation struct {
@@ -145,7 +146,7 @@ func PricingConfigRUnlock() {
 
 func validateModelPricingMutation(pricing ModelPricingMutation) error {
 	switch pricing.Mode {
-	case ModelPricingModePerToken, ModelPricingModePerRequest, ModelPricingModeResolution, ModelPricingModeImageSize:
+	case ModelPricingModePerToken, ModelPricingModePerRequest, ModelPricingModeResolution, ModelPricingModeImageSize, ModelPricingModeTiered:
 	default:
 		return fmt.Errorf("unsupported model pricing mode %q", pricing.Mode)
 	}
@@ -252,7 +253,48 @@ func saveDynamicPriceSetting(tx *gorm.DB, key string, value interface{}, written
 	return saveOptionValue(tx, key, value, written)
 }
 
+func preserveTieredModelPricing(tx *gorm.DB, modelName, oldModelName string, written map[string]string) error {
+	sourceModelName := modelName
+	if oldModelName != "" {
+		sourceModelName = oldModelName
+	}
+	modes, err := loadOptionMapForUpdate[string](tx, "billing_setting.billing_mode")
+	if err != nil {
+		return err
+	}
+	expressions, err := loadOptionMapForUpdate[string](tx, "billing_setting.billing_expr")
+	if err != nil {
+		return err
+	}
+	mode, modeExists := modes[sourceModelName]
+	expression, expressionExists := expressions[sourceModelName]
+	if !modeExists || mode != ModelPricingModeTiered || !expressionExists || strings.TrimSpace(expression) == "" {
+		return fmt.Errorf("tiered pricing configuration is missing for model %s", sourceModelName)
+	}
+	if sourceModelName == modelName {
+		return nil
+	}
+	for _, key := range []string{
+		"ModelPrice", "ModelRatio", "CacheRatio", "CreateCacheRatio", "CompletionRatio",
+		"ImageRatio", "AudioRatio", "AudioCompletionRatio",
+	} {
+		if err := renameModelOptionEntry[float64](tx, key, modelName, sourceModelName, written); err != nil {
+			return err
+		}
+	}
+	if err := renameModelOptionEntry[bool](tx, "billing_setting.skip_seconds", modelName, sourceModelName, written); err != nil {
+		return err
+	}
+	if err := updateModelOptionEntry(tx, "billing_setting.billing_mode", modelName, sourceModelName, &mode, written); err != nil {
+		return err
+	}
+	return updateModelOptionEntry(tx, "billing_setting.billing_expr", modelName, sourceModelName, &expression, written)
+}
+
 func persistModelPricing(tx *gorm.DB, modelName, oldModelName string, pricing ModelPricingMutation, written map[string]string) error {
+	if pricing.Mode == ModelPricingModeTiered {
+		return preserveTieredModelPricing(tx, modelName, oldModelName, written)
+	}
 	if err := renameModelOptionEntry[float64](tx, "CreateCacheRatio", modelName, oldModelName, written); err != nil {
 		return err
 	}

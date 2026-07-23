@@ -143,6 +143,7 @@ export function ModelMutateDrawer({
   const [imageSize2k, setImageSize2k] = useState('')
   const [imageSize4k, setImageSize4k] = useState('')
   const [skipSeconds, setSkipSeconds] = useState(false)
+  const [tieredExpr, setTieredExpr] = useState('')
 
   // Fetch vendors for dropdown
   const { data: vendorsData } = useQuery({
@@ -308,6 +309,7 @@ export function ModelMutateDrawer({
       setImageSize1k('')
       setImageSize2k('')
       setImageSize4k('')
+      setTieredExpr('')
 
       // Base model data reset
       const baseModelData = {
@@ -370,6 +372,15 @@ export function ModelMutateDrawer({
         const imageRatio = imageMap[modelName]
         const audioRatio = audioMap[modelName]
         const audioCompletionRatio = audioCompletionMap[modelName]
+        const billingModeMap = safeJsonParse<Record<string, string>>(
+          modelSettings['billing_setting.billing_mode'] || '{}',
+          { fallback: {}, silent: true }
+        )
+        const billingExprMap = safeJsonParse<Record<string, string>>(
+          modelSettings['billing_setting.billing_expr'] || '{}',
+          { fallback: {}, silent: true }
+        )
+        const existingTieredExpr = billingExprMap[modelName] || ''
 
         const imageSizeKey = `image_size_price_setting.${modelName}`
         const imageSizeOption = systemOptionsData?.data?.find(
@@ -395,7 +406,15 @@ export function ModelMutateDrawer({
           : undefined
 
         // Determine pricing mode
-        if (imageSizeSetting?.enabled) {
+        if (
+          billingModeMap[modelName] === 'tiered_expr' &&
+          existingTieredExpr.trim() !== ''
+        ) {
+          setPricingMode('tiered_expr')
+          setTieredExpr(existingTieredExpr)
+          form.reset(baseModelData)
+          setAdvancedOpen(false)
+        } else if (imageSizeSetting?.enabled) {
           setPricingMode('image-size')
           setImageSize1k(imageSizeSetting.setting['1k']?.toString() || '')
           setImageSize2k(imageSizeSetting.setting['2k']?.toString() || '')
@@ -911,8 +930,26 @@ export function ModelMutateDrawer({
                       {t('Image size (per image)')}
                     </Label>
                   </div>
+                  <div className='flex items-center space-x-2'>
+                    <RadioGroupItem
+                      value='tiered_expr'
+                      id='mode-tiered-expr'
+                      disabled={!tieredExpr}
+                    />
+                    <Label htmlFor='mode-tiered-expr' className='font-normal'>
+                      {t('Expression billing')}
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
+
+              {pricingMode === 'tiered_expr' && (
+                <Textarea
+                  value={tieredExpr}
+                  readOnly
+                  className='font-mono text-xs'
+                />
+              )}
 
               {pricingMode === 'per-request' && (
                 <>
