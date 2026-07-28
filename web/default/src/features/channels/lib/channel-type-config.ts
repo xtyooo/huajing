@@ -170,6 +170,19 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
         'Video task channel. Upstream uses POST /v2/generate and GET /v2/generate/{task_id}.',
     },
   },
+  67: {
+    id: 67,
+    name: CHANNEL_TYPES[67],
+    icon: 'volcengine',
+    defaultBaseUrl: 'https://token-api.wufan.com',
+    hints: {
+      baseUrl: 'Default: https://token-api.wufan.com',
+      key: 'Bearer API key',
+      models: 'wufan,Seedance-2.0,Seedance-2.0-Mini',
+      other:
+        'Video task channel. Client calls /v1/videos; upstream uses Wufan Seedance generations API.',
+    },
+  },
 }
 
 /**

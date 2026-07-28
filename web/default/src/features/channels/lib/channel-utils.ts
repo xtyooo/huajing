@@ -104,6 +104,7 @@ export function getChannelTypeIcon(type: number): string {
     56: 'Replicate', // Replicate
     65: 'Volcengine', // kuai
     66: 'OpenAI', // sd0717
+    67: 'Volcengine', // wufan
     61: 'OpenAI', // HJ
 
     // Tools & Platforms
