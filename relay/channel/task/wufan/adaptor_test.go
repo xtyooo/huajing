@@ -115,6 +115,42 @@ func TestParseTaskResultSuccessExtractsNestedVideoURLAndUsage(t *testing.T) {
 	assert.Equal(t, 1280, result.TotalTokens)
 }
 
+func TestDoResponseAcceptsStringIDAndStringTimestamps(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	adaptor := &TaskAdaptor{}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(bytes.NewBufferString(`{
+			"success":true,
+			"message":"成功",
+			"code":200,
+			"result":{
+				"id":"837544220138016768",
+				"model":"Seedance-2.0-Mini",
+				"status":"init",
+				"created_at":"1785330371788"
+			},
+			"timestamp":"1785330371814"
+		}`)),
+	}
+	info := &relaycommon.RelayInfo{
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"},
+		OriginModelName: "Seedance-2.0-Mini",
+	}
+
+	upstreamID, _, taskErr := adaptor.DoResponse(ctx, resp, info)
+
+	require.Nil(t, taskErr)
+	assert.Equal(t, "837544220138016768", upstreamID)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var out map[string]any
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &out))
+	assert.Equal(t, "task_public", out["id"])
+	assert.Equal(t, "queued", out["status"])
+	assert.EqualValues(t, 1785330371, out["created_at"])
+}
+
 func TestParseTaskResultFailureUsesErrorMessage(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 

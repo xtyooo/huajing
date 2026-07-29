@@ -50,18 +50,18 @@ type submitResponse struct {
 	Message   string        `json:"message,omitempty"`
 	Code      int           `json:"code,omitempty"`
 	Result    *responseTask `json:"result,omitempty"`
-	Timestamp int64         `json:"timestamp,omitempty"`
+	Timestamp flexibleInt64 `json:"timestamp,omitempty"`
 }
 
 type responseTask struct {
-	ID          json.Number `json:"id"`
-	Model       string      `json:"model,omitempty"`
-	Status      string      `json:"status"`
-	CreatedAt   int64       `json:"created_at,omitempty"`
-	CompletedAt int64       `json:"completed_at,omitempty"`
-	ExpiresAt   int64       `json:"expires_at,omitempty"`
-	Error       any         `json:"error,omitempty"`
-	Result      *taskResult `json:"result,omitempty"`
+	ID          flexibleString `json:"id"`
+	Model       string         `json:"model,omitempty"`
+	Status      string         `json:"status"`
+	CreatedAt   flexibleInt64  `json:"created_at,omitempty"`
+	CompletedAt flexibleInt64  `json:"completed_at,omitempty"`
+	ExpiresAt   flexibleInt64  `json:"expires_at,omitempty"`
+	Error       any            `json:"error,omitempty"`
+	Result      *taskResult    `json:"result,omitempty"`
 }
 
 type taskResult struct {
@@ -84,6 +84,63 @@ type TaskAdaptor struct {
 	taskcommon.BaseBilling
 	apiKey  string
 	baseURL string
+}
+
+type flexibleString string
+
+func (s *flexibleString) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*s = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var value string
+		if err := json.Unmarshal(trimmed, &value); err != nil {
+			return err
+		}
+		*s = flexibleString(value)
+		return nil
+	}
+	*s = flexibleString(string(trimmed))
+	return nil
+}
+
+func (s flexibleString) String() string {
+	return string(s)
+}
+
+type flexibleInt64 int64
+
+func (n *flexibleInt64) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*n = 0
+		return nil
+	}
+	var raw string
+	if trimmed[0] == '"' {
+		if err := json.Unmarshal(trimmed, &raw); err != nil {
+			return err
+		}
+		raw = strings.TrimSpace(raw)
+	} else {
+		raw = string(trimmed)
+	}
+	if raw == "" {
+		*n = 0
+		return nil
+	}
+	if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		*n = flexibleInt64(value)
+		return nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return err
+	}
+	*n = flexibleInt64(int64(value))
+	return nil
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
@@ -163,7 +220,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	openAIVideo.Model = firstNonEmpty(info.OriginModelName, submitResp.Result.Model)
 	openAIVideo.Status = mapToVideoStatus(submitResp.Result.Status)
 	openAIVideo.SetProgressStr(progressForStatus(submitResp.Result.Status, 0))
-	openAIVideo.CreatedAt = firstNonZero(submitResp.Result.CreatedAt, unixFromMillis(submitResp.Timestamp), time.Now().Unix())
+	openAIVideo.CreatedAt = firstNonZero(unixFromMillis(int64(submitResp.Result.CreatedAt)), unixFromMillis(int64(submitResp.Timestamp)), time.Now().Unix())
 
 	c.JSON(http.StatusOK, openAIVideo)
 	return upstreamID, responseBody, nil
@@ -268,14 +325,14 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.Model = firstNonEmpty(originTask.Properties.OriginModelName, dResp.Model)
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
-	openAIVideo.CreatedAt = firstNonZero(originTask.CreatedAt, dResp.CreatedAt)
-	openAIVideo.CompletedAt = firstNonZero(originTask.FinishTime, dResp.CompletedAt, originTask.UpdatedAt)
+	openAIVideo.CreatedAt = firstNonZero(originTask.CreatedAt, unixFromMillis(int64(dResp.CreatedAt)))
+	openAIVideo.CompletedAt = firstNonZero(originTask.FinishTime, unixFromMillis(int64(dResp.CompletedAt)), originTask.UpdatedAt)
 
 	if url := firstNonEmpty(originTask.GetResultURL(), extractResultURL(originTask.Data, dResp)); url != "" {
 		openAIVideo.SetMetadata("url", url)
 	}
 	if dResp.ExpiresAt > 0 {
-		openAIVideo.SetMetadata("expires_at", dResp.ExpiresAt)
+		openAIVideo.SetMetadata("expires_at", unixFromMillis(int64(dResp.ExpiresAt)))
 	}
 	if dResp.Result != nil && dResp.Result.Usage != nil {
 		if dResp.Result.Usage.TotalTokens > 0 {
