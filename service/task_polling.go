@@ -558,6 +558,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
+			if isSoraContentPlatform(task.Platform) {
+				task.MediaStatus = model.MediaStatusPending
+				needsDownload = true
+			}
 		}
 		shouldSettle = true
 	case model.TaskStatusFailure:

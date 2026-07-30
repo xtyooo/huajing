@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
@@ -396,4 +398,38 @@ func TestUpdateVideoTasksKuaiBypassesMediaCache(t *testing.T) {
 	assert.Equal(t, model.MediaStatusNotNeed, reloaded.MediaStatus)
 	assert.Equal(t, directURL, reloaded.MediaURL)
 	assert.Equal(t, directURL, reloaded.PrivateData.ResultURL)
+}
+
+func TestUpdateVideoTasksSoraQueuesProxyContentForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 402
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeSora, true)
+	task := seedPollingTask(t, channelID, "task_public_sora", "upstream_sora")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"id":"upstream_sora","status":"completed","progress":100}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+		},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, taskcommon.BuildProxyURL("task_public_sora"), reloaded.PrivateData.ResultURL)
 }

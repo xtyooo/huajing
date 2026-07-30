@@ -407,6 +407,80 @@ func overwriteResultMediaURLs(data []byte, newURL string) []byte {
 	return data
 }
 
+// taskMediaPresentation keeps the upstream task result internal until the
+// generated media has been cached locally. Billing and polling still use the
+// stored task status, while clients see the state they can actually consume.
+func taskMediaPresentation(task *model.Task) (model.TaskStatus, string) {
+	if task == nil {
+		return model.TaskStatusUnknown, ""
+	}
+	if task.Platform == constant.TaskPlatformImage || task.Status != model.TaskStatusSuccess {
+		return task.Status, task.Progress
+	}
+
+	switch task.MediaStatus {
+	case model.MediaStatusPending, model.MediaStatusDownloading:
+		return model.TaskStatusInProgress, "99%"
+	case model.MediaStatusFailed:
+		return model.TaskStatusFailure, taskcommon.ProgressComplete
+	default:
+		return task.Status, task.Progress
+	}
+}
+
+func applyVideoMediaPresentation(data []byte, task *model.Task) []byte {
+	publicStatus, publicProgress := taskMediaPresentation(task)
+	if publicStatus == "" {
+		return data
+	}
+
+	updated, err := sjson.SetBytes(data, "status", publicStatus.ToVideoStatus())
+	if err != nil {
+		common.SysError(fmt.Sprintf("applyVideoMediaPresentation: set status failed: %v", err))
+	} else {
+		data = updated
+	}
+
+	progress, err := strconv.Atoi(strings.TrimSuffix(publicProgress, "%"))
+	if err == nil {
+		updated, err = sjson.SetBytes(data, "progress", progress)
+		if err != nil {
+			common.SysError(fmt.Sprintf("applyVideoMediaPresentation: set progress failed: %v", err))
+		} else {
+			data = updated
+		}
+	}
+
+	if task.MediaStatus == model.MediaStatusPending || task.MediaStatus == model.MediaStatusDownloading {
+		updated, err = sjson.DeleteBytes(data, "completed_at")
+		if err != nil {
+			common.SysError(fmt.Sprintf("applyVideoMediaPresentation: delete completed_at failed: %v", err))
+		} else {
+			data = updated
+		}
+	}
+
+	if task.MediaStatus == model.MediaStatusFailed {
+		message := task.FailReason
+		if message == "" {
+			message = "media cache failed"
+		}
+		for path, value := range map[string]any{
+			"error.message": message,
+			"error.code":    "media_cache_failed",
+		} {
+			updated, err = sjson.SetBytes(data, path, value)
+			if err != nil {
+				common.SysError(fmt.Sprintf("applyVideoMediaPresentation: set %s failed: %v", path, err))
+			} else {
+				data = updated
+			}
+		}
+	}
+
+	return data
+}
+
 func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
 	taskId := c.Param("task_id")
 	if taskId == "" {
@@ -455,6 +529,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				// the legacy behavior — the upstream link is never leaked.
 				openAIVideoData = overwriteResultMediaURLs(openAIVideoData, originTask.MediaURL)
 			}
+			openAIVideoData = applyVideoMediaPresentation(openAIVideoData, originTask)
 			respBody = openAIVideoData
 			return
 		}
@@ -546,7 +621,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		"error":    nil,
 		"format":   format,
 		"metadata": nil,
-		"status":   mapTaskStatusToSimple(task.Status),
+		"status":   mapTaskStatusToSimple(publicTaskStatus(task)),
 		"task_id":  task.TaskID,
 		"url":      task.GetResultMediaURL(),
 	}
@@ -600,7 +675,18 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 	}
 }
 
+func publicTaskStatus(task *model.Task) model.TaskStatus {
+	status, _ := taskMediaPresentation(task)
+	return status
+}
+
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+	status, progress := taskMediaPresentation(task)
+	finishTime := task.FinishTime
+	if task.Status == model.TaskStatusSuccess && status == model.TaskStatusInProgress {
+		finishTime = 0
+	}
+
 	return &dto.TaskDto{
 		ID:              task.ID,
 		CreatedAt:       task.CreatedAt,
@@ -612,12 +698,12 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		ChannelId:       task.ChannelId,
 		Quota:           task.Quota,
 		Action:          task.Action,
-		Status:          string(task.Status),
+		Status:          string(status),
 		FailReason:      task.FailReason,
 		SubmitTime:      task.SubmitTime,
 		StartTime:       task.StartTime,
-		FinishTime:      task.FinishTime,
-		Progress:        task.Progress,
+		FinishTime:      finishTime,
+		Progress:        progress,
 		Properties:      task.Properties,
 		Username:        task.Username,
 		MediaURL:        task.GetResultMediaURL(),
