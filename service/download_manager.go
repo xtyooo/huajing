@@ -18,21 +18,25 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/tidwall/gjson"
 )
 
 const (
-	downloadBatchSize    = 100
-	downloadScanLimit    = downloadBatchSize * 5
-	downloadPollInterval = 15 * time.Second
-	mediaDownloadRetries = 5
-	mediaStatusRetries   = 3
+	downloadBatchSize         = 100
+	downloadScanLimit         = downloadBatchSize * 5
+	downloadPollInterval      = 15 * time.Second
+	mediaCompensationInterval = time.Minute
+	mediaDownloadRetries      = 5
+	mediaStatusRetries        = 3
+	mediaCompensationRetries  = 5
 )
 
 type downloadManager struct {
-	wakeChan   chan struct{}
-	sem        chan struct{}
-	channelMu  sync.Mutex
-	channelSem map[int]chan struct{}
+	wakeChan           chan struct{}
+	sem                chan struct{}
+	channelMu          sync.Mutex
+	channelSem         map[int]chan struct{}
+	lastCompensationAt time.Time
 }
 
 func (dm *downloadManager) WakeUp() {
@@ -76,6 +80,7 @@ func (dm *downloadManager) processPending() {
 	if err := model.ResetStuckMediaTasksBefore(time.Now().Add(-staleAfter).Unix()); err != nil {
 		common.SysLog(fmt.Sprintf("reset timed out media tasks failed: %v", err))
 	}
+	dm.scheduleFailedMediaCompensation()
 	tasks := model.GetPendingMediaTasks(downloadScanLimit)
 	for _, task := range tasks {
 		task := task
@@ -98,6 +103,28 @@ func (dm *downloadManager) processPending() {
 			}()
 			dm.downloadTaskResult(task)
 		})
+	}
+}
+
+func (dm *downloadManager) scheduleFailedMediaCompensation() {
+	now := time.Now()
+	if !dm.lastCompensationAt.IsZero() && now.Sub(dm.lastCompensationAt) < mediaCompensationInterval {
+		return
+	}
+	dm.lastCompensationAt = now
+	nowUnix := now.Unix()
+
+	for _, task := range model.GetLegacyFailedMediaTasks(downloadScanLimit) {
+		if task.EnableLegacyMediaCompensation(nowUnix) {
+			common.SysLog(fmt.Sprintf("scheduled legacy media compensation for task %s", task.TaskID))
+		}
+	}
+
+	for _, task := range model.GetRetryableFailedMediaTasks(nowUnix, mediaCompensationRetries, downloadScanLimit) {
+		nextRetryAt := mediaCompensationNextRetryAt(task.MediaRetryCount+1, now)
+		if task.QueueMediaCompensation(nowUnix, nextRetryAt, mediaCompensationRetries) {
+			common.SysLog(fmt.Sprintf("queued media compensation for task %s (%d/%d)", task.TaskID, task.MediaRetryCount, mediaCompensationRetries))
+		}
 	}
 }
 
@@ -149,8 +176,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	defer func() {
 		if r := recover(); r != nil {
 			common.SysError(fmt.Sprintf("download task %s panic: %v", task.TaskID, r))
-			task.FailReason = fmt.Sprintf("panic: %v", r)
-			if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+			if err := markMediaDownloadFailed(task, fmt.Errorf("panic: %v", r)); err != nil {
 				common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 			}
 		}
@@ -158,15 +184,13 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 
 	target, targetErr := resolveMediaDownloadTarget(task)
 	if targetErr != nil {
-		task.FailReason = targetErr.Error()
-		if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+		if err := markMediaDownloadFailed(task, targetErr); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
 		return
 	}
 	if target.URL == "" {
-		task.FailReason = "result URL is empty"
-		if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+		if err := markMediaDownloadFailed(task, fmt.Errorf("result URL is empty")); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
 		return
@@ -176,7 +200,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	if mediaDir == "" {
 		task.FailReason = "MEDIA_DIR not set"
 		common.SysLog(fmt.Sprintf("download task %s failed: %s", task.TaskID, task.FailReason))
-		if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+		if err := markMediaDownloadFailed(task, fmt.Errorf("MEDIA_DIR not set")); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
 		return
@@ -233,8 +257,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	}
 	if err != nil {
 		common.SysLog(fmt.Sprintf("download task %s failed after %d attempts: %v", task.TaskID, attempts, err))
-		task.FailReason = err.Error()
-		if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+		if err := markMediaDownloadFailed(task, err); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
 		return
@@ -245,8 +268,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 			_ = resp.Body.Close()
 		}
 		common.SysLog(fmt.Sprintf("download task %s failed: %v", task.TaskID, err))
-		task.FailReason = err.Error()
-		if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+		if err := markMediaDownloadFailed(task, err); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
 		return
@@ -278,8 +300,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	filePath := filepath.Join(mediaDir, fileName)
 	if err := streamMediaDownloadToFile(resp.Body, filePath); err != nil {
 		common.SysLog(fmt.Sprintf("write file for task %s failed: %v", task.TaskID, err))
-		task.FailReason = err.Error()
-		if err := updateMediaStatusWithRetry(task, model.MediaStatusFailed); err != nil {
+		if err := markMediaDownloadFailed(task, err); err != nil {
 			common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		}
 		return
@@ -287,12 +308,36 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 
 	baseURL := common.GetEnvOrDefaultString("MEDIA_BASE_URL", "https://huajingapi.top")
 	task.MediaURL = baseURL + "/media/" + fileName
+	task.FailReason = ""
+	task.MediaNextRetryAt = 0
 	if err := updateMediaStatusWithRetry(task, model.MediaStatusSuccess); err != nil {
 		_ = os.Remove(filePath)
 		common.SysLog(fmt.Sprintf("update task %s media status failed: %v", task.TaskID, err))
 		return
 	}
 	common.SysLog(fmt.Sprintf("downloaded task %s result to %s", task.TaskID, filePath))
+}
+
+func markMediaDownloadFailed(task *model.Task, cause error) error {
+	task.FailReason = cause.Error()
+	if task.MediaRetryCount >= mediaCompensationRetries {
+		task.MediaNextRetryAt = 0
+		task.FailReason += "; media retry limit exhausted"
+	} else {
+		task.MediaNextRetryAt = mediaCompensationNextRetryAt(task.MediaRetryCount, time.Now())
+	}
+	return updateMediaStatusWithRetry(task, model.MediaStatusFailed)
+}
+
+func mediaCompensationNextRetryAt(retryCount int, now time.Time) int64 {
+	delays := []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, 6 * time.Hour}
+	if retryCount < 0 {
+		retryCount = 0
+	}
+	if retryCount >= len(delays) {
+		return 0
+	}
+	return now.Add(delays[retryCount]).Unix()
 }
 
 func mediaDownloadTimeout() time.Duration {
@@ -326,7 +371,7 @@ func waitForMediaDownloadRetry(ctx context.Context, retryIndex int) bool {
 }
 
 func isRetryableMediaDownloadStatus(status int) bool {
-	return status == http.StatusNotFound || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
+	return status == http.StatusForbidden || status == http.StatusNotFound || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
 }
 
 func streamMediaDownloadToFile(reader io.Reader, filePath string) error {
@@ -412,6 +457,17 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}
 		return target, nil
 	}
+	if resultURL := mediaResultURLFromTaskData(task.Data); resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
+		target := mediaDownloadTarget{URL: resultURL, Headers: []map[string]string{nil}}
+		if isAuthDownloadPlatform(task.Platform) {
+			channel, err := model.CacheGetChannel(task.ChannelId)
+			if err != nil {
+				return mediaDownloadTarget{}, err
+			}
+			target.Headers = mediaDownloadAuthHeaders(task, channel)
+		}
+		return target, nil
+	}
 	if isSoraContentPlatform(task.Platform) {
 		channel, err := model.CacheGetChannel(task.ChannelId)
 		if err != nil {
@@ -438,6 +494,16 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		target.Headers = mediaDownloadAuthHeaders(task, channel)
 	}
 	return target, nil
+}
+
+func mediaResultURLFromTaskData(data []byte) string {
+	for _, key := range []string{"metadata.url", "video_url", "result_url", "url", "image_url"} {
+		value := strings.TrimSpace(gjson.GetBytes(data, key).String())
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func isTaskProxyResultURL(rawURL string, taskID string) bool {

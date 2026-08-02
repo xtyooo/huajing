@@ -83,7 +83,11 @@ if [[ -f "$NGINX_CONFIG" ]]; then
   install -m 600 "$NGINX_CONFIG" "$BACKUP_DIR/config/nginx-proxy.conf"
 fi
 install -m 700 "$LEGACY_DIR/main" "$BACKUP_DIR/files/main.previous"
-tail -n 20000 "$LEGACY_DIR/app.log" | gzip -9 > "$BACKUP_DIR/logs/app-before.log.gz"
+if [[ -f "$LEGACY_DIR/app.log" ]]; then
+  tail -n 20000 "$LEGACY_DIR/app.log" | gzip -9 > "$BACKUP_DIR/logs/app-before.log.gz"
+else
+  : > "$BACKUP_DIR/logs/app-before.log.gz"
+fi
 journalctl -u "$SERVICE_NAME" --since "2 hours ago" --no-pager > "$BACKUP_DIR/logs/journal-before.log"
 
 systemctl is-active --quiet "$SERVICE_NAME"
@@ -201,9 +205,16 @@ curl -fsS --max-time 15 "$EXTERNAL_HEALTH_URL" > "$BACKUP_DIR/diagnostics/status
 systemctl is-active --quiet "$SERVICE_NAME"
 systemctl show "$SERVICE_NAME" -p ActiveState -p SubState -p MainPID -p ExecMainStartTimestamp > "$BACKUP_DIR/diagnostics/systemd-after.txt"
 systemctl cat "$SERVICE_NAME" > "$BACKUP_DIR/diagnostics/systemd-unit-after.txt"
-tail -n 20000 "$LEGACY_DIR/app.log" | gzip -9 > "$BACKUP_DIR/logs/app-after.log.gz"
+if [[ -f "$LEGACY_DIR/app.log" ]]; then
+  tail -n 20000 "$LEGACY_DIR/app.log" | gzip -9 > "$BACKUP_DIR/logs/app-after.log.gz"
+else
+  : > "$BACKUP_DIR/logs/app-after.log.gz"
+fi
 journalctl -u "$SERVICE_NAME" --since "15 minutes ago" --no-pager > "$BACKUP_DIR/logs/journal-after.log"
-df -h / "$LEGACY_DIR/media" > "$BACKUP_DIR/diagnostics/disk-after.txt"
+df -h / > "$BACKUP_DIR/diagnostics/disk-after.txt"
+if [[ -d "$LEGACY_DIR/media" ]]; then
+  df -h "$LEGACY_DIR/media" >> "$BACKUP_DIR/diagnostics/disk-after.txt"
+fi
 free -h > "$BACKUP_DIR/diagnostics/memory-after.txt"
 
 (cd "$BACKUP_DIR" && find config database files -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)

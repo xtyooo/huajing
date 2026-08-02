@@ -161,6 +161,24 @@ func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing
 	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
 }
 
+func TestResolveMediaDownloadTargetPrefersDirectURLFromTaskData(t *testing.T) {
+	task := &model.Task{
+		Platform: constant.TaskPlatform("55"),
+		TaskID:   "task_public",
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "https://local.example/v1/videos/task_public/content",
+		},
+		Data: []byte(`{"metadata":{"url":"https://media.example.test/result.mp4"}}`),
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://media.example.test/result.mp4", target.URL)
+	require.Len(t, target.Headers, 1)
+	assert.Nil(t, target.Headers[0])
+}
+
 func TestTaskDownloadKeyPrefersKeyStoredWithTask(t *testing.T) {
 	task := &model.Task{PrivateData: model.TaskPrivateData{Key: "selected-key"}}
 
@@ -171,10 +189,22 @@ func TestTaskDownloadKeyPrefersKeyStoredWithTask(t *testing.T) {
 }
 
 func TestRetryableMediaDownloadStatus(t *testing.T) {
+	assert.True(t, isRetryableMediaDownloadStatus(http.StatusForbidden))
 	assert.True(t, isRetryableMediaDownloadStatus(http.StatusNotFound))
+	assert.True(t, isRetryableMediaDownloadStatus(http.StatusRequestTimeout))
 	assert.True(t, isRetryableMediaDownloadStatus(http.StatusTooManyRequests))
 	assert.True(t, isRetryableMediaDownloadStatus(http.StatusBadGateway))
 	assert.False(t, isRetryableMediaDownloadStatus(http.StatusUnauthorized))
+}
+
+func TestMediaCompensationNextRetryAt(t *testing.T) {
+	now := time.Date(2026, time.August, 2, 12, 0, 0, 0, time.UTC)
+	assert.Equal(t, now.Add(time.Minute).Unix(), mediaCompensationNextRetryAt(0, now))
+	assert.Equal(t, now.Add(5*time.Minute).Unix(), mediaCompensationNextRetryAt(1, now))
+	assert.Equal(t, now.Add(15*time.Minute).Unix(), mediaCompensationNextRetryAt(2, now))
+	assert.Equal(t, now.Add(time.Hour).Unix(), mediaCompensationNextRetryAt(3, now))
+	assert.Equal(t, now.Add(6*time.Hour).Unix(), mediaCompensationNextRetryAt(4, now))
+	assert.Zero(t, mediaCompensationNextRetryAt(5, now))
 }
 
 func TestDownloadManagerChannelSlotHonorsConfiguredConcurrency(t *testing.T) {

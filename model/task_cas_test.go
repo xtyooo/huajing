@@ -264,6 +264,64 @@ func TestResetStuckMediaTasksBeforeOnlyResetsExpiredDownloads(t *testing.T) {
 	assert.Equal(t, MediaStatusDownloading, tasks[1].MediaStatus)
 }
 
+func TestLegacyFailedMediaTaskCanBeScheduledForCompensation(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	task := &Task{
+		TaskID:      "task_legacy_media_failure",
+		Status:      TaskStatusSuccess,
+		MediaStatus: MediaStatusFailed,
+		FailReason:  "download failed with status 403 Forbidden",
+		Data:        json.RawMessage(`{"metadata":{"url":"https://example.test/video.mp4"}}`),
+	}
+	insertTask(t, task)
+	require.NoError(t, DB.Model(task).Update("media_next_retry_at", nil).Error)
+
+	legacy := GetLegacyFailedMediaTasks(10)
+	require.Len(t, legacy, 1)
+	assert.True(t, legacy[0].EnableLegacyMediaCompensation(now))
+	assert.False(t, legacy[0].EnableLegacyMediaCompensation(now))
+
+	var reloaded Task
+	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, MediaStatusFailed, reloaded.MediaStatus)
+	assert.Equal(t, now, reloaded.MediaNextRetryAt)
+}
+
+func TestQueueMediaCompensationUsesCASAndRespectsLimit(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	task := &Task{
+		TaskID:           "task_media_compensation",
+		Status:           TaskStatusSuccess,
+		MediaStatus:      MediaStatusFailed,
+		MediaNextRetryAt: now,
+		Data:             json.RawMessage(`{}`),
+	}
+	insertTask(t, task)
+
+	first := *task
+	second := *task
+	assert.True(t, first.QueueMediaCompensation(now, now+300, 5))
+	assert.False(t, second.QueueMediaCompensation(now, now+300, 5))
+
+	var reloaded Task
+	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, 1, reloaded.MediaRetryCount)
+	assert.Equal(t, now+300, reloaded.MediaNextRetryAt)
+
+	reloaded.MediaStatus = MediaStatusFailed
+	reloaded.MediaRetryCount = 5
+	reloaded.MediaNextRetryAt = now
+	require.NoError(t, DB.Model(&reloaded).Updates(map[string]any{
+		"media_status":        MediaStatusFailed,
+		"media_retry_count":   5,
+		"media_next_retry_at": now,
+	}).Error)
+	assert.False(t, reloaded.QueueMediaCompensation(now, now+300, 5))
+}
+
 func TestResetStuckMediaTasksFailsInterruptedImageTask(t *testing.T) {
 	truncateTables(t)
 	imageTask := &Task{

@@ -72,12 +72,14 @@ type Task struct {
 	Properties Properties            `json:"properties" gorm:"type:json"`
 	Username   string                `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
-	PrivateData     TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
-	Data            json.RawMessage `json:"data" gorm:"type:json"`
-	MediaURL        string          `json:"media_url" gorm:"type:varchar(512)"`
-	MediaStatus     int             `json:"media_status" gorm:"type:int;default:0;index"`
-	MediaStartTime  int64           `json:"media_start_time" gorm:"index"`
-	MediaFinishTime int64           `json:"media_finish_time" gorm:"index"`
+	PrivateData      TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
+	Data             json.RawMessage `json:"data" gorm:"type:json"`
+	MediaURL         string          `json:"media_url" gorm:"type:varchar(512)"`
+	MediaStatus      int             `json:"media_status" gorm:"type:int;default:0;index"`
+	MediaStartTime   int64           `json:"media_start_time" gorm:"index"`
+	MediaFinishTime  int64           `json:"media_finish_time" gorm:"index"`
+	MediaRetryCount  int             `json:"media_retry_count" gorm:"type:int;default:0;index"`
+	MediaNextRetryAt int64           `json:"media_next_retry_at" gorm:"default:0;index"`
 }
 
 func (t *Task) SetData(data any) {
@@ -400,6 +402,34 @@ func GetPendingMediaTasks(limit int) []*Task {
 	return tasks
 }
 
+// GetLegacyFailedMediaTasks finds old cache failures created before retry
+// scheduling existed. Callers must enable compensation with a conditional update.
+func GetLegacyFailedMediaTasks(limit int) []*Task {
+	var tasks []*Task
+	err := DB.Where("status = ? AND media_status = ? AND media_url = ? AND media_retry_count = 0 AND (media_next_retry_at = 0 OR media_next_retry_at IS NULL)", TaskStatusSuccess, MediaStatusFailed, "").
+		Order("id").
+		Limit(limit).
+		Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
+// GetRetryableFailedMediaTasks returns failed cache downloads whose scheduled
+// compensation time has arrived. A later conditional update claims each task.
+func GetRetryableFailedMediaTasks(now int64, maxRetries, limit int) []*Task {
+	var tasks []*Task
+	err := DB.Where("status = ? AND media_status = ? AND media_url = ? AND media_retry_count < ? AND media_next_retry_at > 0 AND media_next_retry_at <= ?", TaskStatusSuccess, MediaStatusFailed, "", maxRetries, now).
+		Order("media_next_retry_at, id").
+		Limit(limit).
+		Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
 func ResetStuckMediaTasks() {
 	err := DB.Model(&Task{}).
 		Where("media_status = ? AND platform != ?", MediaStatusDownloading, constant.TaskPlatformImage).
@@ -596,17 +626,53 @@ func (t *Task) CompareAndSwapMediaStatus(from, to int) bool {
 	return result.RowsAffected > 0
 }
 
+// EnableLegacyMediaCompensation schedules a legacy failed download for its
+// first retry. The predicate prevents repeatedly enabling exhausted tasks.
+func (t *Task) EnableLegacyMediaCompensation(now int64) bool {
+	result := DB.Model(t).
+		Where("id = ? AND status = ? AND media_status = ? AND media_url = ? AND media_retry_count = 0 AND (media_next_retry_at = 0 OR media_next_retry_at IS NULL)", t.ID, TaskStatusSuccess, MediaStatusFailed, "").
+		Update("media_next_retry_at", now)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return false
+	}
+	t.MediaNextRetryAt = now
+	return true
+}
+
+// QueueMediaCompensation atomically moves an eligible failed cache download
+// back to pending and reserves its next retry timestamp.
+func (t *Task) QueueMediaCompensation(now, nextRetryAt int64, maxRetries int) bool {
+	result := DB.Model(t).
+		Where("id = ? AND status = ? AND media_status = ? AND media_url = ? AND media_retry_count = ? AND media_retry_count < ? AND media_next_retry_at > 0 AND media_next_retry_at <= ?", t.ID, TaskStatusSuccess, MediaStatusFailed, "", t.MediaRetryCount, maxRetries, now).
+		Updates(map[string]any{
+			"media_status":        MediaStatusPending,
+			"media_start_time":    0,
+			"media_retry_count":   t.MediaRetryCount + 1,
+			"media_next_retry_at": nextRetryAt,
+		})
+	if result.Error != nil || result.RowsAffected == 0 {
+		return false
+	}
+	t.MediaStatus = MediaStatusPending
+	t.MediaStartTime = 0
+	t.MediaRetryCount++
+	t.MediaNextRetryAt = nextRetryAt
+	return true
+}
+
 func (t *Task) UpdateMediaStatus(status int) error {
 	now := time.Now().Unix()
 	if status == MediaStatusSuccess || status == MediaStatusFailed {
 		t.MediaFinishTime = now
 	}
-	return DB.Model(t).Select("media_status", "media_url", "fail_reason", "media_start_time", "media_finish_time").Updates(map[string]any{
-		"media_status":      status,
-		"media_url":         t.MediaURL,
-		"fail_reason":       t.FailReason,
-		"media_start_time":  t.MediaStartTime,
-		"media_finish_time": t.MediaFinishTime,
+	return DB.Model(t).Select("media_status", "media_url", "fail_reason", "media_start_time", "media_finish_time", "media_retry_count", "media_next_retry_at").Updates(map[string]any{
+		"media_status":        status,
+		"media_url":           t.MediaURL,
+		"fail_reason":         t.FailReason,
+		"media_start_time":    t.MediaStartTime,
+		"media_finish_time":   t.MediaFinishTime,
+		"media_retry_count":   t.MediaRetryCount,
+		"media_next_retry_at": t.MediaNextRetryAt,
 	}).Error
 }
 
