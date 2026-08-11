@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,10 +34,12 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	if imageCallCount := setResponsesImageGenerationContext(c, &responsesResponse); imageCallCount > 0 {
-		updateOpenAIImageCount(info, imageCallCount)
+	if info != nil && info.PriceData.UsePrice {
+		// 固定价图片请求使用上游实际成功数量覆盖请求 n；该兼容信息不参与通用工具附加费计数。
+		if imageCallCount := setResponsesImageGenerationContext(c, &responsesResponse); imageCallCount > 0 {
+			updateOpenAIImageCount(info, imageCallCount)
+		}
 	}
-
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -52,18 +54,27 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			usage.PromptTokensDetails.CacheWriteTokens = responsesResponse.Usage.InputTokensDetails.CacheWriteTokens
 		}
 	}
-	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
-		return &usage, nil
-	}
-	// 解析 Tools 用量
-	for _, tool := range responsesResponse.Tools {
-		buildToolinfo, ok := info.ResponsesUsageInfo.BuiltInTools[common.Interface2String(tool["type"])]
-		if !ok || buildToolinfo == nil {
-			logger.LogError(c, fmt.Sprintf("BuiltInTools not found for tool type: %v", tool["type"]))
-			continue
+	// Count actual tool invocations from Output (not tool declarations).
+	for _, output := range responsesResponse.Output {
+		switch output.Type {
+		case dto.BuildInCallWebSearchCall:
+			info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+		case dto.BuildInCallFileSearchCall:
+			info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
+		case dto.BuildInCallFunctionCall:
+			info.CountBillableToolCall(dto.BuildInCallFunctionCall, output.Name)
 		}
-		buildToolinfo.CallCount++
 	}
+
+	imageCounter := &relaycommon.ImageGenerationCallCounter{}
+	if !relaycommon.IsNonBillableResponsesStatus(responsesResponse.Status) {
+		for i := range responsesResponse.Output {
+			idx := i
+			imageCounter.Observe(&responsesResponse.Output[i], &idx)
+		}
+	}
+	imageCounter.Commit(info)
+
 	return &usage, nil
 }
 
@@ -77,6 +88,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	imageCounter := &relaycommon.ImageGenerationCallCounter{}
+	imageCommitted := false
+	// 以下字段仅用于固定价图片请求的实际数量校正，与可去重的工具调用计数分开维护。
 	var completedImageCalls int64
 	var finalImageCalls int64
 	var finalResponseSeen bool
@@ -96,8 +110,11 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		switch streamResponse.Type {
 		case "response.completed", "response.done", "response.incomplete":
 			if streamResponse.Response != nil {
-				finalResponseSeen = true
-				finalImageCalls = streamResponse.Response.ImageGenerationCallCount()
+				if info != nil && info.PriceData.UsePrice {
+					finalResponseSeen = true
+					finalImageCalls = streamResponse.Response.ImageGenerationCallCount()
+					setResponsesImageGenerationContext(c, streamResponse.Response)
+				}
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
 						usage.PromptTokens = streamResponse.Response.Usage.InputTokens
@@ -113,13 +130,37 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 						usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
 					}
 				}
-				setResponsesImageGenerationContext(c, streamResponse.Response)
+				if !imageCommitted {
+					if streamResponse.Type == "response.incomplete" || relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
+						imageCounter.Reset()
+						imageCounter.Commit(info)
+						imageCommitted = true
+					} else {
+						for i := range streamResponse.Response.Output {
+							idx := i
+							imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
+						}
+						imageCounter.Commit(info)
+						imageCommitted = true
+					}
+				}
+			} else if !imageCommitted {
+				if streamResponse.Type == "response.incomplete" {
+					imageCounter.Reset()
+				}
+				imageCounter.Commit(info)
+				imageCommitted = true
+			}
+		case "response.failed", "response.cancelled", "response.canceled":
+			if !imageCommitted {
+				imageCounter.Reset()
+				imageCounter.Commit(info)
+				imageCommitted = true
 			}
 		case "response.output_text.delta":
 			// 处理输出文本
 			responseTextBuilder.WriteString(streamResponse.Delta)
 		case dto.ResponsesOutputTypeItemDone:
-			// 函数调用处理
 			if streamResponse.Item != nil {
 				if streamResponse.Item.IsSuccessfulImageGenerationCall() {
 					completedImageCalls++
@@ -132,34 +173,40 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				}
 				switch streamResponse.Item.Type {
 				case dto.BuildInCallWebSearchCall:
-					if info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
-						if webSearchTool, exists := info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil {
-							webSearchTool.CallCount++
-						}
+					info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+				case dto.BuildInCallFileSearchCall:
+					info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
+				case dto.BuildInCallFunctionCall:
+					info.CountBillableToolCall(dto.BuildInCallFunctionCall, streamResponse.Item.Name)
+				case dto.ResponsesOutputTypeImageGenerationCall:
+					if !imageCommitted {
+						imageCounter.Observe(streamResponse.Item, streamResponse.OutputIndex)
 					}
 				}
 			}
 		}
 	})
 
-	if finalResponseSeen {
-		updateOpenAIImageCount(info, finalImageCalls)
-	} else if info != nil && info.StreamStatus != nil {
-		upstreamFinished := info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone ||
-			info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF
-		requestedN := 1.0
-		if n, ok := info.PriceData.OtherRatios()["n"]; ok {
-			requestedN = n
+	if info != nil && info.PriceData.UsePrice {
+		if finalResponseSeen {
+			updateOpenAIImageCount(info, finalImageCalls)
+		} else if info.StreamStatus != nil {
+			upstreamFinished := info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone ||
+				info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF
+			requestedN := 1.0
+			if n, ok := info.PriceData.OtherRatios()["n"]; ok {
+				requestedN = n
+			}
+			if upstreamFinished || float64(completedImageCalls) > requestedN {
+				updateOpenAIImageCount(info, completedImageCalls)
+			}
 		}
-		if upstreamFinished || float64(completedImageCalls) > requestedN {
-			updateOpenAIImageCount(info, completedImageCalls)
+		if !finalResponseSeen && completedImageCalls > 0 {
+			c.Set("image_generation_call", true)
+			c.Set("image_generation_call_count", int(completedImageCalls))
+			c.Set("image_generation_call_quality", completedImageQuality)
+			c.Set("image_generation_call_size", completedImageSize)
 		}
-	}
-	if !finalResponseSeen && completedImageCalls > 0 {
-		c.Set("image_generation_call", true)
-		c.Set("image_generation_call_count", int(completedImageCalls))
-		c.Set("image_generation_call_quality", completedImageQuality)
-		c.Set("image_generation_call_size", completedImageSize)
 	}
 
 	if usage.CompletionTokens == 0 {

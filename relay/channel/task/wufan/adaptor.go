@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -213,7 +214,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	openAIVideo := dto.NewOpenAIVideo()
+	openAIVideo := relaydto.NewOpenAIVideo()
 	openAIVideo.ID = info.PublicTaskID
 	openAIVideo.TaskID = info.PublicTaskID
 	openAIVideo.Object = "video"
@@ -318,7 +319,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		return nil, errors.Wrap(err, "unmarshal wufan task data failed")
 	}
 
-	openAIVideo := dto.NewOpenAIVideo()
+	openAIVideo := relaydto.NewOpenAIVideo()
 	openAIVideo.ID = originTask.TaskID
 	openAIVideo.TaskID = originTask.TaskID
 	openAIVideo.Object = "video"
@@ -343,7 +344,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		}
 	}
 	if originTask.Status == model.TaskStatusFailure {
-		openAIVideo.Error = &dto.OpenAIVideoError{
+		openAIVideo.Error = &relaydto.OpenAIVideoError{
 			Message: firstNonEmpty(originTask.FailReason, extractErrorMessage(dResp.Error), fetchResp.Message, "task failed"),
 			Code:    "upstream_error",
 		}
@@ -554,11 +555,11 @@ func extractErrorMessage(errValue any) string {
 func mapToVideoStatus(status string) string {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
 	case "SUCCESS", "SUCCEEDED", "COMPLETED":
-		return dto.VideoStatusCompleted
+		return relaydto.VideoStatusCompleted
 	case "FAIL", "FAILED", "FAILURE", "ERROR", "CANCELLED", "CANCELED":
-		return dto.VideoStatusFailed
+		return relaydto.VideoStatusFailed
 	default:
-		return dto.VideoStatusQueued
+		return relaydto.VideoStatusQueued
 	}
 }
 

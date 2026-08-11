@@ -65,7 +65,9 @@ const (
 	ChannelTypeKuai           = 65
 	ChannelTypeSD0717         = 66
 	ChannelTypeWufan          = 67
-	ChannelTypeDummy          // this one is only for count, do not add any channel after this
+	ChannelTypeSub2API        = 68
+	ChannelTypeNewAPI         = 69
+	ChannelTypeDummy          = 70 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -138,6 +140,8 @@ var ChannelBaseURLs = []string{
 	"https://api.pro666.top",      //65 Kuai
 	"https://aivideo.beauty",      //66 sd0717
 	"https://token-api.wufan.com", //67 wufan
+	"",                            //68 Sub2API
+	"",                            //69 NewAPI
 }
 
 var ChannelTypeNames = map[int]string{
@@ -205,6 +209,8 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeKuai:           "kuai",
 	ChannelTypeSD0717:         "sd0717",
 	ChannelTypeWufan:          "wufan",
+	ChannelTypeSub2API:        "Sub2API",
+	ChannelTypeNewAPI:         "New API",
 }
 
 func GetChannelTypeName(channelType int) string {

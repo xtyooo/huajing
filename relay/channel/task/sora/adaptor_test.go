@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newSoraTestContext 创建带可重放请求体的 Sora 测试上下文。
 func newSoraTestContext(t *testing.T, body string) *gin.Context {
 	t.Helper()
 	recorder := httptest.NewRecorder()
@@ -24,6 +25,7 @@ func newSoraTestContext(t *testing.T, body string) *gin.Context {
 	return ctx
 }
 
+// TestBuildRequestBodyNormalizesWFSD2933Protocol 验证定制协议字段会被转换为上游所需格式。
 func TestBuildRequestBodyNormalizesWFSD2933Protocol(t *testing.T) {
 	ctx := newSoraTestContext(t, `{
 		"model":"sora-v6-14-933Z-720",
@@ -55,6 +57,7 @@ func TestBuildRequestBodyNormalizesWFSD2933Protocol(t *testing.T) {
 	}
 }
 
+// TestBuildRequestBodyPreservesNativeWFSD2933Fields 验证原生定制字段不会被兼容转换覆盖。
 func TestBuildRequestBodyPreservesNativeWFSD2933Fields(t *testing.T) {
 	ctx := newSoraTestContext(t, `{
 		"model":"custom-model",
@@ -81,6 +84,7 @@ func TestBuildRequestBodyPreservesNativeWFSD2933Fields(t *testing.T) {
 	assert.Equal(t, "https://example.test/native.jpg", payload["image_url"])
 }
 
+// TestBuildRequestBodyLeavesOtherSoraProtocolsUnchanged 验证普通 Sora 协议继续按原请求透传。
 func TestBuildRequestBodyLeavesOtherSoraProtocolsUnchanged(t *testing.T) {
 	ctx := newSoraTestContext(t, `{"model":"sora-2","prompt":"test","size":"1280x720","seconds":"8"}`)
 	adaptor := &TaskAdaptor{}
@@ -96,4 +100,31 @@ func TestBuildRequestBodyLeavesOtherSoraProtocolsUnchanged(t *testing.T) {
 
 	assert.Equal(t, "1280x720", payload["size"])
 	assert.NotContains(t, payload, "aspect_ratio")
+}
+
+// TestSoraBuildRequestBodyReturnsReplayablePassThroughBody 验证透传请求体可供 HTTP 重试安全重放。
+func TestSoraBuildRequestBodyReturnsReplayablePassThroughBody(t *testing.T) {
+	payload := []byte("opaque-sora-request-body")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(payload))
+	c.Request.Header.Set("Content-Type", "application/octet-stream")
+	defer common.CleanupBodyStorage(c)
+
+	info := &relaycommon.RelayInfo{}
+	body, err := (&TaskAdaptor{}).BuildRequestBody(c, info)
+	require.NoError(t, err)
+	replayable, ok := body.(common.ReplayableBody)
+	require.True(t, ok)
+
+	sent, err := io.ReadAll(body)
+	require.NoError(t, err)
+	assert.Equal(t, payload, sent)
+	assert.EqualValues(t, len(payload), replayable.Size())
+
+	replayBody, err := replayable.NewReader()
+	require.NoError(t, err)
+	replay, err := io.ReadAll(replayBody)
+	require.NoError(t, err)
+	require.NoError(t, replayBody.Close())
+	assert.Equal(t, payload, replay)
 }

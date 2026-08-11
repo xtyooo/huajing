@@ -212,6 +212,13 @@ func RedisHGetObj(key string, obj interface{}) error {
 					return fmt.Errorf("failed to parse int field %s: %w", fieldName, err)
 				}
 				fieldValue.SetInt(intValue)
+			case reflect.Float32, reflect.Float64:
+				// 用户倍率等缓存字段使用浮点数，按目标字段位宽解析以避免精度或类型不兼容。
+				floatValue, err := strconv.ParseFloat(value, fieldValue.Type().Bits())
+				if err != nil {
+					return fmt.Errorf("failed to parse float field %s: %w", fieldName, err)
+				}
+				fieldValue.SetFloat(floatValue)
 			case reflect.Bool:
 				boolValue, err := strconv.ParseBool(value)
 				if err != nil {

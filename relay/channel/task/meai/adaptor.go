@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 )
 
@@ -166,18 +167,18 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	ov := dto.NewOpenAIVideo()
+	ov := relaydto.NewOpenAIVideo()
 	ov.ID = info.PublicTaskID
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
 	switch mResp.Status {
 	case "SUCCEEDED":
-		ov.Status = dto.VideoStatusCompleted
+		ov.Status = relaydto.VideoStatusCompleted
 	case "RUNNING":
-		ov.Status = dto.VideoStatusInProgress
+		ov.Status = relaydto.VideoStatusInProgress
 	default:
-		ov.Status = dto.VideoStatusQueued
+		ov.Status = relaydto.VideoStatusQueued
 	}
 	if mResp.Progress > 0 {
 		ov.Progress = mResp.Progress
@@ -257,14 +258,14 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		return nil, errors.Wrap(err, "unmarshal meai task data failed")
 	}
 
-	openAIVideo := dto.NewOpenAIVideo()
+	openAIVideo := relaydto.NewOpenAIVideo()
 	openAIVideo.ID = originTask.TaskID
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
 	openAIVideo.CreatedAt = qResp.CreatedAt
 
 	if isFailed(qResp.Status) {
-		openAIVideo.Error = &dto.OpenAIVideoError{
+		openAIVideo.Error = &relaydto.OpenAIVideoError{
 			Message: extractFailedReason(qResp.Status),
 		}
 	}
@@ -278,5 +279,3 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 
 	return common.Marshal(openAIVideo)
 }
-
-

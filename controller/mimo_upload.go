@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// MimoUpload 将 multipart 素材上传请求安全转发到选中的 Mimo 渠道。
 func MimoUpload(c *gin.Context) {
 	contentType := c.Request.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "multipart/form-data") {
@@ -24,11 +25,6 @@ func MimoUpload(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "failed to read request body", "data": nil})
 		return
 	}
-	if _, err := storage.Seek(0, io.SeekStart); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": "internal error", "data": nil})
-		return
-	}
-
 	channel, err := getUploadChannel(c, constant.ChannelTypeMimo)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "msg": "no available MIMO channel", "data": nil})
@@ -44,11 +40,19 @@ func MimoUpload(c *gin.Context) {
 	baseURL := strings.TrimRight(channel.GetBaseURL(), "/")
 	upstreamURL := baseURL + "/api/video/upload"
 
-	req, err := http.NewRequest("POST", upstreamURL, common.ReaderOnly(storage))
+	bodyReader, err := storage.NewReader()
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": "internal error", "data": nil})
+		return
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstreamURL, bodyReader)
+	if err != nil {
+		_ = bodyReader.Close()
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": "failed to build upstream request", "data": nil})
 		return
 	}
+	// 为 HTTP/2 连接重置等透明重试提供独立请求体，避免复用共享游标。
+	req.GetBody = storage.NewReader
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.ContentLength = storage.Size()

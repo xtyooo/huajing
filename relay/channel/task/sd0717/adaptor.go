@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -118,7 +119,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		dResp.Model = info.OriginModelName
 	}
 	if dResp.Status == "" {
-		dResp.Status = dto.VideoStatusQueued
+		dResp.Status = relaydto.VideoStatusQueued
 	}
 	if dResp.CreatedAt == 0 {
 		dResp.CreatedAt = time.Now().Unix()
@@ -207,7 +208,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		return nil, errors.Wrap(err, "unmarshal sd0717 task data failed")
 	}
 
-	openAIVideo := dto.NewOpenAIVideo()
+	openAIVideo := relaydto.NewOpenAIVideo()
 	openAIVideo.ID = originTask.TaskID
 	openAIVideo.TaskID = originTask.TaskID
 	openAIVideo.Object = "video"
@@ -227,7 +228,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		openAIVideo.SetMetadata("completion_tokens", completionTokens)
 	}
 	if originTask.Status == model.TaskStatusFailure {
-		openAIVideo.Error = &dto.OpenAIVideoError{
+		openAIVideo.Error = &relaydto.OpenAIVideoError{
 			Message: firstNonEmpty(originTask.FailReason, extractErrorMessage(dResp.Error), "task failed"),
 			Code:    "upstream_error",
 		}

@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -135,7 +136,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	ov := dto.NewOpenAIVideo()
+	ov := relaydto.NewOpenAIVideo()
 	ov.ID = info.PublicTaskID
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
@@ -173,16 +174,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	info := &relaycommon.TaskInfo{}
 	switch resp.Data.Status {
-		case "RUNNING":
-			info.Status = model.TaskStatusInProgress
-		case "COMPLETED":
-			info.Status = model.TaskStatusSuccess
-			info.Url = resp.Data.URL
-		case "FAILED":
-			info.Status = model.TaskStatusFailure
-			info.Reason = resp.Data.FailReason
-		default:
-			info.Status = model.TaskStatusSubmitted
+	case "RUNNING":
+		info.Status = model.TaskStatusInProgress
+	case "COMPLETED":
+		info.Status = model.TaskStatusSuccess
+		info.Url = resp.Data.URL
+	case "FAILED":
+		info.Status = model.TaskStatusFailure
+		info.Reason = resp.Data.FailReason
+	default:
+		info.Status = model.TaskStatusSubmitted
 	}
 	return info, nil
 }
@@ -193,7 +194,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		return nil, errors.Wrap(err, "unmarshal muse task data failed")
 	}
 
-	ov := dto.NewOpenAIVideo()
+	ov := relaydto.NewOpenAIVideo()
 	ov.ID = originTask.TaskID
 	ov.Status = originTask.Status.ToVideoStatus()
 	ov.SetProgressStr(originTask.Progress)
@@ -204,7 +205,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		ov.SetMetadata("url", resp.Data.URL)
 	}
 	if resp.Data.FailReason != "" {
-		ov.Error = &dto.OpenAIVideoError{Message: resp.Data.FailReason}
+		ov.Error = &relaydto.OpenAIVideoError{Message: resp.Data.FailReason}
 	}
 	return common.Marshal(ov)
 }

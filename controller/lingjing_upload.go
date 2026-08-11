@@ -30,11 +30,6 @@ func LingjingUpload(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "failed to read request body"})
 		return
 	}
-	if _, err := storage.Seek(0, io.SeekStart); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
-		return
-	}
-
 	channel, err := getUploadChannel(c, constant.ChannelTypeLingjing)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"detail": "no available Lingjing channel"})
@@ -50,11 +45,19 @@ func LingjingUpload(c *gin.Context) {
 	baseURL := strings.TrimRight(channel.GetBaseURL(), "/")
 	upstreamURL := baseURL + "/api/open/v1/uploads"
 
-	req, err := http.NewRequest("POST", upstreamURL, common.ReaderOnly(storage))
+	bodyReader, err := storage.NewReader()
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstreamURL, bodyReader)
+	if err != nil {
+		_ = bodyReader.Close()
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "failed to build upstream request"})
 		return
 	}
+	// 为 HTTP/2 连接重置等透明重试提供独立请求体，避免复用共享游标。
+	req.GetBody = storage.NewReader
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.ContentLength = storage.Size()
