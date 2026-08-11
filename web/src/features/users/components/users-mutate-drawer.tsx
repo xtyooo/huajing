@@ -353,27 +353,26 @@ export function UsersMutateDrawer({
                 />
 
                 <FormField
-                    control={form.control}
-                    name='m'
-                    render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('M')}</FormLabel>
-                          <FormControl>
-                            <Input
-                                type='number'
-                                value={toNumber(field.value, 0)}
-                                onChange={(e) =>
-                                    field.onChange(
-                                        e.target.value === '' ? 0 : Number(e.target.value)
-                                    )
-                                }
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                    )}
+                  control={form.control}
+                  name='m'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('M')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          value={toNumber(field.value, 0)}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === '' ? 0 : Number(e.target.value)
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-
               </SideDrawerSection>
 
               {/* Group & Quota Settings (Update only) */}

@@ -33,7 +33,7 @@ import {
   User,
   Users,
   Wallet,
-  Share2
+  Share2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -115,10 +115,10 @@ export function useSidebarData(): SidebarData {
             icon: User,
           },
           {
-            title: "邀请记录",
+            title: '邀请记录',
             url: '/invitation-records',
             icon: Share2,
-          }
+          },
         ],
       },
       {

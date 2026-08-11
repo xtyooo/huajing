@@ -114,10 +114,10 @@ export function AmountDiscountVisualEditor({
   // }
 
   const formatPercentage = (rate: number) => {
-    if (rate >= 1) return '0%';
-    const discount = ((1 - rate) * 100).toFixed(1);
-    return `${discount}%`;
-  };
+    if (rate >= 1) return '0%'
+    const discount = ((1 - rate) * 100).toFixed(1)
+    return `${discount}%`
+  }
 
   return (
     <div className='space-y-4'>
