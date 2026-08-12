@@ -321,6 +321,8 @@ run_mock_deployment() {
     MOCK_ARTIFACT_GZIP="$ARTIFACT_GZIP" MOCK_REAL_SHA256SUM="$REAL_SHA256SUM" \
     MOCK_EXPECTED_BINARY_SHA256="$EXPECTED_BINARY_SHA256" MOCK_RUNNING_MAIN="$running_main" \
     MOCK_BACKUP_RESULT="${MOCK_BACKUP_RESULT:-success}" \
+    SKIP_BACKUP_GATE="${MOCK_SKIP_BACKUP_GATE:-false}" \
+    CONFIRM_SKIP_BACKUP_GATE="${MOCK_CONFIRM_SKIP_BACKUP_GATE:-}" \
     MOCK_GITEE_DIRECT="${MOCK_GITEE_DIRECT:-0}" MOCK_GITEE_REDIRECT_URL="${MOCK_GITEE_REDIRECT_URL:-}" \
     bash "$DEPLOY_SCRIPT" "$release_id" "$EXPECTED_BINARY_SHA256" "$expected_gzip_sha256" "$artifact_url" \
     >"$output_path" 2>&1
@@ -391,6 +393,7 @@ test_private_gitee_release() {
   cmp -s "${RELEASE_ROOT}/${release_id}/rollback.sh" "$ROLLBACK_SCRIPT" || fail "发布目录未保留回滚脚本"
   assert_file_contains "${BACKUP_ROOT}/${release_id}/RELEASE_RECORD.txt" 'internal_health=passed'
   assert_file_contains "${BACKUP_ROOT}/${release_id}/RELEASE_RECORD.txt" 'external_health=passed'
+  assert_file_contains "${BACKUP_ROOT}/${release_id}/RELEASE_RECORD.txt" 'backup_gate=verified'
   assert_file_contains "${MOCK_STATE}/curl.log" "--config ${config_path}"
   assert_file_contains "${MOCK_STATE}/curl.log" '--disable'
   assert_file_contains "${MOCK_STATE}/curl.log" '--no-location'
@@ -401,6 +404,29 @@ test_private_gitee_release() {
   assert_file_contains "${MOCK_STATE}/systemctl.log" 'new-api-cos-full-backup.service'
   assert_file_contains "${MOCK_STATE}/systemctl.log" 'new-api-cos-binlog-backup.service'
   assert_file_contains "${SYSTEMD_UNIT_ROOT}/new-api.service.d/release.conf" "WorkingDirectory=${RELEASE_ROOT}/${release_id}"
+}
+
+# 验证跳过备份门禁必须用当次发布 ID 二次确认，成功后会留下可审计记录。
+test_explicit_backup_gate_bypass() {
+  local release_id="explicit-backup-bypass"
+  local artifact_url='https://objects.example.test/releases/main.gz'
+  local rejected_output="${TEST_ROOT}/explicit-backup-bypass-rejected.log"
+  local accepted_output="${TEST_ROOT}/explicit-backup-bypass-accepted.log"
+
+  if MOCK_BACKUP_RESULT='failed' MOCK_SKIP_BACKUP_GATE='true' MOCK_CONFIRM_SKIP_BACKUP_GATE='wrong-release' \
+       run_mock_deployment "$release_id" "$artifact_url" "${TEST_ROOT}/does-not-exist.conf" "$rejected_output"; then
+    fail "错误的跳过备份确认值仍允许发布"
+  fi
+  assert_file_contains "$rejected_output" "CONFIRM_SKIP_BACKUP_GATE=${release_id}"
+  [[ ! -e "${RELEASE_ROOT}/${release_id}" ]] || fail "错误确认值留下了 release 目录"
+  [[ ! -e "${BACKUP_ROOT}/${release_id}" ]] || fail "错误确认值留下了 backup 目录"
+
+  MOCK_BACKUP_RESULT='failed' MOCK_SKIP_BACKUP_GATE='true' MOCK_CONFIRM_SKIP_BACKUP_GATE="$release_id" \
+    run_mock_deployment "$release_id" "$artifact_url" "${TEST_ROOT}/does-not-exist.conf" "$accepted_output"
+  assert_file_contains "$accepted_output" 'backup freshness gate explicitly skipped'
+  assert_file_contains "${BACKUP_ROOT}/${release_id}/RELEASE_RECORD.txt" 'backup_gate=skipped-by-explicit-confirmation'
+  assert_file_not_contains "${MOCK_STATE}/systemctl.log" 'new-api-cos-full-backup.service'
+  assert_file_not_contains "${MOCK_STATE}/systemctl.log" 'new-api-cos-binlog-backup.service'
 }
 
 # 验证任意匿名 HTTPS（包含对象存储签名查询参数）不依赖 Gitee 配置即可发布。
@@ -513,6 +539,7 @@ main() {
   test_private_gitee_direct_response
   test_anonymous_https_release
   test_backup_gate_allows_same_release_retry
+  test_explicit_backup_gate_bypass
   test_log_link_resolves_stable_target
   test_gitee_redirect_boundary
   test_gzip_sha_boundary

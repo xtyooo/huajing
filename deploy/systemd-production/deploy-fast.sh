@@ -18,6 +18,8 @@ BINLOG_BACKUP_UNIT="${BINLOG_BACKUP_UNIT:-new-api-cos-binlog-backup.service}"
 MAX_FULL_BACKUP_AGE_SECONDS="${MAX_FULL_BACKUP_AGE_SECONDS:-90000}"
 MAX_BINLOG_BACKUP_AGE_SECONDS="${MAX_BINLOG_BACKUP_AGE_SECONDS:-1200}"
 GITEE_DOWNLOAD_CURL_CONFIG="${GITEE_DOWNLOAD_CURL_CONFIG:-/etc/new-api-deploy/gitee-download.curl.conf}"
+SKIP_BACKUP_GATE="${SKIP_BACKUP_GATE:-false}"
+CONFIRM_SKIP_BACKUP_GATE="${CONFIRM_SKIP_BACKUP_GATE:-}"
 
 RELEASE_ID="${1:?usage: deploy-fast.sh RELEASE_ID BINARY_SHA256 GZIP_SHA256 ARTIFACT_URL}"
 EXPECTED_BINARY_SHA256="${2:?usage: deploy-fast.sh RELEASE_ID BINARY_SHA256 GZIP_SHA256 ARTIFACT_URL}"
@@ -26,6 +28,14 @@ ARTIFACT_URL="${4:?usage: deploy-fast.sh RELEASE_ID BINARY_SHA256 GZIP_SHA256 AR
 
 if [[ ! "$RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
   printf 'invalid release id: %s\n' "$RELEASE_ID" >&2
+  exit 1
+fi
+if [[ "$SKIP_BACKUP_GATE" != "true" && "$SKIP_BACKUP_GATE" != "false" ]]; then
+  printf 'SKIP_BACKUP_GATE must be exactly true or false\n' >&2
+  exit 1
+fi
+if [[ "$SKIP_BACKUP_GATE" == "true" && "$CONFIRM_SKIP_BACKUP_GATE" != "$RELEASE_ID" ]]; then
+  printf 'skipping backup gate requires CONFIRM_SKIP_BACKUP_GATE=%s\n' "$RELEASE_ID" >&2
   exit 1
 fi
 if [[ ! "$EXPECTED_BINARY_SHA256" =~ ^[0-9a-fA-F]{64}$ || ! "$EXPECTED_GZIP_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
@@ -198,8 +208,15 @@ CURRENT_DIR="$(systemctl show "$SERVICE_NAME" -p WorkingDirectory --value)"
 [[ -n "$CURRENT_DIR" && -x "$CURRENT_DIR/main" && -s "$CURRENT_DIR/.env" ]]
 curl --disable -fsS --max-time 10 "$INTERNAL_HEALTH_URL" >/dev/null
 curl --disable -fsS --max-time 15 "$EXTERNAL_HEALTH_URL" >/dev/null
-check_recent_backup "$FULL_BACKUP_UNIT" "$MAX_FULL_BACKUP_AGE_SECONDS" || exit 1
-check_recent_backup "$BINLOG_BACKUP_UNIT" "$MAX_BINLOG_BACKUP_AGE_SECONDS" || exit 1
+if [[ "$SKIP_BACKUP_GATE" == "true" ]]; then
+  # 只有调用者同时给出开关和当次发布 ID 确认值时才可跳过，并在日志与发布记录中留痕。
+  BACKUP_GATE_STATUS="skipped-by-explicit-confirmation"
+  log "WARNING: backup freshness gate explicitly skipped for release=$RELEASE_ID"
+else
+  BACKUP_GATE_STATUS="verified"
+  check_recent_backup "$FULL_BACKUP_UNIT" "$MAX_FULL_BACKUP_AGE_SECONDS" || exit 1
+  check_recent_backup "$BINLOG_BACKUP_UNIT" "$MAX_BINLOG_BACKUP_AGE_SECONDS" || exit 1
+fi
 
 available_kb="$(df -Pk "$RELEASE_ROOT" | awk 'NR==2 {print $4}')"
 if (( available_kb < 2 * 1024 * 1024 )); then
@@ -346,6 +363,7 @@ deployed_at=$(date -Is)
 deployment_mode=code-only-release-fast
 artifact_sha256=$EXPECTED_BINARY_SHA256_NORMALIZED
 artifact_gzip_sha256=$EXPECTED_GZIP_SHA256_NORMALIZED
+backup_gate=$BACKUP_GATE_STATUS
 previous_working_directory=$CURRENT_DIR
 release_directory=$RELEASE_DIR
 backup_directory=$BACKUP_DIR

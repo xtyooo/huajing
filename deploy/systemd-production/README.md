@@ -126,9 +126,20 @@ GITEE_TOKEN_FILE="$HOME/.config/new-api/gitee-release.token" \
   'https://gitee.com/api/v5/repos/qq1u/new-api/releases/<RELEASE_NUMERIC_ID>/attach_files/<MAIN_GZ_ATTACHMENT_ID>/download'
 ```
 
+如果已由负责人明确授权本次发布跳过备份新鲜度门禁，必须同时提供开关和与第一个参数完全一致的确认值：
+
+```bash
+SKIP_BACKUP_GATE=true \
+CONFIRM_SKIP_BACKUP_GATE='<RELEASE_ID>' \
+  /opt/new-api-deploy/deploy-fast.sh \
+  '<RELEASE_ID>' '<MAIN_SHA256>' '<MAIN_GZ_SHA256>' '<MAIN_GZ_DOWNLOAD_URL>'
+```
+
+该模式不会关闭下载、双 SHA、ELF、systemd、进程文件或内外健康检查；发布日志和 `RELEASE_RECORD.txt` 会记录本次跳过操作。
+
 脚本会依次执行：
 
-1. 确认当前服务、内外网健康和两类备份正常。
+1. 确认当前服务和内外网健康，并验证两类备份新鲜度（或记录已显式确认的跳过操作）。
 2. 仅对 `qq1u/new-api` 的指定 Gitee 下载端点读取私有令牌。
 3. 校验 `main.gz` SHA-256、gzip 结构和解压后 `main` SHA-256。
 4. 备份现有配置和二进制，并创建新 release 目录。
