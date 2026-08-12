@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# 记录 mock Docker 调用，供测试校验构建目标、架构和清理行为。
+record_call() {
+  printf '%s\n' "$*" >> "${MOCK_DOCKER_LOG:?MOCK_DOCKER_LOG 未设置}"
+}
+
+command_name="${1:-}"
+[[ -n "$command_name" ]] || exit 2
+shift
+
+case "$command_name" in
+  build)
+    iid_file=""
+    context_directory=""
+    target_seen=false
+    platform_seen=false
+    target_os_seen=false
+    target_arch_seen=false
+
+    # 解析构建参数并验证脚本始终指向 builder2 与 linux/amd64。
+    while (($# > 0)); do
+      case "$1" in
+        --iidfile)
+          iid_file="$2"
+          shift 2
+          ;;
+        --target)
+          [[ "$2" == "builder2" ]] && target_seen=true
+          shift 2
+          ;;
+        --platform)
+          [[ "$2" == "linux/amd64" ]] && platform_seen=true
+          shift 2
+          ;;
+        --build-arg)
+          [[ "$2" == "TARGETOS=linux" ]] && target_os_seen=true
+          [[ "$2" == "TARGETARCH=amd64" ]] && target_arch_seen=true
+          shift 2
+          ;;
+        --file)
+          dockerfile_path="$2"
+          shift 2
+          ;;
+        *)
+          context_directory="$1"
+          shift
+          ;;
+      esac
+    done
+
+    [[ "$target_seen" == true ]]
+    [[ "$platform_seen" == true ]]
+    [[ "$target_os_seen" == true ]]
+    [[ "$target_arch_seen" == true ]]
+    [[ -n "$iid_file" && -n "$context_directory" && -f "$dockerfile_path" ]]
+    record_call "build target=builder2 platform=linux/amd64"
+    if [[ -f "${context_directory}/tracked.txt" ]]; then
+      record_call "context_tracked=$(tr -d '\r\n' < "${context_directory}/tracked.txt")"
+    fi
+    printf 'sha256:mock-builder2-image\n' > "$iid_file"
+    ;;
+  create)
+    record_call "create ${1:-}"
+    printf 'mock-builder-container\n'
+    ;;
+  cp)
+    source_path="${1:?source path missing}"
+    destination_path="${2:?destination path missing}"
+    record_call "cp ${source_path}"
+    [[ "$source_path" == "mock-builder-container:/build/new-api" ]]
+    if [[ "${MOCK_DOCKER_FAIL_CP:-0}" == "1" ]]; then
+      exit 97
+    fi
+    printf 'deterministic mock linux amd64 main\n' > "$destination_path"
+    ;;
+  rm)
+    record_call "rm $*"
+    ;;
+  *)
+    printf 'unexpected docker command: %s\n' "$command_name" >&2
+    exit 2
+    ;;
+esac
