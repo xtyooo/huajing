@@ -78,10 +78,18 @@ case "${url}" in
   */releases/tags/*)
     if [[ "${MOCK_SCENARIO}" == 'existing_release' ]]; then
       status='200'
-      body='{"id":8000,"tag_name":"existing"}'
-    else
+      body="{\"id\":8000,\"tag_name\":\"${MOCK_RELEASE_TAG}\"}"
+    elif [[ "${MOCK_SCENARIO}" == 'malformed_release_lookup' ]]; then
+      status='200'
+      body='{}'
+    elif [[ "${MOCK_SCENARIO}" == 'missing_release_404' ]]; then
+      # 保留对标准 REST 404 空结果语义的兼容。
       status='404'
       body='{"message":"Not Found"}'
+    else
+      # 真实 Gitee 私有仓库在 Release tag 不存在时返回 HTTP 200 + null。
+      status='200'
+      body='null'
     fi
     ;;
   */tags\?*)

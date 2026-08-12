@@ -191,10 +191,19 @@ assert_contains "${success_output}" 'deploy_fast_arg_3_main_gz_sha256='
 assert_contains "${success_output}" 'deploy_fast_arg_4_main_gz_download_url=https://gitee.com/api/v5/repos/qq1u/new-api/releases/9001/attach_files/9101/download'
 assert_contains "${success_output}" 'main_gz_attachment_id=9101'
 [[ "$(cat "${MOCK_STATE_DIR}/call-count")" == '6' ]] || fail '成功路径 API 调用次数不是 6'
+assert_contains "$(sed -n '1p' "${MOCK_STATE_DIR}/calls.log")" '/releases/tags/release%2F'
 [[ "$(basename "$(sed -n '1p' "${MOCK_STATE_DIR}/uploaded-files.log")")" == 'main.gz' ]] || fail '第一个上传附件不是 main.gz'
 [[ "$(basename "$(sed -n '2p' "${MOCK_STATE_DIR}/uploaded-files.log")")" == 'RELEASE-MANIFEST.txt' ]] || fail '第二个上传附件不是 RELEASE-MANIFEST.txt'
 [[ "$(basename "$(sed -n '3p' "${MOCK_STATE_DIR}/uploaded-files.log")")" == 'SHA256SUMS' ]] || fail '第三个上传附件不是 SHA256SUMS'
 ! grep -R -Fq "${FAKE_TOKEN}" "${MOCK_STATE_DIR}" || fail '令牌泄漏到 mock 调用日志'
+
+# 发布预检同时兼容标准 HTTP 404 空结果，不把 Gitee 当前的 200 + null 行为写成唯一前提。
+reset_mock_state
+missing_404_artifacts="${TEST_ROOT}/artifacts-missing-release-404"
+make_artifacts "${missing_404_artifacts}" "test-$PPID-$$-missing-release-404"
+run_publisher 'missing_release_404' "${missing_404_artifacts}" "${TEST_ROOT}/missing-release-404.out" "${TEST_ROOT}/missing-release-404.err"
+assert_contains "$(cat "${TEST_ROOT}/missing-release-404.out")" 'release_id=9001'
+[[ "$(cat "${MOCK_STATE_DIR}/call-count")" == '6' ]] || fail 'HTTP 404 空结果应继续完整发布流程'
 
 # 调用者使用 bash -x 时，脚本入口也必须立即关闭跟踪以保护令牌。
 reset_mock_state
@@ -274,5 +283,16 @@ fi
 existing_release_text="$(cat "${TEST_ROOT}/existing-release.err")"
 assert_contains "${existing_release_text}" 'Gitee Release 已存在，不允许复用 tag'
 [[ "$(cat "${MOCK_STATE_DIR}/call-count")" == '1' ]] || fail '远程 Release 已存在时不应继续预检或创建'
+
+# HTTP 200 但既不是 null 也不是合法 Release 对象时必须拒绝发布，避免异常 API 响应被当成空结果。
+reset_mock_state
+malformed_lookup_artifacts="${TEST_ROOT}/artifacts-malformed-release-lookup"
+make_artifacts "${malformed_lookup_artifacts}" "test-$PPID-$$-malformed-release-lookup"
+if run_publisher 'malformed_release_lookup' "${malformed_lookup_artifacts}" "${TEST_ROOT}/malformed-release-lookup.out" "${TEST_ROOT}/malformed-release-lookup.err"; then
+  fail 'Release 查询返回异常 HTTP 200 结构时脚本应失败'
+fi
+malformed_lookup_text="$(cat "${TEST_ROOT}/malformed-release-lookup.err")"
+assert_contains "${malformed_lookup_text}" 'HTTP 200 响应既不是 null 也不是匹配的 Release 对象'
+[[ "$(cat "${MOCK_STATE_DIR}/call-count")" == '1' ]] || fail 'Release 查询返回异常结构时不应继续预检或创建'
 
 printf 'publish-gitee-release 测试通过\n'

@@ -340,7 +340,19 @@ ensure_remote_tag_is_unique() {
   api_request 'GET' "${DOWNLOAD_API_BASE_URL}/releases/tags/${encoded_tag}" "${response_file}"
   case "${HTTP_STATUS}" in
     200)
-      fail "Gitee Release 已存在，不允许复用 tag: ${RELEASE_TAG}"
+      # Gitee 在私有仓库查询不存在的 Release tag 时会返回 HTTP 200 + JSON null，
+      # 因此必须按响应结构区分“不存在”和“已存在”，不能只看状态码。
+      if jq -e 'type == "null"' "${response_file}" >/dev/null 2>&1; then
+        :
+      elif jq -e --arg tag "${RELEASE_TAG}" '
+        type == "object" and
+        .tag_name == $tag and
+        ((.id | tostring) | test("^[1-9][0-9]*$"))
+      ' "${response_file}" >/dev/null 2>&1; then
+        fail "Gitee Release 已存在，不允许复用 tag: ${RELEASE_TAG}"
+      else
+        fail "检查 Gitee Release 唯一性失败：HTTP 200 响应既不是 null 也不是匹配的 Release 对象"
+      fi
       ;;
     404)
       ;;
