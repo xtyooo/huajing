@@ -67,7 +67,8 @@ const (
 	ChannelTypeWufan          = 67
 	ChannelTypeSub2API        = 68
 	ChannelTypeNewAPI         = 69
-	ChannelTypeDummy          = 70 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeAnhe           = 70
+	ChannelTypeDummy          = 71 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -142,6 +143,7 @@ var ChannelBaseURLs = []string{
 	"https://token-api.wufan.com", //67 wufan
 	"",                            //68 Sub2API
 	"",                            //69 NewAPI
+	"https://anhedean.cn",         //70 Anhe
 }
 
 var ChannelTypeNames = map[int]string{
@@ -211,6 +213,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeWufan:          "wufan",
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
+	ChannelTypeAnhe:           "安和",
 }
 
 func GetChannelTypeName(channelType int) string {

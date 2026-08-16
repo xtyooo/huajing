@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   CHANNEL_TYPES,
+  CHANNEL_TYPE_ANHE,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -185,6 +186,20 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'wufan,Seedance-2.0,Seedance-2.0-Mini',
       other:
         'Video task channel. Client calls /v1/videos; upstream uses Wufan Seedance generations API.',
+    },
+  },
+  [CHANNEL_TYPE_ANHE]: {
+    id: CHANNEL_TYPE_ANHE,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_ANHE],
+    icon: 'volcengine',
+    defaultBaseUrl: 'https://anhedean.cn',
+    supportedModels: ['seedance-2-5-480p', 'seedance-2-5-720p'],
+    hints: {
+      baseUrl: 'Default: https://anhedean.cn',
+      key: 'Bearer API key',
+      models: 'seedance-2-5-480p,seedance-2-5-720p',
+      other:
+        'Video task channel. Client calls /v1/videos; upstream creation returns HTTP 202 Accepted.',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {

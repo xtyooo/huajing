@@ -278,7 +278,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	contentType := resp.Header.Get("Content-Type")
 	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s, StatusCode: %s", target.URL, contentType, resp.Status))
 	var ext string
-	if isSoraContentPlatform(task.Platform) {
+	if usesOpenAIVideoContentEndpoint(task.Platform) {
 		ext = ".mp4"
 	} else if urlExt := getKnownExtFromURL(target.URL); urlExt != "" {
 		// When the URL already carries a known media extension (e.g. .png, .mp4),
@@ -468,7 +468,7 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}
 		return target, nil
 	}
-	if isSoraContentPlatform(task.Platform) {
+	if usesOpenAIVideoContentEndpoint(task.Platform) {
 		channel, err := model.CacheGetChannel(task.ChannelId)
 		if err != nil {
 			return mediaDownloadTarget{}, err
@@ -549,8 +549,10 @@ func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[st
 	return headers
 }
 
-func isSoraContentPlatform(platform constant.TaskPlatform) bool {
-	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) || platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI))
+func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
+	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

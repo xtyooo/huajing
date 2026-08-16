@@ -201,12 +201,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// to skip duration ratios in per-request billing mode.
 	inPatch := common.StringsContains(constant.TaskPricePatches, modelName)
 	inConfig := info.PriceData.UsePrice && billing_setting.GetSkipSeconds(modelName)
-	if !inPatch && !inConfig {
-		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
-		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
-		info.PriceData.Quota = quota
-		noteTaskQuotaClamp(info, clamp)
-	}
+	applyTaskPriceRatios(info, inPatch || inConfig)
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {
@@ -263,6 +258,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+func applyTaskPriceRatios(info *relaycommon.RelayInfo, skip bool) {
+	if skip {
+		return
+	}
+	quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
+	quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
+	info.PriceData.Quota = quota
+	noteTaskQuotaClamp(info, clamp)
 }
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。

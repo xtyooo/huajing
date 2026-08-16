@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -159,6 +160,57 @@ func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing
 	assert.Equal(t, "https://sora.example.test/v1/videos/video_upstream_123/content", target.URL)
 	require.NotEmpty(t, target.Headers)
 	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
+}
+
+func TestResolveAnheMediaDownloadTargetBuildsAuthenticatedContentURL(t *testing.T) {
+	previousMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
+
+	baseURL := "https://anhe.example.test"
+	channel := &model.Channel{
+		Id:      990070,
+		Type:    constant.ChannelTypeAnhe,
+		Key:     "fallback-key",
+		BaseURL: &baseURL,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { model.DB.Delete(channel) })
+	task := &model.Task{
+		ChannelId: channel.Id,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
+		TaskID:    "task_public",
+		PrivateData: model.TaskPrivateData{
+			Key:            "selected-key",
+			UpstreamTaskID: "video_upstream_123",
+			ResultURL:      "https://local.example/v1/videos/task_public/content",
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://anhe.example.test/v1/videos/video_upstream_123/content", target.URL)
+	require.NotEmpty(t, target.Headers)
+	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
+}
+
+func TestResolveAnheMediaDownloadTargetDoesNotAuthenticateDirectCDNURL(t *testing.T) {
+	task := &model.Task{
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
+		TaskID:   "task_public",
+		PrivateData: model.TaskPrivateData{
+			Key:       "selected-key",
+			ResultURL: "https://cdn.example.test/result.mp4",
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://cdn.example.test/result.mp4", target.URL)
+	require.Len(t, target.Headers, 1)
+	assert.Nil(t, target.Headers[0])
 }
 
 func TestResolveMediaDownloadTargetPrefersDirectURLFromTaskData(t *testing.T) {

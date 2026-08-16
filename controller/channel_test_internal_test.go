@@ -95,6 +95,16 @@ func TestNewAPIChannelRegistration(t *testing.T) {
 	assert.Empty(t, constant.ChannelBaseURLs[constant.ChannelTypeNewAPI])
 }
 
+func TestAnheChannelRegistration(t *testing.T) {
+	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeAnhe)
+
+	require.True(t, ok)
+	assert.Equal(t, constant.APITypeOpenAI, apiType)
+	assert.Equal(t, "安和", constant.GetChannelTypeName(constant.ChannelTypeAnhe))
+	assert.Equal(t, "https://anhedean.cn", constant.ChannelBaseURLs[constant.ChannelTypeAnhe])
+	assert.Equal(t, []string{"seedance-2-5-480p", "seedance-2-5-720p"}, channelId2Models[constant.ChannelTypeAnhe])
+}
+
 func TestResponsesCompactChannelSupport(t *testing.T) {
 	tests := []struct {
 		name        string

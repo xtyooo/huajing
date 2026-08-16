@@ -473,6 +473,40 @@ func TestUpdateVideoTasksSoraQueuesProxyContentForMediaCache(t *testing.T) {
 	assert.Equal(t, taskcommon.BuildProxyURL("task_public_sora"), reloaded.PrivateData.ResultURL)
 }
 
+func TestUpdateVideoTasksAnheQueuesProxyContentForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 403
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeAnhe, true)
+	task := seedPollingTask(t, channelID, "task_public_anhe", "upstream_anhe")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"id":"upstream_anhe","status":"completed","progress":100}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+		},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, taskcommon.BuildProxyURL("task_public_anhe"), reloaded.PrivateData.ResultURL)
+}
+
 func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	truncate(t)
 

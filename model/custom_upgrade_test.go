@@ -32,6 +32,17 @@ func TestInitTaskStoresSoraSelectedKey(t *testing.T) {
 	assert.Equal(t, "selected-sora-key", task.PrivateData.Key)
 }
 
+func TestInitTaskStoresAnheSelectedKey(t *testing.T) {
+	task := InitTask(constant.TaskPlatform("70"), &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAnhe,
+			ApiKey:      "selected-anhe-key",
+		},
+	})
+
+	assert.Equal(t, "selected-anhe-key", task.PrivateData.Key)
+}
+
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {
 	truncateTables(t)
 	defaultBaseURL := "https://default.example"
