@@ -473,7 +473,7 @@ func TestUpdateVideoTasksSoraQueuesProxyContentForMediaCache(t *testing.T) {
 	assert.Equal(t, taskcommon.BuildProxyURL("task_public_sora"), reloaded.PrivateData.ResultURL)
 }
 
-func TestUpdateVideoTasksAnheQueuesProxyContentForMediaCache(t *testing.T) {
+func TestUpdateVideoTasksAnheCompletedWithoutURLStaysInProgress(t *testing.T) {
 	truncate(t)
 
 	const channelID = 403
@@ -483,10 +483,47 @@ func TestUpdateVideoTasksAnheQueuesProxyContentForMediaCache(t *testing.T) {
 	require.NoError(t, model.DB.Save(task).Error)
 
 	adaptor := &taskPollingFetchAdaptor{
-		responseBody: []byte(`{"id":"upstream_anhe","status":"completed","progress":100}`),
+		responseBody: []byte(`{"task_id":"upstream_anhe","status":"succeeded","progress":100}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusInProgress,
+			Progress: "99%",
+		},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusInProgress), reloaded.Status)
+	assert.Equal(t, "99%", reloaded.Progress)
+	assert.NotEqual(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Empty(t, reloaded.PrivateData.ResultURL)
+}
+
+func TestUpdateVideoTasksAnheQueuesDirectResultForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 404
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeAnhe, true)
+	task := seedPollingTask(t, channelID, "task_public_anhe_url", "upstream_anhe_url")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	directURL := "https://cdn.example.test/anhe-result.mp4"
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"task_id":"upstream_anhe_url","status":"succeeded","result_url":"` + directURL + `"}`),
 		taskInfo: &relaycommon.TaskInfo{
 			Status:   model.TaskStatusSuccess,
 			Progress: "100%",
+			Url:      directURL,
 		},
 	}
 	previousFactory := GetTaskAdaptorFunc
@@ -504,7 +541,8 @@ func TestUpdateVideoTasksAnheQueuesProxyContentForMediaCache(t *testing.T) {
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
 	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
-	assert.Equal(t, taskcommon.BuildProxyURL("task_public_anhe"), reloaded.PrivateData.ResultURL)
+	assert.Equal(t, directURL, reloaded.PrivateData.ResultURL)
+	assert.Empty(t, reloaded.MediaURL, "public success remains gated until the cache download succeeds")
 }
 
 func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {

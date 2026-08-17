@@ -7,4 +7,4 @@ var ModelList = []string{
 	"seedance-2-5-720p",
 }
 
-const videosPath = "/v1/videos"
+const videoGenerationsPath = "/v1/video/generations"

@@ -485,6 +485,10 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 			Headers: mediaDownloadAuthHeaders(task, channel),
 		}, nil
 	}
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) &&
+		isTaskProxyResultURL(task.PrivateData.ResultURL, task.TaskID) {
+		return mediaDownloadTarget{}, fmt.Errorf("completed task is missing a direct media URL")
+	}
 	target := mediaDownloadTarget{URL: task.PrivateData.ResultURL, Headers: []map[string]string{nil}}
 	if isAuthDownloadPlatform(task.Platform) {
 		channel, err := model.CacheGetChannel(task.ChannelId)
@@ -551,8 +555,7 @@ func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[st
 
 func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

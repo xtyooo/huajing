@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -162,37 +163,21 @@ func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing
 	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
 }
 
-func TestResolveAnheMediaDownloadTargetBuildsAuthenticatedContentURL(t *testing.T) {
-	previousMemoryCache := common.MemoryCacheEnabled
-	common.MemoryCacheEnabled = false
-	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
-
-	baseURL := "https://anhe.example.test"
-	channel := &model.Channel{
-		Id:      990070,
-		Type:    constant.ChannelTypeAnhe,
-		Key:     "fallback-key",
-		BaseURL: &baseURL,
-	}
-	require.NoError(t, model.DB.Create(channel).Error)
-	t.Cleanup(func() { model.DB.Delete(channel) })
+func TestAnheDoesNotUseLegacyVideoContentEndpoint(t *testing.T) {
+	assert.False(t, usesOpenAIVideoContentEndpoint(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))))
 	task := &model.Task{
-		ChannelId: channel.Id,
-		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
-		TaskID:    "task_public",
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
+		TaskID:   "task_public",
 		PrivateData: model.TaskPrivateData{
-			Key:            "selected-key",
-			UpstreamTaskID: "video_upstream_123",
-			ResultURL:      "https://local.example/v1/videos/task_public/content",
+			UpstreamTaskID: "task_upstream",
+			ResultURL:      taskcommon.BuildProxyURL("task_public"),
 		},
 	}
 
 	target, err := resolveMediaDownloadTarget(task)
 
-	require.NoError(t, err)
-	assert.Equal(t, "https://anhe.example.test/v1/videos/video_upstream_123/content", target.URL)
-	require.NotEmpty(t, target.Headers)
-	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
+	require.ErrorContains(t, err, "missing a direct media URL")
+	assert.Empty(t, target.URL, "legacy proxy URLs must not recurse into the local content endpoint")
 }
 
 func TestResolveAnheMediaDownloadTargetDoesNotAuthenticateDirectCDNURL(t *testing.T) {

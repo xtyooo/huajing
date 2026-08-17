@@ -48,61 +48,46 @@ func (n *flexibleInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type videoConfig struct {
-	ReferenceMode string `json:"reference_mode,omitempty"`
-}
-
 type standardVideoRequest struct {
-	Model              string      `json:"model"`
-	Prompt             string      `json:"prompt"`
-	AspectRatio        string      `json:"aspect_ratio,omitempty"`
-	Ratio              string      `json:"ratio,omitempty"`
-	Resolution         string      `json:"resolution,omitempty"`
-	Seconds            flexibleInt `json:"seconds,omitempty"`
-	Duration           flexibleInt `json:"duration,omitempty"`
-	ImageURL           string      `json:"image_url,omitempty"`
-	ReferenceImageURLs []string    `json:"reference_image_urls,omitempty"`
-	Images             []string    `json:"images,omitempty"`
-	ReferenceVideo     string      `json:"reference_video,omitempty"`
-	ReferenceVideos    []string    `json:"reference_videos,omitempty"`
-	Videos             []string    `json:"videos,omitempty"`
-	AudioURL           string      `json:"audio_url,omitempty"`
-	AudioURLs          []string    `json:"audio_urls,omitempty"`
-	Audios             []string    `json:"audios,omitempty"`
-	VideoConfig        videoConfig `json:"video_config,omitempty"`
-	ClientBusinessID   string      `json:"client_business_id,omitempty"`
-	OutputFormat       string      `json:"output_format,omitempty"`
-	GenerateAudio      *bool       `json:"generate_audio,omitempty"`
-	ReturnLastFrame    *bool       `json:"return_last_frame,omitempty"`
-	CallbackURL        string      `json:"callback_url,omitempty"`
-	TraceID            string      `json:"trace_id,omitempty"`
-	Seed               *int        `json:"seed,omitempty"`
-}
-
-type imageWithRole struct {
-	URL  string `json:"url"`
-	Role string `json:"role"`
-}
-
-type mediaWithRole struct {
-	URL string `json:"url"`
+	Model              string       `json:"model"`
+	Prompt             string       `json:"prompt"`
+	Duration           *flexibleInt `json:"duration,omitempty"`
+	Seconds            *flexibleInt `json:"seconds,omitempty"`
+	Resolution         string       `json:"resolution,omitempty"`
+	Ratio              string       `json:"ratio,omitempty"`
+	AspectRatio        string       `json:"aspect_ratio,omitempty"`
+	Size               string       `json:"size,omitempty"`
+	Image              string       `json:"image,omitempty"`
+	ImageURL           string       `json:"image_url,omitempty"`
+	Images             []string     `json:"images,omitempty"`
+	ImageURLs          []string     `json:"image_urls,omitempty"`
+	ReferenceImageURLs []string     `json:"reference_image_urls,omitempty"`
+	ReferenceImages    []string     `json:"reference_images,omitempty"`
+	References         []string     `json:"references,omitempty"`
+	ReferenceURLs      []string     `json:"reference_urls,omitempty"`
+	Video              string       `json:"video,omitempty"`
+	ReferenceVideo     string       `json:"reference_video,omitempty"`
+	ReferenceVideos    []string     `json:"reference_videos,omitempty"`
+	Videos             []string     `json:"videos,omitempty"`
+	VideoURLs          []string     `json:"video_urls,omitempty"`
+	Audio              string       `json:"audio,omitempty"`
+	AudioURL           string       `json:"audio_url,omitempty"`
+	ReferenceAudios    []string     `json:"reference_audios,omitempty"`
+	Audios             []string     `json:"audios,omitempty"`
+	AudioURLs          []string     `json:"audio_urls,omitempty"`
+	GenerateAudio      *bool        `json:"generate_audio,omitempty"`
 }
 
 type upstreamRequest struct {
-	Model            string          `json:"model"`
-	Prompt           string          `json:"prompt"`
-	ClientBusinessID string          `json:"client_business_id,omitempty"`
-	Duration         int             `json:"duration"`
-	AspectRatio      string          `json:"aspect_ratio"`
-	ImageWithRoles   []imageWithRole `json:"image_with_roles,omitempty"`
-	VideoWithRoles   []mediaWithRole `json:"video_with_roles,omitempty"`
-	AudioWithRoles   []mediaWithRole `json:"audio_with_roles,omitempty"`
-	OutputFormat     string          `json:"output_format,omitempty"`
-	GenerateAudio    *bool           `json:"generate_audio,omitempty"`
-	ReturnLastFrame  *bool           `json:"return_last_frame,omitempty"`
-	CallbackURL      string          `json:"callback_url,omitempty"`
-	TraceID          string          `json:"trace_id,omitempty"`
-	Seed             *int            `json:"seed,omitempty"`
+	Model           string   `json:"model"`
+	Prompt          string   `json:"prompt"`
+	Duration        *int     `json:"duration,omitempty"`
+	Resolution      string   `json:"resolution,omitempty"`
+	Ratio           string   `json:"ratio"`
+	Images          []string `json:"images,omitempty"`
+	ReferenceVideos []string `json:"reference_videos,omitempty"`
+	ReferenceAudios []string `json:"reference_audios,omitempty"`
+	GenerateAudio   *bool    `json:"generate_audio,omitempty"`
 }
 
 type submitResponse struct {
@@ -136,34 +121,49 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt is required"), "invalid_request", http.StatusBadRequest)
 	}
 
-	duration := int(request.Seconds)
-	if duration == 0 {
-		duration = int(request.Duration)
+	var duration *int
+	if request.Duration != nil {
+		value := int(*request.Duration)
+		duration = &value
+	} else if request.Seconds != nil {
+		value := int(*request.Seconds)
+		duration = &value
 	}
-	if duration != -1 && (duration < 4 || duration > 30) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be -1 or between 4 and 30"), "invalid_duration", http.StatusBadRequest)
-	}
-
-	aspectRatio := strings.TrimSpace(request.AspectRatio)
-	if aspectRatio == "" {
-		aspectRatio = strings.TrimSpace(request.Ratio)
-	}
-	if aspectRatio == "" {
-		aspectRatio = "16:9"
-	}
-	if !validAspectRatio(aspectRatio) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported aspect_ratio: %s", aspectRatio), "invalid_aspect_ratio", http.StatusBadRequest)
+	if duration != nil && *duration != -1 && (*duration <= 0 || *duration > relaycommon.MaxTaskDurationSeconds) {
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("duration must be -1 or between 1 and %d", relaycommon.MaxTaskDurationSeconds),
+			"invalid_duration",
+			http.StatusBadRequest,
+		)
 	}
 
-	images := appendNonEmpty(nil, request.ImageURL)
-	images = append(images, request.ReferenceImageURLs...)
-	images = append(images, request.Images...)
-	videos := appendNonEmpty(nil, request.ReferenceVideo)
-	videos = append(videos, request.ReferenceVideos...)
-	videos = append(videos, request.Videos...)
-	audios := appendNonEmpty(nil, request.AudioURL)
-	audios = append(audios, request.AudioURLs...)
-	audios = append(audios, request.Audios...)
+	ratioInput := firstNonEmpty(request.Ratio, request.AspectRatio, request.Size)
+	if ratioInput == "" {
+		ratioInput = "16:9"
+	}
+	ratio, ok := normalizeRatio(ratioInput)
+	if !ok {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported ratio: %s", ratioInput), "invalid_aspect_ratio", http.StatusBadRequest)
+	}
+
+	resolution, ok := normalizeResolution(request.Resolution)
+	if !ok {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported resolution: %s", request.Resolution), "invalid_resolution", http.StatusBadRequest)
+	}
+
+	images := firstNonEmptySlice(request.Images, request.ImageURLs, request.ReferenceImages, request.References, request.ReferenceURLs)
+	if len(images) == 0 {
+		images = appendNonEmpty(nil, firstNonEmpty(request.Image, request.ImageURL))
+		images = append(images, firstNonEmptySlice(request.ReferenceImageURLs)...)
+	}
+	videos := firstNonEmptySlice(request.ReferenceVideos, request.Videos, request.VideoURLs)
+	if len(videos) == 0 {
+		videos = appendNonEmpty(nil, firstNonEmpty(request.Video, request.ReferenceVideo))
+	}
+	audios := firstNonEmptySlice(request.ReferenceAudios, request.Audios, request.AudioURLs)
+	if len(audios) == 0 {
+		audios = appendNonEmpty(nil, firstNonEmpty(request.Audio, request.AudioURL))
+	}
 
 	if len(images) > 30 || len(videos) > 10 || len(audios) > 10 || len(images)+len(videos)+len(audios) > 50 {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("reference media exceeds provider limits"), "invalid_reference_count", http.StatusBadRequest)
@@ -174,53 +174,15 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 
-	referenceMode := strings.ToLower(strings.TrimSpace(request.VideoConfig.ReferenceMode))
-	if referenceMode == "" {
-		referenceMode = "auto"
-	}
-	if referenceMode != "auto" && referenceMode != "start_frame" && referenceMode != "start_end" {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported reference_mode: %s", referenceMode), "invalid_reference_mode", http.StatusBadRequest)
-	}
-	if referenceMode == "start_frame" && len(images) != 1 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("start_frame requires exactly one image"), "invalid_reference_count", http.StatusBadRequest)
-	}
-	if referenceMode == "start_end" {
-		if len(images) != 2 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("start_end requires exactly two images"), "invalid_reference_count", http.StatusBadRequest)
-		}
-		if len(videos) > 0 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("start_end cannot be combined with reference videos"), "invalid_reference_mode", http.StatusBadRequest)
-		}
-		aspectRatio = "adaptive"
-	}
-
-	imageRoles := make([]imageWithRole, 0, len(images))
-	for index, imageURL := range images {
-		role := "reference_image"
-		if referenceMode == "start_frame" {
-			role = "first_frame"
-		} else if referenceMode == "start_end" && index == 0 {
-			role = "first_frame"
-		} else if referenceMode == "start_end" {
-			role = "last_frame"
-		}
-		imageRoles = append(imageRoles, imageWithRole{URL: imageURL, Role: role})
-	}
-
 	a.body = &upstreamRequest{
-		Prompt:           request.Prompt,
-		ClientBusinessID: request.ClientBusinessID,
-		Duration:         duration,
-		AspectRatio:      aspectRatio,
-		ImageWithRoles:   imageRoles,
-		VideoWithRoles:   toMediaWithRoles(videos),
-		AudioWithRoles:   toMediaWithRoles(audios),
-		OutputFormat:     request.OutputFormat,
-		GenerateAudio:    request.GenerateAudio,
-		ReturnLastFrame:  request.ReturnLastFrame,
-		CallbackURL:      request.CallbackURL,
-		TraceID:          request.TraceID,
-		Seed:             request.Seed,
+		Prompt:          request.Prompt,
+		Duration:        duration,
+		Resolution:      resolution,
+		Ratio:           ratio,
+		Images:          images,
+		ReferenceVideos: videos,
+		ReferenceAudios: audios,
+		GenerateAudio:   request.GenerateAudio,
 	}
 
 	info.Action = constant.TaskActionTextGenerate
@@ -235,10 +197,10 @@ func (a *TaskAdaptor) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) 
 		return nil
 	}
 	ratios := make(map[string]float64, 2)
-	if a.body.Duration > 0 {
-		ratios["seconds"] = float64(a.body.Duration)
+	if a.body.Duration != nil && *a.body.Duration > 0 {
+		ratios["seconds"] = float64(*a.body.Duration)
 	}
-	if len(a.body.VideoWithRoles) > 0 {
+	if len(a.body.ReferenceVideos) > 0 {
 		ratios["video_input"] = 2
 	}
 	if len(ratios) == 0 {
@@ -248,7 +210,7 @@ func (a *TaskAdaptor) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) 
 }
 
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
-	return a.baseURL + videosPath, nil
+	return buildVideoGenerationsURL(a.baseURL), nil
 }
 
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
@@ -319,7 +281,7 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 	if !ok || strings.TrimSpace(taskID) == "" {
 		return nil, fmt.Errorf("invalid task_id")
 	}
-	endpoint := strings.TrimRight(baseURL, "/") + videosPath + "/" + url.PathEscape(taskID)
+	endpoint := buildVideoGenerationsURL(baseURL) + "/" + url.PathEscape(taskID)
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -344,9 +306,14 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		result.Status = model.TaskStatusInProgress
 		result.Progress = progressFromBody(respBody, taskcommon.ProgressInProgress)
 	case "completed", "success", "succeeded":
+		result.Url = extractResultURL(respBody)
+		if result.Url == "" {
+			result.Status = model.TaskStatusInProgress
+			result.Progress = "99%"
+			break
+		}
 		result.Status = model.TaskStatusSuccess
 		result.Progress = taskcommon.ProgressComplete
-		result.Url = extractResultURL(respBody)
 	case "failed", "failure", "error", "cancelled", "canceled", "expired":
 		result.Status = model.TaskStatusFailure
 		result.Progress = taskcommon.ProgressComplete
@@ -387,13 +354,63 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	return common.Marshal(video)
 }
 
-func validAspectRatio(value string) bool {
+func validRatio(value string) bool {
 	switch value {
 	case "16:9", "9:16", "4:3", "1:1", "3:4", "21:9", "adaptive":
 		return true
 	default:
 		return false
 	}
+}
+
+func normalizeRatio(value string) (string, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if validRatio(value) {
+		return value, true
+	}
+	if ratio, ok := map[string]string{
+		"1792x1024": "16:9",
+		"1024x1792": "9:16",
+		"1280x720":  "16:9",
+		"720x1280":  "9:16",
+		"1920x1080": "16:9",
+		"1080x1920": "9:16",
+		"1024x1024": "1:1",
+	}[value]; ok {
+		return ratio, true
+	}
+	parts := strings.Split(value, "x")
+	if len(parts) != 2 {
+		return "", false
+	}
+	width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return "", false
+	}
+	divisor := greatestCommonDivisor(width, height)
+	ratio := fmt.Sprintf("%d:%d", width/divisor, height/divisor)
+	return ratio, validRatio(ratio)
+}
+
+func normalizeResolution(value string) (string, bool) {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if value == "" {
+		return "", true
+	}
+	switch value {
+	case "480P", "720P", "1080P", "4K":
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func greatestCommonDivisor(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 func validHTTPSURL(value string) bool {
@@ -408,28 +425,29 @@ func appendNonEmpty(values []string, value string) []string {
 	return values
 }
 
-func toMediaWithRoles(values []string) []mediaWithRole {
-	items := make([]mediaWithRole, 0, len(values))
-	for _, value := range values {
-		items = append(items, mediaWithRole{URL: value})
+func firstNonEmptySlice(groups ...[]string) []string {
+	for _, group := range groups {
+		values := make([]string, 0, len(group))
+		for _, value := range group {
+			values = appendNonEmpty(values, value)
+		}
+		if len(values) > 0 {
+			return values
+		}
 	}
-	return items
+	return nil
+}
+
+func buildVideoGenerationsURL(baseURL string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if strings.HasSuffix(strings.ToLower(baseURL), "/v1") {
+		return baseURL + strings.TrimPrefix(videoGenerationsPath, "/v1")
+	}
+	return baseURL + videoGenerationsPath
 }
 
 func extractResultURL(body []byte) string {
-	for _, path := range []string{
-		"content.video_url",
-		"result_url",
-		"video_url",
-		"url",
-		"metadata.url",
-		"metadata.result_url",
-		"result.url",
-		"result.video_url",
-		"data.video_url",
-		"data.result_url",
-		"data.url",
-	} {
+	for _, path := range []string{"result_url", "url"} {
 		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
 		if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
 			return value
