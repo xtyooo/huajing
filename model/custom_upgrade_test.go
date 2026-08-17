@@ -43,6 +43,17 @@ func TestInitTaskStoresAnheSelectedKey(t *testing.T) {
 	assert.Equal(t, "selected-anhe-key", task.PrivateData.Key)
 }
 
+func TestInitTaskStoresZhouSDSelectedKey(t *testing.T) {
+	task := InitTask(constant.TaskPlatform("71"), &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeZhouSD,
+			ApiKey:      "selected-zhou-sd-key",
+		},
+	})
+
+	assert.Equal(t, "selected-zhou-sd-key", task.PrivateData.Key)
+}
+
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {
 	truncateTables(t)
 	defaultBaseURL := "https://default.example"

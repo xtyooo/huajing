@@ -68,7 +68,8 @@ const (
 	ChannelTypeSub2API        = 68
 	ChannelTypeNewAPI         = 69
 	ChannelTypeAnhe           = 70
-	ChannelTypeDummy          = 71 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeZhouSD         = 71
+	ChannelTypeDummy          = 72 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -144,6 +145,7 @@ var ChannelBaseURLs = []string{
 	"",                            //68 Sub2API
 	"",                            //69 NewAPI
 	"https://anhedean.cn",         //70 Anhe
+	"https://bf.dszyym.com",       //71 zhou_sd
 }
 
 var ChannelTypeNames = map[int]string{
@@ -214,6 +216,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
 	ChannelTypeAnhe:           "安和",
+	ChannelTypeZhouSD:         "zhou_sd",
 }
 
 func GetChannelTypeName(channelType int) string {
