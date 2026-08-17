@@ -17,6 +17,27 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repoRoot 'dist\releases'
 }
 
+function Get-Sha256Hex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LiteralPath
+    )
+
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 Push-Location $repoRoot
 try {
     $dirty = @(git status --porcelain)
@@ -86,8 +107,8 @@ try {
         $inputStream.Dispose()
     }
 
-    $binarySha = (Get-FileHash -Algorithm SHA256 -LiteralPath $binaryPath).Hash.ToLowerInvariant()
-    $gzipSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $gzipPath).Hash.ToLowerInvariant()
+    $binarySha = Get-Sha256Hex -LiteralPath $binaryPath
+    $gzipSha = Get-Sha256Hex -LiteralPath $gzipPath
     $manifest = [ordered]@{
         release_id       = $ReleaseId
         git_commit       = $gitCommit
