@@ -307,7 +307,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	case "pending":
 		result.Status = model.TaskStatusQueued
 		result.Progress = progressString(response.Progress, taskcommon.ProgressQueued)
-	case "processing":
+	case "processing", "in_progress", "running":
 		result.Status = model.TaskStatusInProgress
 		result.Progress = progressString(response.Progress, taskcommon.ProgressInProgress)
 	case "completed":

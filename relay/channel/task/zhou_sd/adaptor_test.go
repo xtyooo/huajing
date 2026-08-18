@@ -242,6 +242,8 @@ func TestParseTaskResultMapsProviderContract(t *testing.T) {
 	}{
 		{name: "pending", body: `{"status":"pending","progress":0}`, wantStatus: model.TaskStatusQueued, wantProgress: "20%"},
 		{name: "processing", body: `{"status":"processing","progress":45}`, wantStatus: model.TaskStatusInProgress, wantProgress: "45%"},
+		{name: "in progress", body: `{"status":"in_progress","progress":5}`, wantStatus: model.TaskStatusInProgress, wantProgress: "5%"},
+		{name: "running", body: `{"status":"running","progress":30}`, wantStatus: model.TaskStatusInProgress, wantProgress: "30%"},
 		{name: "processing clamps premature completion", body: `{"status":"processing","progress":100}`, wantStatus: model.TaskStatusInProgress, wantProgress: "99%"},
 		{name: "completed", body: `{"status":"completed","progress":100,"video_url":"https://cdn.example.test/result.mp4"}`, wantStatus: model.TaskStatusSuccess, wantProgress: "100%", wantURL: "https://cdn.example.test/result.mp4"},
 		{name: "failed", body: `{"status":"failed","error":{"message":"generation rejected"}}`, wantStatus: model.TaskStatusFailure, wantProgress: "100%", wantReason: "generation rejected"},
