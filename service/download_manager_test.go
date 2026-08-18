@@ -163,12 +163,29 @@ func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing
 	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
 }
 
-func TestAnheDoesNotUseLegacyVideoContentEndpoint(t *testing.T) {
-	assert.False(t, usesOpenAIVideoContentEndpoint(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))))
+// TestResolveAnheMediaDownloadTargetFallsBackToAuthenticatedContentEndpoint 验证安和缺少可直连产物时会通过带鉴权的上游 content 接口下载。
+func TestResolveAnheMediaDownloadTargetFallsBackToAuthenticatedContentEndpoint(t *testing.T) {
+	previousMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
+
+	baseURL := "https://anhe.example.test"
+	channel := &model.Channel{
+		Id:      990070,
+		Type:    constant.ChannelTypeAnhe,
+		Key:     "fallback-key",
+		BaseURL: &baseURL,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { model.DB.Delete(channel) })
+
+	assert.True(t, usesOpenAIVideoContentEndpoint(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))))
 	task := &model.Task{
-		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
-		TaskID:   "task_public",
+		ChannelId: channel.Id,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
+		TaskID:    "task_public",
 		PrivateData: model.TaskPrivateData{
+			Key:            "selected-key",
 			UpstreamTaskID: "task_upstream",
 			ResultURL:      taskcommon.BuildProxyURL("task_public"),
 		},
@@ -176,8 +193,10 @@ func TestAnheDoesNotUseLegacyVideoContentEndpoint(t *testing.T) {
 
 	target, err := resolveMediaDownloadTarget(task)
 
-	require.ErrorContains(t, err, "missing a direct media URL")
-	assert.Empty(t, target.URL, "legacy proxy URLs must not recurse into the local content endpoint")
+	require.NoError(t, err)
+	assert.Equal(t, "https://anhe.example.test/v1/videos/task_upstream/content", target.URL)
+	require.NotEmpty(t, target.Headers)
+	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
 }
 
 func TestResolveAnheMediaDownloadTargetDoesNotAuthenticateDirectCDNURL(t *testing.T) {

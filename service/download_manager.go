@@ -485,10 +485,6 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 			Headers: mediaDownloadAuthHeaders(task, channel),
 		}, nil
 	}
-	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) &&
-		isTaskProxyResultURL(task.PrivateData.ResultURL, task.TaskID) {
-		return mediaDownloadTarget{}, fmt.Errorf("completed task is missing a direct media URL")
-	}
 	target := mediaDownloadTarget{URL: task.PrivateData.ResultURL, Headers: []map[string]string{nil}}
 	if isAuthDownloadPlatform(task.Platform) {
 		channel, err := model.CacheGetChannel(task.ChannelId)
@@ -553,9 +549,12 @@ func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[st
 	return headers
 }
 
+// usesOpenAIVideoContentEndpoint 判断任务是否需要通过上游鉴权的 content 接口获取视频。
+// 安和的任务查询结果可能只有嵌套产物信息，此时必须使用已选渠道密钥访问上游 content 接口。
 func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

@@ -508,6 +508,51 @@ func TestUpdateVideoTasksAnheCompletedWithoutURLStaysInProgress(t *testing.T) {
 	assert.Empty(t, reloaded.PrivateData.ResultURL)
 }
 
+// TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache 验证安和返回嵌套 New API 成功结果时会启动鉴权产物下载。
+func TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 405
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeAnhe, true)
+	task := seedPollingTask(t, channelID, "task_public_anhe_wrapped", "task_upstream_anhe_wrapped")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{
+			"code":"success",
+			"message":"",
+			"data":{
+				"task_id":"task_upstream_anhe_wrapped",
+				"status":"SUCCESS",
+				"progress":"100%",
+				"result_url":"https://anhe.example.test/v1/videos/task_upstream_anhe_wrapped/content",
+				"data":{
+					"status":"completed",
+					"video_url":"https://private-media.example.test/result.mp4"
+				}
+			}
+		}`),
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, taskcommon.BuildProxyURL(task.TaskID), reloaded.PrivateData.ResultURL)
+	assert.Empty(t, reloaded.MediaURL, "视频下载成功前不得向客户端暴露未鉴权的上游地址")
+}
+
 func TestUpdateVideoTasksAnheQueuesDirectResultForMediaCache(t *testing.T) {
 	truncate(t)
 
