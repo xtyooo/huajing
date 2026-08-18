@@ -105,6 +105,16 @@ func TestAnheChannelRegistration(t *testing.T) {
 	assert.Equal(t, []string{"seedance-2-5-480p", "seedance-2-5-720p"}, channelId2Models[constant.ChannelTypeAnhe])
 }
 
+func TestZhouSDChannelRegistration(t *testing.T) {
+	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeZhouSD)
+
+	require.True(t, ok)
+	assert.Equal(t, constant.APITypeOpenAI, apiType)
+	assert.Equal(t, "zhou_sd", constant.GetChannelTypeName(constant.ChannelTypeZhouSD))
+	assert.Equal(t, "https://bf.dszyym.com", constant.ChannelBaseURLs[constant.ChannelTypeZhouSD])
+	assert.Equal(t, []string{"sd2-720p", "sd2-fast-720p"}, channelId2Models[constant.ChannelTypeZhouSD])
+}
+
 func TestResponsesCompactChannelSupport(t *testing.T) {
 	tests := []struct {
 		name        string

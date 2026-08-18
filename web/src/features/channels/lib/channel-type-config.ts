@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   CHANNEL_TYPES,
   CHANNEL_TYPE_ANHE,
+  CHANNEL_TYPE_ZHOU_SD,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -200,6 +201,20 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'seedance-2-5-480p,seedance-2-5-720p',
       other:
         'Video task channel. Client calls /v1/videos; upstream creation returns HTTP 202 Accepted.',
+    },
+  },
+  [CHANNEL_TYPE_ZHOU_SD]: {
+    id: CHANNEL_TYPE_ZHOU_SD,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_ZHOU_SD],
+    icon: 'volcengine',
+    defaultBaseUrl: 'https://bf.dszyym.com',
+    supportedModels: ['sd2-720p', 'sd2-fast-720p'],
+    hints: {
+      baseUrl: 'Default: https://bf.dszyym.com',
+      key: 'Bearer API key',
+      models: 'sd2-720p,sd2-fast-720p',
+      other:
+        'Video task channel. Client calls /v1/videos; upstream uses duration and extra_images/extra_videos/extra_audios.',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {

@@ -198,6 +198,24 @@ func TestResolveAnheMediaDownloadTargetDoesNotAuthenticateDirectCDNURL(t *testin
 	assert.Nil(t, target.Headers[0])
 }
 
+func TestResolveZhouSDMediaDownloadTargetDoesNotAuthenticateDirectCDNURL(t *testing.T) {
+	task := &model.Task{
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeZhouSD)),
+		TaskID:   "task_public",
+		PrivateData: model.TaskPrivateData{
+			Key:       "selected-key",
+			ResultURL: "https://cdn.example.test/result.mp4",
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://cdn.example.test/result.mp4", target.URL)
+	require.Len(t, target.Headers, 1)
+	assert.Nil(t, target.Headers[0])
+}
+
 func TestResolveMediaDownloadTargetPrefersDirectURLFromTaskData(t *testing.T) {
 	task := &model.Task{
 		Platform: constant.TaskPlatform("55"),
