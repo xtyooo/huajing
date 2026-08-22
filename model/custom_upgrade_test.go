@@ -65,6 +65,17 @@ func TestInitTaskStoresAutoDLH3SelectedKey(t *testing.T) {
 	assert.Equal(t, "selected-autodl-h3-key", task.PrivateData.Key)
 }
 
+func TestInitTaskStoresDiaomaoSelectedKey(t *testing.T) {
+	task := InitTask(constant.TaskPlatform("73"), &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeDiaomao,
+			ApiKey:      "selected-diaomao-key",
+		},
+	})
+
+	assert.Equal(t, "selected-diaomao-key", task.PrivateData.Key)
+}
+
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {
 	truncateTables(t)
 	defaultBaseURL := "https://default.example"

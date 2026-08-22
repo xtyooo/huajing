@@ -70,7 +70,8 @@ const (
 	ChannelTypeAnhe           = 70
 	ChannelTypeZhouSD         = 71
 	ChannelTypeAutoDLH3       = 72
-	ChannelTypeDummy          = 73 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeDiaomao        = 73
+	ChannelTypeDummy          = 74 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -148,6 +149,7 @@ var ChannelBaseURLs = []string{
 	"https://anhedean.cn",         //70 Anhe
 	"https://bf.dszyym.com",       //71 zhou_sd
 	"https://autodl.art",          //72 AutoDL H3
+	"https://llm.chre3.com",       //73 diaomao
 }
 
 var ChannelTypeNames = map[int]string{
@@ -220,6 +222,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeAnhe:           "安和",
 	ChannelTypeZhouSD:         "zhou_sd",
 	ChannelTypeAutoDLH3:       "AutoDL H3",
+	ChannelTypeDiaomao:        "diaomao",
 }
 
 func GetChannelTypeName(channelType int) string {

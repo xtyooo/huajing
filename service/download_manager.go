@@ -447,26 +447,18 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		return mediaDownloadTarget{}, fmt.Errorf("task is nil")
 	}
 	if resultURL := strings.TrimSpace(task.PrivateData.ResultURL); resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
-		target := mediaDownloadTarget{URL: resultURL, Headers: []map[string]string{nil}}
-		if isAuthDownloadPlatform(task.Platform) {
-			channel, err := model.CacheGetChannel(task.ChannelId)
-			if err != nil {
-				return mediaDownloadTarget{}, err
-			}
-			target.Headers = mediaDownloadAuthHeaders(task, channel)
+		headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
+		if err != nil {
+			return mediaDownloadTarget{}, err
 		}
-		return target, nil
+		return mediaDownloadTarget{URL: resultURL, Headers: headers}, nil
 	}
 	if resultURL := mediaResultURLFromTaskData(task.Data); resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
-		target := mediaDownloadTarget{URL: resultURL, Headers: []map[string]string{nil}}
-		if isAuthDownloadPlatform(task.Platform) {
-			channel, err := model.CacheGetChannel(task.ChannelId)
-			if err != nil {
-				return mediaDownloadTarget{}, err
-			}
-			target.Headers = mediaDownloadAuthHeaders(task, channel)
+		headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
+		if err != nil {
+			return mediaDownloadTarget{}, err
 		}
-		return target, nil
+		return mediaDownloadTarget{URL: resultURL, Headers: headers}, nil
 	}
 	if usesOpenAIVideoContentEndpoint(task.Platform) {
 		channel, err := model.CacheGetChannel(task.ChannelId)
@@ -485,15 +477,12 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 			Headers: mediaDownloadAuthHeaders(task, channel),
 		}, nil
 	}
-	target := mediaDownloadTarget{URL: task.PrivateData.ResultURL, Headers: []map[string]string{nil}}
-	if isAuthDownloadPlatform(task.Platform) {
-		channel, err := model.CacheGetChannel(task.ChannelId)
-		if err != nil {
-			return mediaDownloadTarget{}, err
-		}
-		target.Headers = mediaDownloadAuthHeaders(task, channel)
+	resultURL := strings.TrimSpace(task.PrivateData.ResultURL)
+	headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
+	if err != nil {
+		return mediaDownloadTarget{}, err
 	}
-	return target, nil
+	return mediaDownloadTarget{URL: resultURL, Headers: headers}, nil
 }
 
 func mediaResultURLFromTaskData(data []byte) string {
@@ -685,6 +674,32 @@ func getKnownExtFromURL(rawURL string) string {
 // fetching the result file.
 func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLingjing))
+}
+
+// mediaDownloadHeadersForResultURL attaches credentials only for providers
+// whose result endpoint requires them. Diaomao credentials are restricted to
+// the configured upstream origin so a provider-returned third-party URL can
+// never receive the channel key.
+func mediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
+	if !isAuthDownloadPlatform(task.Platform) && task.Platform != constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) {
+		return []map[string]string{nil}, nil
+	}
+	channel, err := model.CacheGetChannel(task.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) {
+		baseURL := channel.GetBaseURL()
+		if baseURL == "" {
+			baseURL = constant.ChannelBaseURLs[channel.Type]
+		}
+		result, resultErr := url.Parse(strings.TrimSpace(resultURL))
+		base, baseErr := url.Parse(strings.TrimSpace(baseURL))
+		if resultErr != nil || baseErr != nil || !strings.EqualFold(result.Scheme, base.Scheme) || !strings.EqualFold(result.Host, base.Host) {
+			return []map[string]string{nil}, nil
+		}
+	}
+	return mediaDownloadAuthHeaders(task, channel), nil
 }
 
 func taskDownloadKey(task *model.Task) (string, error) {

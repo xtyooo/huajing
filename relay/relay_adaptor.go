@@ -36,6 +36,7 @@ import (
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
 	taskanhe "github.com/QuantumNous/new-api/relay/channel/task/anhe"
 	taskautodlh3 "github.com/QuantumNous/new-api/relay/channel/task/autodl_h3"
+	taskdiaomao "github.com/QuantumNous/new-api/relay/channel/task/diaomao"
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	taskGemini "github.com/QuantumNous/new-api/relay/channel/task/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
@@ -205,6 +206,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskzhousd.TaskAdaptor{}
 		case constant.ChannelTypeAutoDLH3:
 			return &taskautodlh3.TaskAdaptor{}
+		case constant.ChannelTypeDiaomao:
+			return &taskdiaomao.TaskAdaptor{}
 		}
 	}
 	return nil

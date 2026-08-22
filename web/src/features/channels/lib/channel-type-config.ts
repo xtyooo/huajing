@@ -21,6 +21,7 @@ import {
   CHANNEL_TYPE_ANHE,
   CHANNEL_TYPE_ZHOU_SD,
   CHANNEL_TYPE_AUTODL_H3,
+  CHANNEL_TYPE_DIAOMAO,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -234,6 +235,20 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
         'minimax_h3_lightx2v_no_pic,minimax_h3_image_audio_to_video_v2_15s',
       other:
         'Video task channel. Client calls /v1/videos; upstream runs AutoDL ComfyUI workflows and polling uses GET.',
+    },
+  },
+  [CHANNEL_TYPE_DIAOMAO]: {
+    id: CHANNEL_TYPE_DIAOMAO,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_DIAOMAO],
+    icon: 'volcengine',
+    defaultBaseUrl: 'https://llm.chre3.com',
+    supportedModels: ['sd2-c8'],
+    hints: {
+      baseUrl: 'Default: https://llm.chre3.com',
+      key: 'Bearer API key',
+      models: 'sd2-c8',
+      other:
+        'OpenAI-compatible video channel with image, video, audio, and compliance reference support.',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {
