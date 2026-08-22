@@ -158,6 +158,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
 	}
 	adaptor.Init(info)
+	// AutoDL exposes different request capabilities per mapped workflow, so its
+	// adaptor must see the final upstream model during validation. Keep this
+	// early mapping provider-scoped: changing validation input for every task
+	// adaptor would alter established behavior outside this integration.
+	if info.OriginModelName != "" && platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3)) {
+		info.UpstreamModelName = info.OriginModelName
+		if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
+		}
+	}
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 		return nil, taskErr
 	}

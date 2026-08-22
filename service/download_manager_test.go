@@ -130,6 +130,25 @@ func TestResolveSoraMediaDownloadTargetUsesDirectResultURL(t *testing.T) {
 	assert.Nil(t, target.Headers[0])
 }
 
+func TestResolveAutoDLH3MediaDownloadTargetDoesNotForwardTokenToCDN(t *testing.T) {
+	task := &model.Task{
+		ChannelId: 72,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3)),
+		TaskID:    "task_public_autodl_h3",
+		PrivateData: model.TaskPrivateData{
+			Key:       "autodl-secret-token",
+			ResultURL: "https://cdn.example.test/autodl-result.mp4?expires=short",
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, task.PrivateData.ResultURL, target.URL)
+	require.Len(t, target.Headers, 1)
+	assert.Nil(t, target.Headers[0], "AutoDL token must not be forwarded to the result CDN")
+}
+
 func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing.T) {
 	previousMemoryCache := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = false

@@ -21,11 +21,12 @@ For commercial licensing, please contact support@quantumnous.com
 // All label/name values are i18n keys; use t(value) when displaying.
 // ============================================================================
 
-// 58-71 已被二开渠道写入线上数据，官方新增渠道必须使用新的编号以保持持久化语义稳定。
+// 58-72 已被二开渠道写入线上数据，官方新增渠道必须使用新的编号以保持持久化语义稳定。
 export const CHANNEL_TYPE_SUB2_API = 68
 export const CHANNEL_TYPE_NEW_API = 69
 export const CHANNEL_TYPE_ANHE = 70
 export const CHANNEL_TYPE_ZHOU_SD = 71
+export const CHANNEL_TYPE_AUTODL_H3 = 72
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -96,12 +97,14 @@ export const CHANNEL_TYPES = {
   69: 'New API',
   70: '安和',
   71: 'zhou_sd',
+  72: 'AutoDL H3',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 69, 64, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15,
   46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 68, 22, 21, 44, 2,
   5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59, 60, 61, 62, 63, 65, 66, 67, 70, 71,
+  72,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {

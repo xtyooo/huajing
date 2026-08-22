@@ -627,6 +627,43 @@ func TestUpdateVideoTasksZhouSDQueuesDirectURLForMediaCache(t *testing.T) {
 	assert.NotEqual(t, taskcommon.BuildProxyURL("task_public_zhou_sd"), reloaded.PrivateData.ResultURL)
 }
 
+func TestUpdateVideoTasksAutoDLH3QueuesShortLivedResultForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 472
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeAutoDLH3, true)
+	task := seedPollingTask(t, channelID, "task_public_autodl_h3", "upstream_autodl_h3")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	const resultURL = "https://cdn.example.test/autodl-result.mp4?expires=short"
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"code":"Success","data":{"task_id":"upstream_autodl_h3","status":"SUCCESS","results":[{"url":"` + resultURL + `","type":"video","file_type":"mp4","output_type":"output"}]}}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+			Url:      resultURL,
+		},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, resultURL, reloaded.PrivateData.ResultURL)
+	assert.Empty(t, reloaded.MediaURL, "short-lived upstream URL must remain private until cache download succeeds")
+}
+
 func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	truncate(t)
 

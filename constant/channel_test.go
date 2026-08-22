@@ -24,6 +24,7 @@ func TestCustomChannelTypeIDsRemainStable(t *testing.T) {
 		"New API":         69,
 		"安和":              70,
 		"zhou_sd":         71,
+		"AutoDL H3":       72,
 	}
 
 	actual := map[string]int{
@@ -41,10 +42,11 @@ func TestCustomChannelTypeIDsRemainStable(t *testing.T) {
 		"New API":         ChannelTypeNewAPI,
 		"安和":              ChannelTypeAnhe,
 		"zhou_sd":         ChannelTypeZhouSD,
+		"AutoDL H3":       ChannelTypeAutoDLH3,
 	}
 
 	assert.Equal(t, expected, actual)
-	assert.Equal(t, 72, ChannelTypeDummy)
+	assert.Equal(t, 73, ChannelTypeDummy)
 	require.Len(t, ChannelBaseURLs, ChannelTypeDummy)
 	for name, channelType := range actual {
 		assert.Equal(t, name, ChannelTypeNames[channelType])

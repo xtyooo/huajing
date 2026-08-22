@@ -54,6 +54,17 @@ func TestInitTaskStoresZhouSDSelectedKey(t *testing.T) {
 	assert.Equal(t, "selected-zhou-sd-key", task.PrivateData.Key)
 }
 
+func TestInitTaskStoresAutoDLH3SelectedKey(t *testing.T) {
+	task := InitTask(constant.TaskPlatform("72"), &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAutoDLH3,
+			ApiKey:      "selected-autodl-h3-key",
+		},
+	})
+
+	assert.Equal(t, "selected-autodl-h3-key", task.PrivateData.Key)
+}
+
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {
 	truncateTables(t)
 	defaultBaseURL := "https://default.example"
