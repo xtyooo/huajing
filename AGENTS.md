@@ -6,6 +6,40 @@ DO NOT send optional commentary
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
 
+## Repository and Branch Workflow
+
+This repository is maintained by one person and intentionally uses a simple direct-to-main workflow.
+
+### Permanent branch
+
+- `main` is the only permanent development and release branch. The Gitee default branch and local `origin/HEAD` must point to `main`.
+- Normal features, fixes, documentation, channel integrations, tests, and deployment tooling are developed directly on `main`. Do not create long-lived `feat/*`, `fix/*`, `dev`, `integrate/*`, or upgrade branches for routine work.
+- Before starting work, run `git fetch origin`, switch to `main`, and update with `git pull --ff-only origin main`. Never start from an older release branch merely because it is already checked out locally.
+- A task is not complete until its intended commits are present on local `main` and pushed to `origin/main`. Deployment from an unpushed feature branch is prohibited.
+
+### Temporary branch exception
+
+- A temporary branch is allowed only for a high-risk merge of a new official upstream release or another operation that genuinely requires isolation. Use a name such as `sync/upstream-YYYYMMDD`.
+- The temporary branch must be merged back into `main`, fully verified, pushed, and deleted locally and remotely in the same task. Do not leave temporary branches or worktrees behind for later cleanup.
+- Production releases must be built from a clean commit on `main`. The release commit/tag must be contained in `origin/main` before deployment begins.
+
+### Worktree and dirty-state safety
+
+- Use one canonical `main` worktree for day-to-day development. Do not create a new worktree for each channel or fix.
+- Never switch, reset, clean, delete, or repurpose a dirty worktree until every modified and untracked file has been reviewed and preserved. Existing user changes must not be hidden by branch operations.
+- If a temporary worktree is unavoidable for the upstream-sync exception, remove it after the merge and verification gate succeeds.
+
+### Completion checklist
+
+1. Verify the current branch is `main` and its base includes the latest production commit.
+2. Run the tests, vet/lint/type checks, and build required by the changed area.
+3. Commit the scoped files directly to `main` using the repository's commit style.
+4. Push `main` to `origin/main`.
+5. For production work, build and deploy only that pushed clean commit, then create/retain the release tag and rollback record.
+6. Confirm no task-specific branch or worktree remains. If an exception was used, merge and delete it before reporting completion.
+
+Pull requests are optional for this single-maintainer repository. They may still be used for external contributions or when an explicit review record is desired, but routine local development must not depend on a PR branch.
+
 ## Tech Stack
 
 - **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
