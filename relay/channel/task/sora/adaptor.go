@@ -68,6 +68,10 @@ type TaskAdaptor struct {
 	baseURL     string
 }
 
+func (*TaskAdaptor) SupportsImageSizePricing() bool {
+	return true
+}
+
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl

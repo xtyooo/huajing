@@ -216,6 +216,18 @@ func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
 	assert.NotContains(t, other, "inf")
 }
 
+func TestTaskBillingOtherIncludesImageSizePricingAuditFields(t *testing.T) {
+	task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.ImageSizePricing = true
+	task.PrivateData.BillingContext.ImageSizeTier = "4k"
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, true, other["image_size_pricing"])
+	assert.Equal(t, "4k", other["image_size_tier"])
+	assert.NotContains(t, other, "other_ratios")
+}
+
 func TestTaskBillingContextPriceDataFiltersMultiplier(t *testing.T) {
 	priceData := taskBillingContextPriceData(&model.TaskBillingContext{
 		OtherRatios: map[string]float64{

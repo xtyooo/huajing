@@ -219,9 +219,60 @@ func ModelPriceHelperWithImageSizePricing(c *gin.Context, info *relaycommon.Rela
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
+	return modelPriceHelperPerCall(c, info, "", false)
+}
+
+// ModelPriceHelperPerCallWithImageSize 为异步任务启用图片尺寸定价探测。
+// 未配置图片尺寸价格的模型继续使用原有任务计费路径。
+func ModelPriceHelperPerCallWithImageSize(c *gin.Context, info *relaycommon.RelayInfo, resolution string) (hosttypes.PriceData, error) {
+	return modelPriceHelperPerCall(c, info, resolution, true)
+}
+
+func modelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo, resolution string, enableImageSizePricing bool) (hosttypes.PriceData, error) {
 	model.PricingConfigRLock()
 	defer model.PricingConfigRUnlock()
 	groupRatioInfo := HandleGroupRatio(c, info)
+	if enableImageSizePricing {
+		imageSizePricing, err := model.LoadImageSizePricingSnapshot(info.OriginModelName)
+		if err != nil {
+			return hosttypes.PriceData{}, err
+		}
+		if imageSizePricing != nil {
+			normalizedResolution := strings.ToLower(strings.TrimSpace(resolution))
+			switch normalizedResolution {
+			case "", "auto":
+				normalizedResolution = "1k"
+			case "1k", "2k", "4k":
+			default:
+				return hosttypes.PriceData{}, fmt.Errorf("unsupported async image resolution %q: expected 1K, 2K, or 4K", resolution)
+			}
+			if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+				return hosttypes.PriceData{}, fmt.Errorf("conflicting billing configurations for model %s: image-size and tiered_expr", info.OriginModelName)
+			}
+			modelPrice, tier, err := model.GetImageSizePriceFromSetting(info.OriginModelName, normalizedResolution, imageSizePricing)
+			if err != nil {
+				return hosttypes.PriceData{}, err
+			}
+			quota, err := common.QuotaFromFloatStrict(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+			if err != nil {
+				return hosttypes.PriceData{}, err
+			}
+			freeModel := false
+			if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume && groupRatioInfo.GroupRatio == 0 {
+				quota = 0
+				freeModel = true
+			}
+			return hosttypes.PriceData{
+				FreeModel:        freeModel,
+				ModelPrice:       modelPrice,
+				UsePrice:         true,
+				ImageSizePricing: true,
+				ImageSizeTier:    tier,
+				Quota:            quota,
+				GroupRatioInfo:   groupRatioInfo,
+			}, nil
+		}
+	}
 
 	resolutionPricing, err := model.LoadResolutionPricingSnapshot(info.OriginModelName)
 	if err != nil {

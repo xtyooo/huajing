@@ -77,6 +77,23 @@ func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 	require.Equal(t, constant.TaskActionGenerate, info.Action)
 }
 
+func TestValidateMultipartDirectPreservesTopLevelResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := strings.NewReader(`{"model":"async-image-model","prompt":"draw","resolution":"2K"}`)
+	request := httptest.NewRequest(http.MethodPost, "/v1/videos", body)
+	request.Header.Set("Content-Type", "application/json")
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = request
+	info := &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+
+	taskErr := ValidateMultipartDirect(context, info)
+
+	require.Nil(t, taskErr)
+	storedReq, err := GetTaskRequest(context)
+	require.NoError(t, err)
+	assert.Equal(t, "2K", storedReq.Resolution)
+}
+
 // TestTaskDurationBounds guards the billing invariant that user-supplied
 // video duration (a quota multiplier via OtherRatio "seconds") is bounded, so
 // it can never overflow quota calculation into a negative charge.

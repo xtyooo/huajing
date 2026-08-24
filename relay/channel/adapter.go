@@ -79,6 +79,13 @@ type TaskAdaptor interface {
 	ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error)
 }
 
+// TaskImageSizePricingAdaptor marks standard async task protocols whose
+// resolution field represents an output image tier (1K/2K/4K), not a video
+// resolution such as 720P or 1080P.
+type TaskImageSizePricingAdaptor interface {
+	SupportsImageSizePricing() bool
+}
+
 type OpenAIVideoConverter interface {
 	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 }

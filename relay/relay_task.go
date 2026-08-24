@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -192,18 +193,30 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 4. 价格计算：基础模型价格
 	info.OriginModelName = modelName
-	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	var priceData types.PriceData
+	var err error
+	if imagePricingAdaptor, ok := adaptor.(channel.TaskImageSizePricingAdaptor); ok && imagePricingAdaptor.SupportsImageSizePricing() {
+		taskRequest, requestErr := relaycommon.GetTaskRequest(c)
+		if requestErr != nil {
+			return nil, service.TaskErrorWrapperLocal(requestErr, "invalid_request", http.StatusBadRequest)
+		}
+		priceData, err = helper.ModelPriceHelperPerCallWithImageSize(c, info, taskRequest.Resolution)
+	} else {
+		priceData, err = helper.ModelPriceHelperPerCall(c, info)
+	}
 	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+		return nil, service.TaskErrorWrapperLocal(err, "model_price_error", http.StatusBadRequest)
 	}
 	info.PriceData = priceData
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
-		for k, v := range estimatedRatios {
-			info.PriceData.AddOtherRatio(k, v)
+	if !info.PriceData.ImageSizePricing {
+		if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+			for k, v := range estimatedRatios {
+				info.PriceData.AddOtherRatio(k, v)
+			}
 		}
 	}
 
@@ -211,7 +224,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// to skip duration ratios in per-request billing mode.
 	inPatch := common.StringsContains(constant.TaskPricePatches, modelName)
 	inConfig := info.PriceData.UsePrice && billing_setting.GetSkipSeconds(modelName)
-	applyTaskPriceRatios(info, inPatch || inConfig)
+	applyTaskPriceRatios(info, info.PriceData.ImageSizePricing || inPatch || inConfig)
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {
@@ -253,12 +266,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
-		if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
-			// 基于调整后的 ratios 重新计算 quota
-			finalQuota = adjustedQuota
-			info.PriceData.ReplaceOtherRatios(adjustedRatios)
-			info.PriceData.Quota = finalQuota
+	if !info.PriceData.ImageSizePricing {
+		if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
+			if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
+				// 基于调整后的 ratios 重新计算 quota
+				finalQuota = adjustedQuota
+				info.PriceData.ReplaceOtherRatios(adjustedRatios)
+				info.PriceData.Quota = finalQuota
+			}
 		}
 	}
 

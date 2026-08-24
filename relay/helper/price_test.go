@@ -14,8 +14,106 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestModelPriceHelperPerCallWithImageSizePricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const modelName = "async-image-size-priced-model"
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"async-image-double":2}`))
+	key := model.ImageSizePriceKey(modelName)
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	previousValue, existed := common.OptionMap[key]
+	common.OptionMap[key] = `{"enabled":true,"setting":{"1k":0.01,"2k":0.02,"4k":0.04}}`
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[key] = previousValue
+		} else {
+			delete(common.OptionMap, key)
+		}
+	})
+
+	tests := []struct {
+		name       string
+		resolution string
+		wantTier   string
+		wantPrice  float64
+		wantQuota  int
+	}{
+		{name: "missing defaults to 1k", wantTier: "1k", wantPrice: 0.01, wantQuota: 5000},
+		{name: "auto defaults to 1k", resolution: "auto", wantTier: "1k", wantPrice: 0.01, wantQuota: 5000},
+		{name: "1k is case insensitive", resolution: "1K", wantTier: "1k", wantPrice: 0.01, wantQuota: 5000},
+		{name: "2k is case insensitive", resolution: "2k", wantTier: "2k", wantPrice: 0.02, wantQuota: 10000},
+		{name: "4k is case insensitive", resolution: "4K", wantTier: "4k", wantPrice: 0.04, wantQuota: 20000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{
+				OriginModelName: modelName,
+				UserGroup:       "default",
+				UsingGroup:      "default",
+				ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: "mapped-upstream-model"},
+			}
+
+			priceData, err := ModelPriceHelperPerCallWithImageSize(ctx, info, tt.resolution)
+
+			require.NoError(t, err)
+			assert.True(t, priceData.UsePrice)
+			assert.True(t, priceData.ImageSizePricing)
+			assert.Equal(t, tt.wantTier, priceData.ImageSizeTier)
+			assert.Equal(t, tt.wantPrice, priceData.ModelPrice)
+			assert.Equal(t, tt.wantQuota, priceData.Quota)
+			assert.Nil(t, priceData.OtherRatios())
+		})
+	}
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{OriginModelName: modelName, UserGroup: "default", UsingGroup: "default"}
+	_, err := ModelPriceHelperPerCallWithImageSize(ctx, info, "720p")
+	require.ErrorContains(t, err, "unsupported async image resolution")
+
+	info = &relaycommon.RelayInfo{OriginModelName: modelName, UserGroup: "default", UsingGroup: "async-image-double"}
+	priceData, err := ModelPriceHelperPerCallWithImageSize(ctx, info, "2K")
+	require.NoError(t, err)
+	assert.Equal(t, 20000, priceData.Quota)
+	assert.Equal(t, 2.0, priceData.GroupRatioInfo.GroupRatio)
+}
+
+func TestModelPriceHelperPerCallWithImageSizePreservesVideoPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const modelName = "ordinary-video-model"
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+	})
+	prices, err := common.Marshal(map[string]float64{modelName: 0.03})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(prices)))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{OriginModelName: modelName, UserGroup: "default", UsingGroup: "default"}
+
+	priceData, err := ModelPriceHelperPerCallWithImageSize(ctx, info, "4K")
+
+	require.NoError(t, err)
+	assert.False(t, priceData.ImageSizePricing)
+	assert.Empty(t, priceData.ImageSizeTier)
+	assert.Equal(t, 0.03, priceData.ModelPrice)
+	assert.Equal(t, 15000, priceData.Quota)
+}
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)

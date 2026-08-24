@@ -43,3 +43,18 @@ func TestAnheFixedPriceCanSkipSecondsRatio(t *testing.T) {
 		})
 	}
 }
+
+func TestAsyncImageSizePricingAlwaysSkipsVideoRatios(t *testing.T) {
+	info := &relaycommon.RelayInfo{PriceData: types.PriceData{
+		UsePrice:         true,
+		ImageSizePricing: true,
+		ImageSizeTier:    "2k",
+		Quota:            100,
+	}}
+	info.PriceData.AddOtherRatio("seconds", 4)
+	info.PriceData.AddOtherRatio("size", 1.666667)
+
+	applyTaskPriceRatios(info, info.PriceData.ImageSizePricing)
+
+	assert.Equal(t, 100, info.PriceData.Quota)
+}

@@ -44,6 +44,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
+	if info.PriceData.ImageSizePricing {
+		other["image_size_pricing"] = true
+		other["image_size_tier"] = info.PriceData.ImageSizeTier
+	}
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
@@ -134,6 +138,10 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		if bc.ImageSizePricing {
+			other["image_size_pricing"] = true
+			other["image_size_tier"] = bc.ImageSizeTier
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				other[k] = v
