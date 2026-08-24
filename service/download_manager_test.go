@@ -218,6 +218,41 @@ func TestResolveAnheMediaDownloadTargetFallsBackToAuthenticatedContentEndpoint(t
 	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
 }
 
+func TestResolveShafuMediaDownloadTargetUsesAuthenticatedContentEndpoint(t *testing.T) {
+	previousMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
+
+	baseURL := "https://shafu.example.test"
+	channel := &model.Channel{
+		Id:      990074,
+		Type:    constant.ChannelTypeShafu,
+		Key:     "fallback-key",
+		BaseURL: &baseURL,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { model.DB.Delete(channel) })
+
+	assert.True(t, usesOpenAIVideoContentEndpoint(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu))))
+	task := &model.Task{
+		ChannelId: channel.Id,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu)),
+		TaskID:    "task_public_shafu",
+		PrivateData: model.TaskPrivateData{
+			Key:            "selected-key",
+			UpstreamTaskID: "video_upstream_shafu",
+			ResultURL:      taskcommon.BuildProxyURL("task_public_shafu"),
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://shafu.example.test/v1/videos/video_upstream_shafu/content", target.URL)
+	require.NotEmpty(t, target.Headers)
+	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
+}
+
 func TestResolveAnheMediaDownloadTargetDoesNotAuthenticateDirectCDNURL(t *testing.T) {
 	task := &model.Task{
 		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),

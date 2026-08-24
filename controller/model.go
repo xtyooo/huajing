@@ -106,7 +106,7 @@ func init() {
 		adaptor := relay.GetAdaptor(apiType)
 		adaptor.Init(meta)
 		channelId2Models[i] = adaptor.GetModelList()
-		if i == constant.ChannelTypeAnhe || i == constant.ChannelTypeZhouSD || i == constant.ChannelTypeAutoDLH3 || i == constant.ChannelTypeDiaomao {
+		if i == constant.ChannelTypeAnhe || i == constant.ChannelTypeZhouSD || i == constant.ChannelTypeAutoDLH3 || i == constant.ChannelTypeDiaomao || i == constant.ChannelTypeShafu {
 			taskAdaptor := relay.GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(i)))
 			if taskAdaptor != nil {
 				channelId2Models[i] = taskAdaptor.GetModelList()

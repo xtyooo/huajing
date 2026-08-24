@@ -91,6 +91,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeOpenAI
 	case constant.ChannelTypeDiaomao:
 		apiType = constant.APITypeOpenAI
+	case constant.ChannelTypeShafu:
+		apiType = constant.APITypeOpenAI
 	case constant.ChannelTypeSub2API:
 		apiType = constant.APITypeSub2API
 	case constant.ChannelTypeNewAPI:

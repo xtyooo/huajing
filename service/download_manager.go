@@ -543,7 +543,8 @@ func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[st
 func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

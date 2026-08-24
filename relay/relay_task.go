@@ -159,11 +159,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
 	}
 	adaptor.Init(info)
-	// AutoDL exposes different request capabilities per mapped workflow, so its
-	// adaptor must see the final upstream model during validation. Keep this
-	// early mapping provider-scoped: changing validation input for every task
-	// adaptor would alter established behavior outside this integration.
-	if info.OriginModelName != "" && platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3)) {
+	// AutoDL and shafu expose capabilities per mapped upstream model, so their
+	// adaptors must see the final model during validation. Keep this early
+	// mapping provider-scoped to avoid altering established adaptor behavior.
+	needsMappedModelValidation := platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu))
+	if info.OriginModelName != "" && needsMappedModelValidation {
 		info.UpstreamModelName = info.OriginModelName
 		if err := helper.ModelMappedHelper(c, info, nil); err != nil {
 			return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
@@ -409,7 +410,7 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 // It covers well-known flat keys plus the OpenAI-style "data" array so that
 // image tasks ({"data":[{"url":...}]} / {"image_url":...}) are handled too.
 func overwriteResultMediaURLs(data []byte, newURL string) []byte {
-	for _, key := range []string{"url", "video_url", "result_url", "metadata.url", "image_url"} {
+	for _, key := range []string{"url", "video_url", "result_url", "metadata.url", "metadata.result_url", "image_url"} {
 		if gjson.GetBytes(data, key).Exists() {
 			if d, e := sjson.SetBytes(data, key, newURL); e != nil {
 				common.SysError(fmt.Sprintf("overwriteResultMediaURLs: sjson.Set(%s) failed: %v", key, e))

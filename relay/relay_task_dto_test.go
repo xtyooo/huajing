@@ -110,3 +110,15 @@ func TestApplyVideoMediaPresentationMasksCompletedResponseUntilCached(t *testing
 	assert.Equal(t, 99, video.Progress)
 	assert.Zero(t, video.CompletedAt)
 }
+
+func TestOverwriteResultMediaURLsReplacesNestedResultURL(t *testing.T) {
+	raw := []byte(`{"status":"completed","metadata":{"result_url":"https://upstream.example/private.mp4"}}`)
+
+	result := overwriteResultMediaURLs(raw, "https://local.example/media/task.mp4")
+
+	var body map[string]any
+	require.NoError(t, common.Unmarshal(result, &body))
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "https://local.example/media/task.mp4", metadata["result_url"])
+}

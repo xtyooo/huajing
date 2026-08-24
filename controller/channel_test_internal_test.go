@@ -134,6 +134,15 @@ func TestDiaomaoChannelRegistration(t *testing.T) {
 	assert.Equal(t, []string{"sd2-c8"}, channelId2Models[constant.ChannelTypeDiaomao])
 }
 
+func TestShafuChannelRegistration(t *testing.T) {
+	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeShafu)
+	require.True(t, ok)
+	assert.Equal(t, constant.APITypeOpenAI, apiType)
+	assert.Equal(t, "shafu", constant.GetChannelTypeName(constant.ChannelTypeShafu))
+	assert.Equal(t, "https://shafu.it.com", constant.ChannelBaseURLs[constant.ChannelTypeShafu])
+	assert.Equal(t, []string{"sd-480p", "sd-720p", "sd-1080p", "sdf-480p", "sdf-720p"}, channelId2Models[constant.ChannelTypeShafu])
+}
+
 func TestResponsesCompactChannelSupport(t *testing.T) {
 	tests := []struct {
 		name        string

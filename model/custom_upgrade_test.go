@@ -76,6 +76,17 @@ func TestInitTaskStoresDiaomaoSelectedKey(t *testing.T) {
 	assert.Equal(t, "selected-diaomao-key", task.PrivateData.Key)
 }
 
+func TestInitTaskStoresShafuSelectedKey(t *testing.T) {
+	task := InitTask(constant.TaskPlatform("74"), &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeShafu,
+			ApiKey:      "selected-shafu-key",
+		},
+	})
+
+	assert.Equal(t, "selected-shafu-key", task.PrivateData.Key)
+}
+
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {
 	truncateTables(t)
 	defaultBaseURL := "https://default.example"

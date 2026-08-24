@@ -22,6 +22,7 @@ import {
   CHANNEL_TYPE_ZHOU_SD,
   CHANNEL_TYPE_AUTODL_H3,
   CHANNEL_TYPE_DIAOMAO,
+  CHANNEL_TYPE_SHAFU,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -249,6 +250,20 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'sd2-c8',
       other:
         'OpenAI-compatible video channel with image, video, audio, and compliance reference support.',
+    },
+  },
+  [CHANNEL_TYPE_SHAFU]: {
+    id: CHANNEL_TYPE_SHAFU,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_SHAFU],
+    icon: 'openai',
+    defaultBaseUrl: 'https://shafu.it.com',
+    supportedModels: ['sd-480p', 'sd-720p', 'sd-1080p', 'sdf-480p', 'sdf-720p'],
+    hints: {
+      baseUrl: 'Default: https://shafu.it.com',
+      key: 'Bearer NewAPI token',
+      models: 'sd-480p,sd-720p,sd-1080p,sdf-480p,sdf-720p',
+      other:
+        'NewAPI/Sora video channel with JSON and multipart reference media, face processing, polling, and authenticated content download.',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {
