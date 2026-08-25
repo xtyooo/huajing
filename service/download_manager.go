@@ -277,23 +277,7 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 
 	contentType := resp.Header.Get("Content-Type")
 	common.SysLog(fmt.Sprintf("URL: %s, Content-Type: %s, StatusCode: %s", target.URL, contentType, resp.Status))
-	var ext string
-	if usesOpenAIVideoContentEndpoint(task.Platform) {
-		ext = ".mp4"
-	} else if urlExt := getKnownExtFromURL(target.URL); urlExt != "" {
-		// When the URL already carries a known media extension (e.g. .png, .mp4),
-		// trust it — it is the most reliable signal for image/video results.
-		ext = urlExt
-	} else if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) || task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeMimo)) {
-		ext = ".mp4"
-	} else if strings.ToLower(contentType) == "video/mp4" {
-		ext = ".mp4"
-	} else {
-		ext = getExtFromContentType(contentType)
-		if ext == "" {
-			ext = getExtFromURL(target.URL)
-		}
-	}
+	ext := resolveMediaFileExtension(task.Platform, target.URL, contentType)
 
 	timePrefix := time.Now().Format("20060102150405")
 	fileName := timePrefix + "_" + task.TaskID + ext
@@ -622,10 +606,36 @@ func getExtFromContentType(contentType string) string {
 	if contentType == "" {
 		return ""
 	}
-	if exts, _ := mime.ExtensionsByType(contentType); len(exts) > 0 {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return ""
+	}
+	if exts, _ := mime.ExtensionsByType(mediaType); len(exts) > 0 {
 		return exts[0]
 	}
 	return ""
+}
+
+func resolveMediaFileExtension(platform constant.TaskPlatform, rawURL string, contentType string) string {
+	if urlExt := getKnownExtFromURL(rawURL); urlExt != "" {
+		// When the URL already carries a known media extension (e.g. .png, .mp4),
+		// trust it — it is the most reliable signal for image/video results.
+		return urlExt
+	}
+	contentTypeExt := getExtFromContentType(contentType)
+	if usesOpenAIVideoContentEndpoint(platform) {
+		if knownMediaExts[strings.ToLower(contentTypeExt)] {
+			return contentTypeExt
+		}
+		return ".mp4"
+	}
+	if platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeHJ)) || platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeMimo)) {
+		return ".mp4"
+	}
+	if contentTypeExt != "" {
+		return contentTypeExt
+	}
+	return getExtFromURL(rawURL)
 }
 
 func getExtFromURL(rawURL string) string {

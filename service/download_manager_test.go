@@ -112,6 +112,55 @@ func TestUnexpectedMediaContentTypeRecognizesProviderAuthError(t *testing.T) {
 	assert.False(t, isUnexpectedMediaContentType("application/octet-stream"))
 }
 
+func TestResolveMediaFileExtensionUsesSpecificMediaSignalsBeforePlatformFallback(t *testing.T) {
+	tests := []struct {
+		name        string
+		url         string
+		contentType string
+		wantExt     string
+	}{
+		{
+			name:        "Sora image URL keeps PNG extension",
+			url:         "https://cdn.example.test/result.png",
+			contentType: "image/png",
+			wantExt:     ".png",
+		},
+		{
+			name:        "Sora image content type supplies PNG extension",
+			url:         "https://cdn.example.test/result",
+			contentType: "image/png",
+			wantExt:     ".png",
+		},
+		{
+			name:        "Sora unknown media type falls back to MP4",
+			url:         "https://cdn.example.test/result",
+			contentType: "application/octet-stream",
+			wantExt:     ".mp4",
+		},
+		{
+			name:        "Sora video URL keeps MP4 extension",
+			url:         "https://cdn.example.test/result.mp4",
+			contentType: "video/mp4",
+			wantExt:     ".mp4",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			platform := constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora))
+
+			assert.Equal(t, test.wantExt, resolveMediaFileExtension(platform, test.url, test.contentType))
+		})
+	}
+
+	t.Run("HJ and Mimo keep platform MP4 fallback", func(t *testing.T) {
+		for _, channelType := range []int{constant.ChannelTypeHJ, constant.ChannelTypeMimo} {
+			platform := constant.TaskPlatform(strconv.Itoa(channelType))
+			assert.Equal(t, ".mp4", resolveMediaFileExtension(platform, "https://cdn.example.test/result", "image/png"))
+		}
+	})
+}
+
 func TestResolveSoraMediaDownloadTargetUsesDirectResultURL(t *testing.T) {
 	task := &model.Task{
 		ChannelId: 38,
