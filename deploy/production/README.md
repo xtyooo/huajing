@@ -18,6 +18,8 @@
 
 视频代理会透传上游所有 `2xx` 媒体响应；部分上游以 `206 Partial Content` 返回 MP4，不能仅因状态码不是 `200` 而向客户端返回 `502`。
 
+当 Sora、OpenAI、安和或 Shafu 返回的结果 URL 与渠道同源时，缓存器会附带任务渠道密钥；第三方 OSS/CDN 地址保持无鉴权下载，避免泄露密钥。
+
 五是兼容 `wf-sd2-933` 文档协议，标准 Sora 的 `size`、`duration`、`input_reference` 和 `images` 会转换为 `aspect_ratio`、`resolution`、`seconds`、`image_url` 和 `reference_image_urls`，已经按文档传入的字段不会被覆盖；
 
 六是修复 Lingjing、Mimo 上传渠道选择、任务落库失败补偿、邀请返利统计范围和部分前端类型问题，并增加了对应回归测试。

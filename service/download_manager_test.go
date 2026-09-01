@@ -179,6 +179,41 @@ func TestResolveSoraMediaDownloadTargetUsesDirectResultURL(t *testing.T) {
 	assert.Nil(t, target.Headers[0])
 }
 
+// TestResolveSoraMediaDownloadTargetAuthenticatesSameOriginResultURL 验证 Sora 同源 content 地址会使用任务提交时保存的渠道密钥。
+func TestResolveSoraMediaDownloadTargetAuthenticatesSameOriginResultURL(t *testing.T) {
+	previousMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
+
+	baseURL := "https://sora.example.test"
+	channel := &model.Channel{
+		Id:      990076,
+		Type:    constant.ChannelTypeSora,
+		Key:     "fallback-key",
+		BaseURL: &baseURL,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { model.DB.Delete(channel) })
+
+	task := &model.Task{
+		ChannelId: channel.Id,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)),
+		TaskID:    "task_public_sora_same_origin",
+		PrivateData: model.TaskPrivateData{
+			Key:       "selected-key",
+			ResultURL: "https://sora.example.test/v1/videos/upstream-task/content",
+		},
+	}
+
+	target, err := resolveMediaDownloadTarget(task)
+
+	require.NoError(t, err)
+	assert.Equal(t, task.PrivateData.ResultURL, target.URL)
+	require.Len(t, target.Headers, 2)
+	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
+	assert.Equal(t, "Bearer fallback-key", target.Headers[1]["Authorization"])
+}
+
 func TestResolveAutoDLH3MediaDownloadTargetDoesNotForwardTokenToCDN(t *testing.T) {
 	task := &model.Task{
 		ChannelId: 72,

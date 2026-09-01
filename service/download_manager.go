@@ -687,30 +687,42 @@ func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLingjing))
 }
 
-// mediaDownloadHeadersForResultURL attaches credentials only for providers
-// whose result endpoint requires them. Diaomao credentials are restricted to
-// the configured upstream origin so a provider-returned third-party URL can
-// never receive the channel key.
+// mediaDownloadHeadersForResultURL 仅向需要鉴权且与渠道同源的结果地址附加渠道密钥，避免泄露给第三方 CDN。
 func mediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
-	if !isAuthDownloadPlatform(task.Platform) && task.Platform != constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) {
+	requiresSameOriginAuth := task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) ||
+		usesOpenAIVideoContentEndpoint(task.Platform)
+	if !isAuthDownloadPlatform(task.Platform) && !requiresSameOriginAuth {
 		return []map[string]string{nil}, nil
 	}
 	channel, err := model.CacheGetChannel(task.ChannelId)
 	if err != nil {
+		if requiresSameOriginAuth {
+			// 历史任务可能已删除渠道，但第三方 CDN 结果仍可公开下载，不能因此阻断缓存。
+			return []map[string]string{nil}, nil
+		}
 		return nil, err
 	}
-	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) {
-		baseURL := channel.GetBaseURL()
-		if baseURL == "" {
-			baseURL = constant.ChannelBaseURLs[channel.Type]
-		}
-		result, resultErr := url.Parse(strings.TrimSpace(resultURL))
-		base, baseErr := url.Parse(strings.TrimSpace(baseURL))
-		if resultErr != nil || baseErr != nil || !strings.EqualFold(result.Scheme, base.Scheme) || !strings.EqualFold(result.Host, base.Host) {
+	if requiresSameOriginAuth {
+		if !isResultURLFromChannelOrigin(resultURL, channel) {
 			return []map[string]string{nil}, nil
 		}
 	}
 	return mediaDownloadAuthHeaders(task, channel), nil
+}
+
+// isResultURLFromChannelOrigin 判断结果地址是否仍由当前渠道提供，只有同源地址才能安全携带渠道密钥。
+func isResultURLFromChannelOrigin(resultURL string, channel *model.Channel) bool {
+	if channel == nil {
+		return false
+	}
+	baseURL := channel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = constant.ChannelBaseURLs[channel.Type]
+	}
+	result, resultErr := url.Parse(strings.TrimSpace(resultURL))
+	base, baseErr := url.Parse(strings.TrimSpace(baseURL))
+	return resultErr == nil && baseErr == nil &&
+		strings.EqualFold(result.Scheme, base.Scheme) && strings.EqualFold(result.Host, base.Host)
 }
 
 func taskDownloadKey(task *model.Task) (string, error) {
