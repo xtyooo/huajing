@@ -30,6 +30,11 @@ func videoProxyError(c *gin.Context, status int, errType, message string) {
 	})
 }
 
+// isSuccessfulVideoProxyStatus 判断上游视频响应是否可透传，206 表示分段视频内容同样是有效媒体结果。
+func isSuccessfulVideoProxyStatus(statusCode int) bool {
+	return statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices
+}
+
 func VideoProxy(c *gin.Context) {
 	taskID := c.Param("task_id")
 	if taskID == "" {
@@ -181,7 +186,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if !isSuccessfulVideoProxyStatus(resp.StatusCode) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
 		videoProxyError(c, http.StatusBadGateway, "server_error",
 			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))

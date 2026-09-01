@@ -16,6 +16,8 @@
 
 四是修复 Sora 平台 55 把 `Invalid token` JSON 当成视频的问题，缓存器会直接请求上游 `/v1/videos/{upstream_id}/content`，使用任务创建时选中的密钥，多密钥旧任务可以继续尝试其他启用密钥，JSON、HTML 和空响应不会再标记成功；
 
+视频代理会透传上游所有 `2xx` 媒体响应；部分上游以 `206 Partial Content` 返回 MP4，不能仅因状态码不是 `200` 而向客户端返回 `502`。
+
 五是兼容 `wf-sd2-933` 文档协议，标准 Sora 的 `size`、`duration`、`input_reference` 和 `images` 会转换为 `aspect_ratio`、`resolution`、`seconds`、`image_url` 和 `reference_image_urls`，已经按文档传入的字段不会被覆盖；
 
 六是修复 Lingjing、Mimo 上传渠道选择、任务落库失败补偿、邀请返利统计范围和部分前端类型问题，并增加了对应回归测试。
