@@ -23,6 +23,7 @@ import {
   CHANNEL_TYPE_AUTODL_H3,
   CHANNEL_TYPE_DIAOMAO,
   CHANNEL_TYPE_SHAFU,
+  CHANNEL_TYPE_MANJU,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -264,6 +265,28 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'sd-480p,sd-720p,sd-1080p,sdf-480p,sdf-720p',
       other:
         'NewAPI/Sora video channel with JSON and multipart reference media, face processing, polling, and authenticated content download.',
+    },
+  },
+  [CHANNEL_TYPE_MANJU]: {
+    id: CHANNEL_TYPE_MANJU,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_MANJU],
+    icon: 'aliyun',
+    defaultBaseUrl: 'https://api.manjuai.top',
+    supportedModels: [
+      'wan3.0-t2v',
+      'wan3.0-i2v',
+      'wan3.0-r2v',
+      'wan3.0-prime-t2v',
+      'wan3.0-prime-i2v',
+      'wan3.0-prime-r2v',
+    ],
+    hints: {
+      baseUrl: 'Default: https://api.manjuai.top',
+      key: 'Bearer API key',
+      models:
+        'wan3.0-t2v,wan3.0-i2v,wan3.0-r2v,wan3.0-prime-t2v,wan3.0-prime-i2v,wan3.0-prime-r2v',
+      other:
+        'Wan 3.0 video channel with explicit text, first-frame image, and multi-reference model modes.',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {

@@ -29,6 +29,7 @@ export const CHANNEL_TYPE_ZHOU_SD = 71
 export const CHANNEL_TYPE_AUTODL_H3 = 72
 export const CHANNEL_TYPE_DIAOMAO = 73
 export const CHANNEL_TYPE_SHAFU = 74
+export const CHANNEL_TYPE_MANJU = 75
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -102,13 +103,14 @@ export const CHANNEL_TYPES = {
   72: 'AutoDL H3',
   73: 'diaomao',
   74: 'shafu',
+  75: '满聚',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 69, 64, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15,
   46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 68, 22, 21, 44, 2,
   5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59, 60, 61, 62, 63, 65, 66, 67, 70, 71,
-  72, 73, 74,
+  72, 73, 74, 75,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {

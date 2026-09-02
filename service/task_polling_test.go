@@ -627,6 +627,43 @@ func TestUpdateVideoTasksZhouSDQueuesDirectURLForMediaCache(t *testing.T) {
 	assert.NotEqual(t, taskcommon.BuildProxyURL("task_public_zhou_sd"), reloaded.PrivateData.ResultURL)
 }
 
+func TestUpdateVideoTasksManjuQueuesDirectURLForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 475
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeManju, true)
+	task := seedPollingTask(t, channelID, "task_public_manju", "upstream_manju")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	const resultURL = "https://cdn.example.test/manju-result.mp4"
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"task_id":"upstream_manju","status":"succeeded","video_url":"https://cdn.example.test/manju-result.mp4"}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+			Url:      resultURL,
+		},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{
+		channelID: {task.GetUpstreamTaskID()},
+	}, map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, resultURL, reloaded.PrivateData.ResultURL)
+	assert.Empty(t, reloaded.MediaURL, "public success remains gated until the cache download succeeds")
+}
+
 func TestUpdateVideoTasksAutoDLH3QueuesShortLivedResultForMediaCache(t *testing.T) {
 	truncate(t)
 

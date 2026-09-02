@@ -87,6 +87,17 @@ func TestInitTaskStoresShafuSelectedKey(t *testing.T) {
 	assert.Equal(t, "selected-shafu-key", task.PrivateData.Key)
 }
 
+func TestInitTaskStoresManjuSelectedKey(t *testing.T) {
+	task := InitTask(constant.TaskPlatform("75"), &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeManju,
+			ApiKey:      "selected-manju-key",
+		},
+	})
+
+	assert.Equal(t, "selected-manju-key", task.PrivateData.Key)
+}
+
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {
 	truncateTables(t)
 	defaultBaseURL := "https://default.example"

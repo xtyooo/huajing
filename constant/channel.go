@@ -72,7 +72,8 @@ const (
 	ChannelTypeAutoDLH3       = 72
 	ChannelTypeDiaomao        = 73
 	ChannelTypeShafu          = 74
-	ChannelTypeDummy          = 75 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeManju          = 75
+	ChannelTypeDummy          = 76 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -152,6 +153,7 @@ var ChannelBaseURLs = []string{
 	"https://autodl.art",          //72 AutoDL H3
 	"https://llm.chre3.com",       //73 diaomao
 	"https://shafu.it.com",        //74 shafu
+	"https://api.manjuai.top",     //75 manju
 }
 
 var ChannelTypeNames = map[int]string{
@@ -226,6 +228,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeAutoDLH3:       "AutoDL H3",
 	ChannelTypeDiaomao:        "diaomao",
 	ChannelTypeShafu:          "shafu",
+	ChannelTypeManju:          "满聚",
 }
 
 func GetChannelTypeName(channelType int) string {

@@ -690,6 +690,7 @@ func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
 // mediaDownloadHeadersForResultURL 仅向需要鉴权且与渠道同源的结果地址附加渠道密钥，避免泄露给第三方 CDN。
 func mediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
 	requiresSameOriginAuth := task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) ||
+		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju)) ||
 		usesOpenAIVideoContentEndpoint(task.Platform)
 	if !isAuthDownloadPlatform(task.Platform) && !requiresSameOriginAuth {
 		return []map[string]string{nil}, nil

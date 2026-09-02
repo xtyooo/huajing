@@ -143,6 +143,22 @@ func TestShafuChannelRegistration(t *testing.T) {
 	assert.Equal(t, []string{"sd-480p", "sd-720p", "sd-1080p", "sdf-480p", "sdf-720p"}, channelId2Models[constant.ChannelTypeShafu])
 }
 
+func TestManjuChannelRegistration(t *testing.T) {
+	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeManju)
+	require.True(t, ok)
+	assert.Equal(t, constant.APITypeOpenAI, apiType)
+	assert.Equal(t, "满聚", constant.GetChannelTypeName(constant.ChannelTypeManju))
+	assert.Equal(t, "https://api.manjuai.top", constant.ChannelBaseURLs[constant.ChannelTypeManju])
+	assert.Equal(t, []string{
+		"wan3.0-t2v",
+		"wan3.0-i2v",
+		"wan3.0-r2v",
+		"wan3.0-prime-t2v",
+		"wan3.0-prime-i2v",
+		"wan3.0-prime-r2v",
+	}, channelId2Models[constant.ChannelTypeManju])
+}
+
 func TestResponsesCompactChannelSupport(t *testing.T) {
 	tests := []struct {
 		name        string

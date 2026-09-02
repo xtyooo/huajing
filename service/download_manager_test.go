@@ -417,6 +417,51 @@ func TestResolveDiaomaoMediaDownloadTargetAuthenticatesOnlySameOrigin(t *testing
 	}
 }
 
+func TestResolveManjuMediaDownloadTargetAuthenticatesOnlySameOrigin(t *testing.T) {
+	previousMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
+
+	baseURL := "https://api.manjuai.top"
+	channel := &model.Channel{
+		Id:      990075,
+		Type:    constant.ChannelTypeManju,
+		Key:     "fallback-key",
+		BaseURL: &baseURL,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { model.DB.Delete(channel) })
+	assert.False(t, usesOpenAIVideoContentEndpoint(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju))))
+
+	for _, test := range []struct {
+		name       string
+		resultURL  string
+		wantBearer string
+	}{
+		{name: "same origin", resultURL: "https://api.manjuai.top/v1/videos/results/task.mp4", wantBearer: "Bearer selected-key"},
+		{name: "third party CDN", resultURL: "https://cdn.example.test/result.mp4"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			task := &model.Task{
+				ChannelId: channel.Id,
+				Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju)),
+				TaskID:    "task_public",
+				PrivateData: model.TaskPrivateData{
+					Key:       "selected-key",
+					ResultURL: test.resultURL,
+				},
+			}
+
+			target, err := resolveMediaDownloadTarget(task)
+
+			require.NoError(t, err)
+			assert.Equal(t, test.resultURL, target.URL)
+			require.NotEmpty(t, target.Headers)
+			assert.Equal(t, test.wantBearer, target.Headers[0]["Authorization"])
+		})
+	}
+}
+
 func TestResolveMediaDownloadTargetPrefersDirectURLFromTaskData(t *testing.T) {
 	task := &model.Task{
 		Platform: constant.TaskPlatform("55"),

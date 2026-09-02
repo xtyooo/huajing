@@ -159,11 +159,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
 	}
 	adaptor.Init(info)
-	// AutoDL and shafu expose capabilities per mapped upstream model, so their
+	// AutoDL, shafu, and Manju expose capabilities per mapped upstream model, so their
 	// adaptors must see the final model during validation. Keep this early
 	// mapping provider-scoped to avoid altering established adaptor behavior.
 	needsMappedModelValidation := platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju))
 	if info.OriginModelName != "" && needsMappedModelValidation {
 		info.UpstreamModelName = info.OriginModelName
 		if err := helper.ModelMappedHelper(c, info, nil); err != nil {
