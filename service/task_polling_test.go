@@ -664,6 +664,61 @@ func TestUpdateVideoTasksManjuQueuesDirectURLForMediaCache(t *testing.T) {
 	assert.Empty(t, reloaded.MediaURL, "public success remains gated until the cache download succeeds")
 }
 
+func TestUpdateVideoTasksNaonaoQueuesDirectURLForMediaCache(t *testing.T) {
+	truncate(t)
+
+	const channelID = 476
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeNaonao, true)
+	task := seedPollingTask(t, channelID, "task_public_naonao", "upstream_naonao")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeNaonao))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	const resultURL = "https://cdn.example.test/naonao-result.mp4"
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"task_id":"upstream_naonao","status":"completed","url":"https://cdn.example.test/naonao-result.mp4"}`),
+		taskInfo:     &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, Progress: "100%", Url: resultURL},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{channelID: {task.GetUpstreamTaskID()}}, map[string]*model.Task{task.GetUpstreamTaskID(): task})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, resultURL, reloaded.PrivateData.ResultURL)
+	assert.Empty(t, reloaded.MediaURL)
+}
+
+func TestUpdateVideoTasksManyingQueuesAuthenticatedContentFallback(t *testing.T) {
+	truncate(t)
+
+	const channelID = 477
+	seedTaskPollingChannelWithType(t, channelID, constant.ChannelTypeManying, true)
+	task := seedPollingTask(t, channelID, "task_public_manying", "upstream_manying")
+	task.Platform = constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying))
+	require.NoError(t, model.DB.Save(task).Error)
+
+	adaptor := &taskPollingFetchAdaptor{
+		responseBody: []byte(`{"task_id":"upstream_manying","status":"completed","progress":100}`),
+		taskInfo:     &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, Progress: "100%"},
+	}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+	err := UpdateVideoTasks(context.Background(), task.Platform, map[int][]string{channelID: {task.GetUpstreamTaskID()}}, map[string]*model.Task{task.GetUpstreamTaskID(): task})
+
+	require.NoError(t, err)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
+	assert.Equal(t, taskcommon.BuildProxyURL(task.TaskID), reloaded.PrivateData.ResultURL)
+	assert.Empty(t, reloaded.MediaURL)
+}
+
 func TestUpdateVideoTasksAutoDLH3QueuesShortLivedResultForMediaCache(t *testing.T) {
 	truncate(t)
 

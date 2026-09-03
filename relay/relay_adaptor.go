@@ -46,9 +46,11 @@ import (
 	taskkuai "github.com/QuantumNous/new-api/relay/channel/task/kuai"
 	tasklingjing "github.com/QuantumNous/new-api/relay/channel/task/lingjing"
 	taskmanju "github.com/QuantumNous/new-api/relay/channel/task/manju"
+	taskmanying "github.com/QuantumNous/new-api/relay/channel/task/manying"
 	taskmeai "github.com/QuantumNous/new-api/relay/channel/task/meai"
 	taskmimo "github.com/QuantumNous/new-api/relay/channel/task/mimo"
 	taskmuse "github.com/QuantumNous/new-api/relay/channel/task/muse"
+	tasknaonao "github.com/QuantumNous/new-api/relay/channel/task/naonao"
 	tasksd0717 "github.com/QuantumNous/new-api/relay/channel/task/sd0717"
 	taskshafu "github.com/QuantumNous/new-api/relay/channel/task/shafu"
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
@@ -214,6 +216,10 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskshafu.TaskAdaptor{}
 		case constant.ChannelTypeManju:
 			return &taskmanju.TaskAdaptor{}
+		case constant.ChannelTypeNaonao:
+			return &tasknaonao.TaskAdaptor{}
+		case constant.ChannelTypeManying:
+			return &taskmanying.TaskAdaptor{}
 		}
 	}
 	return nil

@@ -159,6 +159,27 @@ func TestManjuChannelRegistration(t *testing.T) {
 	}, channelId2Models[constant.ChannelTypeManju])
 }
 
+func TestNaonaoAndManyingChannelRegistration(t *testing.T) {
+	tests := []struct {
+		channelType int
+		name        string
+		baseURL     string
+		models      []string
+	}{
+		{channelType: constant.ChannelTypeNaonao, name: "naonao", baseURL: "https://gpt.qinnaonao.com", models: []string{"wan3.0-video", "seedance-2.0", "seedance-2.0-fast", "seedance-2.5"}},
+		{channelType: constant.ChannelTypeManying, name: "manying", baseURL: "https://shafu.it.com", models: []string{"sd-480p", "sd-720p", "sd-1080p", "sdf-480p", "sdf-720p"}},
+	}
+
+	for _, test := range tests {
+		apiType, ok := common.ChannelType2APIType(test.channelType)
+		require.True(t, ok)
+		assert.Equal(t, constant.APITypeOpenAI, apiType)
+		assert.Equal(t, test.name, constant.GetChannelTypeName(test.channelType))
+		assert.Equal(t, test.baseURL, constant.ChannelBaseURLs[test.channelType])
+		assert.Equal(t, test.models, channelId2Models[test.channelType])
+	}
+}
+
 func TestResponsesCompactChannelSupport(t *testing.T) {
 	tests := []struct {
 		name        string

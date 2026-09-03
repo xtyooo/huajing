@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -96,6 +97,15 @@ func TestInitTaskStoresManjuSelectedKey(t *testing.T) {
 	})
 
 	assert.Equal(t, "selected-manju-key", task.PrivateData.Key)
+}
+
+func TestInitTaskStoresNaonaoAndManyingSelectedKeys(t *testing.T) {
+	for _, channelType := range []int{constant.ChannelTypeNaonao, constant.ChannelTypeManying} {
+		task := InitTask(constant.TaskPlatform(fmt.Sprintf("%d", channelType)), &relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{ChannelType: channelType, ApiKey: "selected-video-key"},
+		})
+		assert.Equal(t, "selected-video-key", task.PrivateData.Key)
+	}
 }
 
 func TestGetUploadChannelRestrictsGroupAndSpecificChannel(t *testing.T) {

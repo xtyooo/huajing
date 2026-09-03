@@ -116,8 +116,8 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
 			return
 		}
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora, constant.ChannelTypeAnhe, constant.ChannelTypeShafu:
-		// 安和、shafu 与 OpenAI/Sora 一样通过上游 content 接口输出视频，必须携带任务提交时选中的渠道密钥。
+	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora, constant.ChannelTypeAnhe, constant.ChannelTypeShafu, constant.ChannelTypeManying:
+		// 安和、shafu、manying 与 OpenAI/Sora 一样通过上游 content 接口输出视频，必须携带任务提交时选中的渠道密钥。
 		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
 		apiKey, keyErr := taskChannelKey(channel, task)
 		if keyErr != nil {

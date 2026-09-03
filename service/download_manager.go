@@ -523,12 +523,13 @@ func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[st
 }
 
 // usesOpenAIVideoContentEndpoint 判断任务是否需要通过上游鉴权的 content 接口获取视频。
-// 安和的任务查询结果可能只有嵌套产物信息，此时必须使用已选渠道密钥访问上游 content 接口。
+// 安和、shafu、manying 的任务查询结果可能需要使用已选渠道密钥访问上游 content 接口。
 func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

@@ -73,7 +73,9 @@ const (
 	ChannelTypeDiaomao        = 73
 	ChannelTypeShafu          = 74
 	ChannelTypeManju          = 75
-	ChannelTypeDummy          = 76 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeNaonao         = 76
+	ChannelTypeManying        = 77
+	ChannelTypeDummy          = 78 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -154,6 +156,8 @@ var ChannelBaseURLs = []string{
 	"https://llm.chre3.com",       //73 diaomao
 	"https://shafu.it.com",        //74 shafu
 	"https://api.manjuai.top",     //75 manju
+	"https://gpt.qinnaonao.com",   //76 naonao
+	"https://shafu.it.com",        //77 manying
 }
 
 var ChannelTypeNames = map[int]string{
@@ -229,6 +233,8 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeDiaomao:        "diaomao",
 	ChannelTypeShafu:          "shafu",
 	ChannelTypeManju:          "满聚",
+	ChannelTypeNaonao:         "naonao",
+	ChannelTypeManying:        "manying",
 }
 
 func GetChannelTypeName(channelType int) string {

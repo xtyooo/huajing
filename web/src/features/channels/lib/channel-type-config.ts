@@ -24,6 +24,8 @@ import {
   CHANNEL_TYPE_DIAOMAO,
   CHANNEL_TYPE_SHAFU,
   CHANNEL_TYPE_MANJU,
+  CHANNEL_TYPE_NAONAO,
+  CHANNEL_TYPE_MANYING,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -287,6 +289,39 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
         'wan3.0-t2v,wan3.0-i2v,wan3.0-r2v,wan3.0-prime-t2v,wan3.0-prime-i2v,wan3.0-prime-r2v',
       other:
         'Wan 3.0 video channel with explicit text, first-frame image, and multi-reference model modes.',
+    },
+  },
+  [CHANNEL_TYPE_NAONAO]: {
+    id: CHANNEL_TYPE_NAONAO,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_NAONAO],
+    icon: 'openai',
+    defaultBaseUrl: 'https://gpt.qinnaonao.com',
+    supportedModels: [
+      'wan3.0-video',
+      'seedance-2.0',
+      'seedance-2.0-fast',
+      'seedance-2.5',
+    ],
+    hints: {
+      baseUrl: 'Default: https://gpt.qinnaonao.com',
+      key: 'Bearer NewAPI token for the video group',
+      models: 'wan3.0-video,seedance-2.0,seedance-2.0-fast,seedance-2.5',
+      other:
+        'Video-only channel. Fixed 720p; supports text, image, and audio references. Upstream content endpoint is not supported.',
+    },
+  },
+  [CHANNEL_TYPE_MANYING]: {
+    id: CHANNEL_TYPE_MANYING,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_MANYING],
+    icon: 'openai',
+    defaultBaseUrl: 'https://shafu.it.com',
+    supportedModels: ['sd-480p', 'sd-720p', 'sd-1080p', 'sdf-480p', 'sdf-720p'],
+    hints: {
+      baseUrl: 'Default: https://shafu.it.com',
+      key: 'Bearer NewAPI token',
+      models: 'sd-480p,sd-720p,sd-1080p,sdf-480p,sdf-720p',
+      other:
+        'Video-only SD/SDF channel with fixed model resolution, multimodal references, frame mode, and authenticated content download.',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {

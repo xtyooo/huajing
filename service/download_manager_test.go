@@ -462,6 +462,48 @@ func TestResolveManjuMediaDownloadTargetAuthenticatesOnlySameOrigin(t *testing.T
 	}
 }
 
+func TestNaonaoAndManyingUseDifferentResultDownloadContracts(t *testing.T) {
+	previousMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
+
+	naonaoTask := &model.Task{
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeNaonao)),
+		TaskID:   "task_public_naonao",
+		PrivateData: model.TaskPrivateData{
+			Key:       "selected-naonao-key",
+			ResultURL: "https://cdn.example.test/naonao.mp4",
+		},
+	}
+	naonaoTarget, err := resolveMediaDownloadTarget(naonaoTask)
+	require.NoError(t, err)
+	assert.Equal(t, naonaoTask.PrivateData.ResultURL, naonaoTarget.URL)
+	require.Len(t, naonaoTarget.Headers, 1)
+	assert.Nil(t, naonaoTarget.Headers[0])
+	assert.False(t, usesOpenAIVideoContentEndpoint(naonaoTask.Platform))
+
+	baseURL := "https://shafu.it.com"
+	channel := &model.Channel{Id: 990077, Type: constant.ChannelTypeManying, Key: "fallback-key", BaseURL: &baseURL}
+	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { model.DB.Delete(channel) })
+	manyingTask := &model.Task{
+		ChannelId: channel.Id,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying)),
+		TaskID:    "task_public_manying",
+		PrivateData: model.TaskPrivateData{
+			Key:            "selected-manying-key",
+			UpstreamTaskID: "upstream-manying",
+			ResultURL:      taskcommon.BuildProxyURL("task_public_manying"),
+		},
+	}
+	manyingTarget, err := resolveMediaDownloadTarget(manyingTask)
+	require.NoError(t, err)
+	assert.Equal(t, "https://shafu.it.com/v1/videos/upstream-manying/content", manyingTarget.URL)
+	require.NotEmpty(t, manyingTarget.Headers)
+	assert.Equal(t, "Bearer selected-manying-key", manyingTarget.Headers[0]["Authorization"])
+	assert.True(t, usesOpenAIVideoContentEndpoint(manyingTask.Platform))
+}
+
 func TestResolveMediaDownloadTargetPrefersDirectURLFromTaskData(t *testing.T) {
 	task := &model.Task{
 		Platform: constant.TaskPlatform("55"),
