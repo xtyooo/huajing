@@ -6,11 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -143,6 +146,81 @@ func TestMappedModelControlsModeValidationAndUpstreamBody(t *testing.T) {
 	require.NoError(t, common.Unmarshal(data, &body))
 	assert.Equal(t, "wan3.0-prime-i2v", body.Model)
 	assert.Equal(t, []mediaItem{{Type: "first_frame", URL: "https://example.test/first.png"}}, body.Media)
+}
+
+func TestResolutionPerSecondPricingUsesOriginalModelAndAbsoluteQuota(t *testing.T) {
+	tests := []struct {
+		resolution string
+		price      float64
+		wantQuota  int
+	}{
+		{resolution: "480p", price: 0.06, wantQuota: 120000},
+		{resolution: "720p", price: 0.13, wantQuota: 260000},
+		{resolution: "1080p", price: 0.22, wantQuota: 440000},
+	}
+
+	for _, test := range tests {
+		t.Run(test.resolution, func(t *testing.T) {
+			setManjuResolutionPricing(t, "wan3-1055", fmt.Sprintf(`{"enabled":true,"setting":{"%s":%g}}`, test.resolution, test.price))
+			body := fmt.Sprintf(`{"model":"wan3-1055","prompt":"references","duration":4,"aspect_ratio":"16:9","resolution":"%s","image_url":"https://example.test/a.png"}`, test.resolution)
+			c, _ := newManjuTestContext(t, body)
+			adaptor := &TaskAdaptor{}
+			info := newManjuRelayInfo("wan3.0-r2v")
+			info.OriginModelName = "wan3-1055"
+			info.UserGroup = "default"
+			info.UsingGroup = "default"
+			c.Set("group", "default")
+
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+			priceData, err := relayhelper.ModelPriceHelperPerCall(c, info)
+			require.NoError(t, err)
+			assert.Zero(t, priceData.Quota, "the common helper delegates enabled resolution pricing to the task adaptor")
+			info.PriceData = priceData
+			ratios := adaptor.EstimateBilling(c, info)
+
+			assert.Nil(t, ratios, "absolute resolution pricing must not be multiplied again")
+			assert.True(t, info.PriceData.UsePrice)
+			assert.Equal(t, test.price, info.PriceData.ModelPrice)
+			assert.Equal(t, test.wantQuota, info.PriceData.Quota)
+			props, ok := c.Get(string(constant.ContextKeyTaskPropsExtra))
+			require.True(t, ok)
+			assert.Equal(t, map[string]interface{}{"resolution": strings.ToUpper(test.resolution), "duration": 4}, props)
+		})
+	}
+}
+
+func TestResolutionPerSecondPricingRejectsMissingTierBeforeUpstream(t *testing.T) {
+	setManjuResolutionPricing(t, "wan3-1055", `{"enabled":true,"setting":{"480p":0.06}}`)
+	c, _ := newManjuTestContext(t, `{"model":"wan3-1055","prompt":"references","duration":4,"aspect_ratio":"16:9","resolution":"720p","image_url":"https://example.test/a.png"}`)
+	info := newManjuRelayInfo("wan3.0-r2v")
+	info.OriginModelName = "wan3-1055"
+
+	taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
+
+	require.NotNil(t, taskErr)
+	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+	assert.Equal(t, "resolution_price_invalid", taskErr.Code)
+}
+
+func setManjuResolutionPricing(t *testing.T, modelName, value string) {
+	t.Helper()
+	key := model.ResolutionPriceKey(modelName)
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, existed := common.OptionMap[key]
+	common.OptionMap[key] = value
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[key] = previous
+		} else {
+			delete(common.OptionMap, key)
+		}
+	})
 }
 
 func TestValidateRequestRejectsModeAndProviderViolations(t *testing.T) {

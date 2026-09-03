@@ -121,9 +121,11 @@ type responseEnvelope struct {
 
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
-	apiKey  string
-	baseURL string
-	body    *upstreamRequest
+	apiKey               string
+	baseURL              string
+	body                 *upstreamRequest
+	resolutionPrice      float64
+	useResolutionPricing bool
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
@@ -132,6 +134,8 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	a.resolutionPrice = 0
+	a.useResolutionPricing = false
 	var request standardVideoRequest
 	if err := common.UnmarshalBodyReusable(c, &request); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_json", http.StatusBadRequest)
@@ -186,6 +190,18 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	resolution := strings.ToUpper(strings.TrimSpace(request.Resolution))
 	if !validResolution(resolution) {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("resolution must be 480P, 720P, or 1080P"), "invalid_resolution", http.StatusBadRequest)
+	}
+	resolutionPricing, err := model.LoadResolutionPricing(info.OriginModelName)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "resolution_price_invalid", http.StatusBadRequest)
+	}
+	if resolutionPricing != nil {
+		price, priceErr := model.GetResolutionPriceFromSetting(info.OriginModelName, resolution, resolutionPricing)
+		if priceErr != nil {
+			return service.TaskErrorWrapperLocal(priceErr, "resolution_price_invalid", http.StatusBadRequest)
+		}
+		a.resolutionPrice = price
+		a.useResolutionPricing = true
 	}
 
 	images := appendNonEmpty(nil, request.ImageURL)
@@ -271,8 +287,24 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	return nil
 }
 
-func (a *TaskAdaptor) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	if a.body == nil || a.body.Duration < 2 || a.body.Duration > 30 {
+		return nil
+	}
+	if a.useResolutionPricing {
+		quota, clamp := common.QuotaFromFloatChecked(
+			a.resolutionPrice * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio * float64(a.body.Duration),
+		)
+		info.PriceData.ModelPrice = a.resolutionPrice
+		info.PriceData.UsePrice = true
+		info.PriceData.Quota = quota
+		if clamp != nil && info.QuotaClamp == nil {
+			info.QuotaClamp = clamp
+		}
+		c.Set(string(constant.ContextKeyTaskPropsExtra), map[string]interface{}{
+			"resolution": a.body.Resolution,
+			"duration":   a.body.Duration,
+		})
 		return nil
 	}
 	return map[string]float64{
