@@ -113,6 +113,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	a.resolutionPrice = 0
 	a.useResolutionPricing = false
 	if strings.Contains(strings.ToLower(c.GetHeader("Content-Type")), "multipart/form-data") {
+		a.SetMultipartDefaultField("generate_audio", "true", "generateAudio")
 		if taskErr := a.TaskAdaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 			return taskErr
 		}
@@ -202,6 +203,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	generateAudio := request.GenerateAudio
 	if generateAudio == nil {
 		generateAudio = request.GenerateAudioCamel
+	}
+	if generateAudio == nil {
+		generateAudio = common.GetPointer(true)
 	}
 	a.body = &upstreamRequest{
 		Model:           upstreamModel,

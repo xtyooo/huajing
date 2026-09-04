@@ -3,6 +3,7 @@ package manying
 import (
 	"bytes"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -78,6 +79,36 @@ func TestManyingMapsStandardReferencesToShafuJSON(t *testing.T) {
 	assert.NotContains(t, body, "image_url")
 	assert.NotContains(t, body, "video_config")
 	assert.Equal(t, map[string]float64{"seconds": 8}, adaptor.EstimateBilling(c, info))
+}
+
+func TestManyingGenerateAudioDefaultsTrueAndRespectsExplicitChoice(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "omitted defaults true", body: `{"model":"sd-720p","prompt":"city"}`, want: true},
+		{name: "explicit true", body: `{"model":"sd-720p","prompt":"city","generate_audio":true}`, want: true},
+		{name: "explicit false", body: `{"model":"sd-720p","prompt":"city","generate_audio":false}`, want: false},
+		{name: "camel case false", body: `{"model":"sd-720p","prompt":"city","generateAudio":false}`, want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := newManyingContext(t, test.body)
+			adaptor := &TaskAdaptor{}
+			info := newManyingInfo("sd-720p", "sd-720p")
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+
+			reader, err := adaptor.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			var body map[string]any
+			require.NoError(t, common.Unmarshal(data, &body))
+			assert.Equal(t, test.want, body["generate_audio"])
+		})
+	}
 }
 
 func TestManyingMapsStandardFrameModes(t *testing.T) {
@@ -170,28 +201,53 @@ func TestManyingResolutionPricingRejectsMissingMappedModelTier(t *testing.T) {
 }
 
 func TestManyingDelegatesMultipartToShafu(t *testing.T) {
-	var payload bytes.Buffer
-	writer := multipart.NewWriter(&payload)
-	require.NoError(t, writer.WriteField("model", "sd-720p"))
-	require.NoError(t, writer.WriteField("prompt", "coast"))
-	require.NoError(t, writer.WriteField("duration", "6"))
-	require.NoError(t, writer.WriteField("aspect_ratio", "4:3"))
-	require.NoError(t, writer.Close())
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", &payload)
-	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
-	t.Cleanup(func() { common.CleanupBodyStorage(c) })
-	adaptor := &TaskAdaptor{}
-	info := newManyingInfo("sd-720p", "sd-720p")
+	tests := []struct {
+		name          string
+		fieldName     string
+		generateAudio string
+		want          string
+	}{
+		{name: "omitted defaults true", want: "true"},
+		{name: "explicit false", fieldName: "generate_audio", generateAudio: "false", want: "false"},
+		{name: "camel case false", fieldName: "generateAudio", generateAudio: "false", want: "false"},
+	}
 
-	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
-	reader, err := adaptor.BuildRequestBody(c, info)
-	require.NoError(t, err)
-	data, err := io.ReadAll(reader)
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "sd-720p")
-	assert.Equal(t, map[string]float64{"seconds": 6}, adaptor.EstimateBilling(c, info))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var payload bytes.Buffer
+			writer := multipart.NewWriter(&payload)
+			require.NoError(t, writer.WriteField("model", "sd-720p"))
+			require.NoError(t, writer.WriteField("prompt", "coast"))
+			require.NoError(t, writer.WriteField("duration", "6"))
+			require.NoError(t, writer.WriteField("aspect_ratio", "4:3"))
+			if test.generateAudio != "" {
+				require.NoError(t, writer.WriteField(test.fieldName, test.generateAudio))
+			}
+			require.NoError(t, writer.Close())
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", &payload)
+			c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+			t.Cleanup(func() { common.CleanupBodyStorage(c) })
+			adaptor := &TaskAdaptor{}
+			info := newManyingInfo("sd-720p", "sd-720p")
+
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+			reader, err := adaptor.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			_, params, err := mime.ParseMediaType(c.Request.Header.Get("Content-Type"))
+			require.NoError(t, err)
+			form, err := multipart.NewReader(bytes.NewReader(data), params["boundary"]).ReadForm(32 << 20)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = form.RemoveAll() })
+			assert.Equal(t, "sd-720p", form.Value["model"][0])
+			require.NotEmpty(t, form.Value["generate_audio"])
+			assert.Equal(t, test.want, form.Value["generate_audio"][0])
+			assert.Equal(t, map[string]float64{"seconds": 6}, adaptor.EstimateBilling(c, info))
+		})
+	}
 }
 
 func setManyingResolutionPricing(t *testing.T, modelName, value string) {

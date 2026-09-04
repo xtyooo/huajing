@@ -63,9 +63,33 @@ type responseTask struct {
 
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
-	ChannelType int
-	apiKey      string
-	baseURL     string
+	ChannelType            int
+	apiKey                 string
+	baseURL                string
+	multipartDefaultFields []multipartDefaultField
+}
+
+type multipartDefaultField struct {
+	name    string
+	value   string
+	aliases []string
+}
+
+// SetMultipartDefaultField lets a derived task adaptor add an upstream-only
+// default without overwriting a field (or compatible alias) sent by the user.
+func (a *TaskAdaptor) SetMultipartDefaultField(name, value string, aliases ...string) {
+	field := multipartDefaultField{
+		name:    name,
+		value:   value,
+		aliases: aliases,
+	}
+	for index := range a.multipartDefaultFields {
+		if a.multipartDefaultFields[index].name == name {
+			a.multipartDefaultFields[index] = field
+			return
+		}
+	}
+	a.multipartDefaultFields = append(a.multipartDefaultFields, field)
 }
 
 func (*TaskAdaptor) SupportsImageSizePricing() bool {
@@ -73,6 +97,7 @@ func (*TaskAdaptor) SupportsImageSizePricing() bool {
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
+	a.multipartDefaultFields = nil
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
@@ -186,6 +211,21 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			}
 			for _, v := range values {
 				writer.WriteField(key, v)
+			}
+		}
+		for _, field := range a.multipartDefaultFields {
+			if len(formData.Value[field.name]) > 0 {
+				continue
+			}
+			value := field.value
+			for _, alias := range field.aliases {
+				if len(formData.Value[alias]) > 0 {
+					value = formData.Value[alias][0]
+					break
+				}
+			}
+			if err := writer.WriteField(field.name, value); err != nil {
+				return nil, errors.Wrap(err, "write_multipart_default_field_failed")
 			}
 		}
 		for fieldName, fileHeaders := range formData.File {
