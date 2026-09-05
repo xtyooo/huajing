@@ -231,12 +231,13 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
     supportedModels: [
       'minimax_h3_lightx2v_no_pic',
       'minimax_h3_image_audio_to_video_v2_15s',
+      'minimax_h3_b99_002',
     ],
     hints: {
       baseUrl: 'Default: https://autodl.art',
       key: 'Raw AutoDL ComfyUI token',
       models:
-        'minimax_h3_lightx2v_no_pic,minimax_h3_image_audio_to_video_v2_15s',
+        'minimax_h3_lightx2v_no_pic,minimax_h3_image_audio_to_video_v2_15s,minimax_h3_b99_002',
       other:
         'Video task channel. Client calls /v1/videos; upstream runs AutoDL ComfyUI workflows and polling uses GET.',
     },

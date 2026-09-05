@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -47,35 +48,46 @@ func (n *flexibleInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type videoConfig struct {
+	ReferenceMode string `json:"reference_mode,omitempty"`
+}
+
 type standardVideoRequest struct {
-	Model              string       `json:"model"`
-	Prompt             string       `json:"prompt"`
-	Duration           *flexibleInt `json:"duration,omitempty"`
-	Seconds            *flexibleInt `json:"seconds,omitempty"`
-	Resolution         string       `json:"resolution,omitempty"`
-	Ratio              string       `json:"ratio,omitempty"`
-	AspectRatio        string       `json:"aspect_ratio,omitempty"`
-	Size               string       `json:"size,omitempty"`
-	Seed               *flexibleInt `json:"seed,omitempty"`
-	Image              string       `json:"image,omitempty"`
-	ImageURL           string       `json:"image_url,omitempty"`
-	Images             []string     `json:"images,omitempty"`
-	ImageURLs          []string     `json:"image_urls,omitempty"`
-	ReferenceImageURLs []string     `json:"reference_image_urls,omitempty"`
-	ReferenceImages    []string     `json:"reference_images,omitempty"`
-	References         []string     `json:"references,omitempty"`
-	ReferenceURLs      []string     `json:"reference_urls,omitempty"`
-	Audio              string       `json:"audio,omitempty"`
-	AudioURL           string       `json:"audio_url,omitempty"`
-	Audios             []string     `json:"audios,omitempty"`
-	AudioURLs          []string     `json:"audio_urls,omitempty"`
-	ReferenceAudios    []string     `json:"reference_audios,omitempty"`
-	Video              string       `json:"video,omitempty"`
-	VideoURL           string       `json:"video_url,omitempty"`
-	Videos             []string     `json:"videos,omitempty"`
-	VideoURLs          []string     `json:"video_urls,omitempty"`
-	ReferenceVideo     string       `json:"reference_video,omitempty"`
-	ReferenceVideos    []string     `json:"reference_videos,omitempty"`
+	Model                   string       `json:"model"`
+	Prompt                  string       `json:"prompt"`
+	Duration                *flexibleInt `json:"duration,omitempty"`
+	Seconds                 *flexibleInt `json:"seconds,omitempty"`
+	Resolution              string       `json:"resolution,omitempty"`
+	Ratio                   string       `json:"ratio,omitempty"`
+	AspectRatio             string       `json:"aspect_ratio,omitempty"`
+	Size                    string       `json:"size,omitempty"`
+	Seed                    *flexibleInt `json:"seed,omitempty"`
+	FirstFrame              string       `json:"first_frame,omitempty"`
+	LastFrame               string       `json:"last_frame,omitempty"`
+	Image                   string       `json:"image,omitempty"`
+	ImageURL                string       `json:"image_url,omitempty"`
+	Images                  []string     `json:"images,omitempty"`
+	ImageURLs               []string     `json:"image_urls,omitempty"`
+	ReferenceImageURLs      []string     `json:"reference_image_urls,omitempty"`
+	ReferenceImages         []string     `json:"reference_images,omitempty"`
+	References              []string     `json:"references,omitempty"`
+	ReferenceURLs           []string     `json:"reference_urls,omitempty"`
+	Audio                   string       `json:"audio,omitempty"`
+	AudioURL                string       `json:"audio_url,omitempty"`
+	Audios                  []string     `json:"audios,omitempty"`
+	AudioURLs               []string     `json:"audio_urls,omitempty"`
+	ReferenceAudios         []string     `json:"reference_audios,omitempty"`
+	Video                   string       `json:"video,omitempty"`
+	VideoURL                string       `json:"video_url,omitempty"`
+	Videos                  []string     `json:"videos,omitempty"`
+	VideoURLs               []string     `json:"video_urls,omitempty"`
+	ReferenceVideo          string       `json:"reference_video,omitempty"`
+	ReferenceVideos         []string     `json:"reference_videos,omitempty"`
+	ReferenceMode           string       `json:"reference_mode,omitempty"`
+	ReferenceModeCamel      string       `json:"referenceMode,omitempty"`
+	VideoReferenceMode      string       `json:"video_reference_mode,omitempty"`
+	VideoReferenceModeCamel string       `json:"videoReferenceMode,omitempty"`
+	VideoConfig             videoConfig  `json:"video_config,omitempty"`
 }
 
 type submitResponse struct {
@@ -152,7 +164,12 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be between 1 and 15"), "invalid_duration", http.StatusBadRequest)
 	}
 
-	resolution, ok := normalizeResolution(request.Resolution, firstNonEmpty(request.Ratio, request.AspectRatio, request.Size))
+	workflow := strings.TrimSpace(info.UpstreamModelName)
+	rawOrientation := firstNonEmpty(request.Ratio, request.AspectRatio, request.Size)
+	resolution, ok := normalizeResolution(request.Resolution, rawOrientation)
+	if workflow == FirstLastWorkflowID {
+		resolution, ok = normalizeFirstLastResolution(request.Resolution, request.Ratio, request.AspectRatio, request.Size)
+	}
 	if !ok {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported resolution or aspect ratio"), "invalid_resolution", http.StatusBadRequest)
 	}
@@ -182,7 +199,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 
-	workflow := strings.TrimSpace(info.UpstreamModelName)
 	switch workflow {
 	case TextWorkflowID:
 		if len(images)+len(audios)+len(videos) > 0 {
@@ -195,6 +211,50 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		if len(videos) > 0 {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("reference workflow does not support reference videos"), "unsupported_reference_media", http.StatusBadRequest)
 		}
+	case FirstLastWorkflowID:
+		if len(audios)+len(videos) > 0 {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("first-last workflow does not support audio or video references"), "unsupported_reference_media", http.StatusBadRequest)
+		}
+
+		firstFrame := strings.TrimSpace(request.FirstFrame)
+		lastFrame := strings.TrimSpace(request.LastFrame)
+		hasDirectFrames := firstFrame != "" || lastFrame != ""
+		hasStandardImages := hasStandardImageInput(request)
+		referenceMode, modeOK := normalizeFirstLastReferenceMode(
+			request.VideoConfig.ReferenceMode,
+			request.ReferenceMode,
+			request.ReferenceModeCamel,
+			request.VideoReferenceMode,
+			request.VideoReferenceModeCamel,
+		)
+		if !modeOK {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("conflicting reference modes"), "invalid_reference_mode", http.StatusBadRequest)
+		}
+
+		if hasDirectFrames {
+			if hasStandardImages {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("direct frames cannot be combined with standard image fields"), "invalid_reference_count", http.StatusBadRequest)
+			}
+			if referenceMode != "" && referenceMode != "start_end" {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("first-last workflow only supports start_end reference mode"), "invalid_reference_mode", http.StatusBadRequest)
+			}
+			if firstFrame == "" || lastFrame == "" {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("first_frame and last_frame are required"), "invalid_reference_count", http.StatusBadRequest)
+			}
+		} else {
+			if referenceMode != "start_end" {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("two standard images require reference_mode=start_end"), "invalid_reference_mode", http.StatusBadRequest)
+			}
+			if len(images) != 2 {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("start_end requires exactly two images"), "invalid_reference_count", http.StatusBadRequest)
+			}
+			firstFrame = images[0]
+			lastFrame = images[1]
+		}
+		if !validPublicHTTPSURL(firstFrame) || !validPublicHTTPSURL(lastFrame) {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("first_frame and last_frame must use public HTTPS URLs"), "invalid_reference_url", http.StatusBadRequest)
+		}
+		images = []string{firstFrame, lastFrame}
 	default:
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported AutoDL H3 workflow"), "unsupported_model", http.StatusBadRequest)
 	}
@@ -204,23 +264,28 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		"duration":   duration,
 		"resolution": resolution,
 	}
-	if workflow == ReferenceWorkflowID {
+	if workflow == ReferenceWorkflowID || workflow == FirstLastWorkflowID {
 		if request.Seed != nil {
 			body["seed"] = int(*request.Seed)
 		}
+	}
+	if workflow == ReferenceWorkflowID {
 		for index, rawURL := range images {
 			body[fmt.Sprintf("ref_image_%d", index)] = rawURL
 		}
 		for index, rawURL := range audios {
 			body[fmt.Sprintf("ref_audio_%d", index)] = rawURL
 		}
+	} else if workflow == FirstLastWorkflowID {
+		body["first_frame"] = images[0]
+		body["last_frame"] = images[1]
 	}
 
 	a.body = body
 	a.duration = duration
 	a.workflow = workflow
 	info.Action = constant.TaskActionTextGenerate
-	if len(images)+len(audios) > 0 {
+	if workflow == FirstLastWorkflowID || len(images)+len(audios) > 0 {
 		info.Action = constant.TaskActionGenerate
 	}
 	return nil
@@ -411,6 +476,70 @@ func normalizeResolution(rawResolution, rawOrientation string) (string, bool) {
 	return resolution + orientation, true
 }
 
+func normalizeFirstLastResolution(rawResolution string, rawOrientations ...string) (string, bool) {
+	orientation := ""
+	for _, rawOrientation := range rawOrientations {
+		if strings.TrimSpace(rawOrientation) == "" {
+			continue
+		}
+		normalized, ok := normalizeFirstLastOrientation(rawOrientation)
+		if !ok || (orientation != "" && orientation != normalized) {
+			return "", false
+		}
+		orientation = normalized
+	}
+
+	resolution := strings.ToLower(strings.TrimSpace(rawResolution))
+	resolution = strings.ReplaceAll(resolution, " ", "")
+	switch resolution {
+	case "736p竖", "736p横", "736p(1:1)":
+		if orientation != "" && !strings.HasSuffix(resolution, orientation) {
+			return "", false
+		}
+		return resolution, true
+	case "":
+	case "720p", "736p":
+	default:
+		return "", false
+	}
+
+	if orientation == "" {
+		orientation = "竖"
+	}
+	return "736p" + orientation, true
+}
+
+func normalizeFirstLastOrientation(value string) (string, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "1:1" || normalized == "square" || normalized == "方形" {
+		return "(1:1)", true
+	}
+	parts := strings.Split(normalized, "x")
+	if len(parts) == 2 {
+		width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+		height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if widthErr == nil && heightErr == nil && width > 0 && width == height {
+			return "(1:1)", true
+		}
+	}
+	return normalizeOrientation(normalized)
+}
+
+func normalizeFirstLastReferenceMode(values ...string) (string, bool) {
+	mode := ""
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		if mode != "" && mode != normalized {
+			return "", false
+		}
+		mode = normalized
+	}
+	return mode, true
+}
+
 func normalizeOrientation(value string) (string, bool) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
@@ -437,6 +566,21 @@ func normalizeOrientation(value string) (string, bool) {
 func validReferenceURL(value string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
+}
+
+func validPublicHTTPSURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return false
+	}
+	hostname := strings.ToLower(parsed.Hostname())
+	if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") || strings.HasSuffix(hostname, ".local") {
+		return false
+	}
+	if ip := net.ParseIP(hostname); ip != nil {
+		return !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsUnspecified() && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast()
+	}
+	return true
 }
 
 func validResultURL(value string) bool {
@@ -506,6 +650,27 @@ func appendNormalized(values []string, items []string) []string {
 		values = appendNonEmpty(values, item)
 	}
 	return values
+}
+
+func hasStandardImageInput(request standardVideoRequest) bool {
+	if firstNonEmpty(request.Image, request.ImageURL) != "" {
+		return true
+	}
+	for _, group := range [][]string{
+		request.Images,
+		request.ImageURLs,
+		request.ReferenceImageURLs,
+		request.ReferenceImages,
+		request.References,
+		request.ReferenceURLs,
+	} {
+		for _, value := range group {
+			if strings.TrimSpace(value) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func firstNonEmptySlice(groups ...[]string) []string {

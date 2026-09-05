@@ -128,6 +128,191 @@ func TestReferenceWorkflowCombinesLegacySingleAndArrayAliases(t *testing.T) {
 	assert.Equal(t, "https://example.test/second.wav", body["ref_audio_1"])
 }
 
+func TestFirstLastWorkflowBuildsExactDirectFrameRequest(t *testing.T) {
+	c, _ := newAutoDLH3TestContext(t, `{
+		"model":"public-first-last-alias",
+		"prompt":"  smooth transition  ",
+		"first_frame":"https://example.test/first.png",
+		"last_frame":"https://example.test/last.webp"
+	}`)
+	adaptor := &TaskAdaptor{}
+	info := testRelayInfo()
+	info.UpstreamModelName = FirstLastWorkflowID
+
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+	body := decodeRequestBody(t, adaptor, c, info)
+
+	assert.Equal(t, map[string]any{
+		"prompt":      "smooth transition",
+		"duration":    float64(5),
+		"resolution":  "736p竖",
+		"first_frame": "https://example.test/first.png",
+		"last_frame":  "https://example.test/last.webp",
+	}, body)
+	assert.Equal(t, constant.TaskActionGenerate, info.Action)
+	assert.Equal(t, map[string]float64{"seconds": 5}, adaptor.EstimateBilling(c, info))
+}
+
+func TestFirstLastWorkflowMapsExplicitStartEndImagesAndSeed(t *testing.T) {
+	modeFields := []string{
+		`"reference_mode":"start_end"`,
+		`"referenceMode":"start_end"`,
+		`"video_reference_mode":"start_end"`,
+		`"videoReferenceMode":"start_end"`,
+		`"video_config":{"reference_mode":"start_end"}`,
+	}
+
+	for _, modeField := range modeFields {
+		t.Run(modeField, func(t *testing.T) {
+			c, _ := newAutoDLH3TestContext(t, `{
+				"model":"public-first-last-alias",
+				"prompt":"transition",
+				"seconds":"15",
+				"resolution":"720p",
+				"aspect_ratio":"1:1",
+				"seed":0,
+				"reference_image_urls":["https://example.test/first.jpg","https://example.test/last.png"],
+				`+modeField+`
+			}`)
+			adaptor := &TaskAdaptor{}
+			info := testRelayInfo()
+			info.UpstreamModelName = FirstLastWorkflowID
+
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+			body := decodeRequestBody(t, adaptor, c, info)
+
+			assert.Equal(t, map[string]any{
+				"prompt":      "transition",
+				"duration":    float64(15),
+				"resolution":  "736p(1:1)",
+				"seed":        float64(0),
+				"first_frame": "https://example.test/first.jpg",
+				"last_frame":  "https://example.test/last.png",
+			}, body)
+		})
+	}
+}
+
+func TestFirstLastWorkflowForwardsNonZeroIntegerSeed(t *testing.T) {
+	c, _ := newAutoDLH3TestContext(t, `{
+		"model":"m",
+		"prompt":"transition",
+		"seed":42,
+		"first_frame":"https://example.test/first.png",
+		"last_frame":"https://example.test/last.png"
+	}`)
+	adaptor := &TaskAdaptor{}
+	info := testRelayInfo()
+	info.UpstreamModelName = FirstLastWorkflowID
+
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+	body := decodeRequestBody(t, adaptor, c, info)
+
+	assert.Equal(t, float64(42), body["seed"])
+}
+
+func TestFirstLastWorkflowAcceptsDurationAndResolutionBoundaries(t *testing.T) {
+	tests := []struct {
+		name           string
+		duration       string
+		resolutionArgs string
+		wantDuration   float64
+		wantResolution string
+	}{
+		{name: "one second portrait", duration: `"duration":1`, resolutionArgs: `"resolution":"736p竖"`, wantDuration: 1, wantResolution: "736p竖"},
+		{name: "fifteen seconds landscape", duration: `"duration":15`, resolutionArgs: `"resolution":"736p横"`, wantDuration: 15, wantResolution: "736p横"},
+		{name: "standard 736p landscape", duration: `"seconds":"8"`, resolutionArgs: `"resolution":"736p","ratio":"16:9"`, wantDuration: 8, wantResolution: "736p横"},
+		{name: "standard 720p portrait", duration: `"duration":"7"`, resolutionArgs: `"resolution":"720p","size":"720x1280"`, wantDuration: 7, wantResolution: "736p竖"},
+		{name: "explicit square", duration: `"duration":6`, resolutionArgs: `"resolution":"736p(1:1)","aspect_ratio":"1:1"`, wantDuration: 6, wantResolution: "736p(1:1)"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := `{"model":"m","prompt":"p","first_frame":"https://example.test/first.png","last_frame":"https://example.test/last.png",` + test.duration + `,` + test.resolutionArgs + `}`
+			c, _ := newAutoDLH3TestContext(t, body)
+			adaptor := &TaskAdaptor{}
+			info := testRelayInfo()
+			info.UpstreamModelName = FirstLastWorkflowID
+
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+			upstream := decodeRequestBody(t, adaptor, c, info)
+			assert.Equal(t, test.wantDuration, upstream["duration"])
+			assert.Equal(t, test.wantResolution, upstream["resolution"])
+		})
+	}
+}
+
+func TestFirstLastWorkflowRejectsAmbiguousOrUnsupportedInputs(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		code string
+	}{
+		{name: "missing first frame", body: `{"model":"m","prompt":"p","last_frame":"https://example.test/last.png"}`, code: "invalid_reference_count"},
+		{name: "missing last frame", body: `{"model":"m","prompt":"p","first_frame":"https://example.test/first.png"}`, code: "invalid_reference_count"},
+		{name: "direct and standard frames mixed", body: `{"model":"m","prompt":"p","first_frame":"https://example.test/first.png","last_frame":"https://example.test/last.png","images":["https://example.test/a.png","https://example.test/b.png"],"reference_mode":"start_end"}`, code: "invalid_reference_count"},
+		{name: "ordinary two images are not frames", body: `{"model":"m","prompt":"p","images":["https://example.test/a.png","https://example.test/b.png"]}`, code: "invalid_reference_mode"},
+		{name: "start end requires two images", body: `{"model":"m","prompt":"p","image_url":"https://example.test/a.png","reference_mode":"start_end"}`, code: "invalid_reference_count"},
+		{name: "single image aliases do not form two frames", body: `{"model":"m","prompt":"p","image":"https://example.test/a.png","image_url":"https://example.test/b.png","reference_mode":"start_end"}`, code: "invalid_reference_count"},
+		{name: "extra standard image", body: `{"model":"m","prompt":"p","images":["https://example.test/a.png","https://example.test/b.png","https://example.test/c.png"],"reference_mode":"start_end"}`, code: "invalid_reference_count"},
+		{name: "audio rejected", body: `{"model":"m","prompt":"p","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png","audio_url":"https://example.test/a.mp3"}`, code: "unsupported_reference_media"},
+		{name: "video rejected", body: `{"model":"m","prompt":"p","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png","reference_video":"https://example.test/a.mp4"}`, code: "unsupported_reference_media"},
+		{name: "http frame rejected", body: `{"model":"m","prompt":"p","first_frame":"http://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_reference_url"},
+		{name: "private frame rejected", body: `{"model":"m","prompt":"p","first_frame":"https://127.0.0.1/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_reference_url"},
+		{name: "duration zero", body: `{"model":"m","prompt":"p","duration":0,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_duration"},
+		{name: "duration over max", body: `{"model":"m","prompt":"p","duration":16,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_duration"},
+		{name: "duration must be integer", body: `{"model":"m","prompt":"p","duration":1.5,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_json"},
+		{name: "seed must be integer", body: `{"model":"m","prompt":"p","seed":"random","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_json"},
+		{name: "unsupported old resolution", body: `{"model":"m","prompt":"p","resolution":"768p","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_resolution"},
+		{name: "explicit direction conflict", body: `{"model":"m","prompt":"p","resolution":"736p横","ratio":"9:16","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_resolution"},
+		{name: "orientation aliases conflict", body: `{"model":"m","prompt":"p","resolution":"736p","ratio":"16:9","aspect_ratio":"9:16","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_resolution"},
+		{name: "reference mode aliases conflict", body: `{"model":"m","prompt":"p","images":["https://example.test/a.png","https://example.test/b.png"],"reference_mode":"start_end","video_config":{"reference_mode":"auto"}}`, code: "invalid_reference_mode"},
+		{name: "invalid reference mode", body: `{"model":"m","prompt":"p","images":["https://example.test/a.png","https://example.test/b.png"],"reference_mode":"auto"}`, code: "invalid_reference_mode"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := newAutoDLH3TestContext(t, test.body)
+			info := testRelayInfo()
+			info.UpstreamModelName = FirstLastWorkflowID
+
+			taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
+
+			require.NotNil(t, taskErr)
+			assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+			assert.Equal(t, test.code, taskErr.Code)
+		})
+	}
+}
+
+func TestFirstLastWorkflowRejectsDirectFramesMixedWithAnyStandardImageAlias(t *testing.T) {
+	imageFields := []string{
+		`"image":"https://example.test/reference.png"`,
+		`"image_url":"https://example.test/reference.png"`,
+		`"images":["https://example.test/reference.png"]`,
+		`"image_urls":["https://example.test/reference.png"]`,
+		`"reference_image_urls":["https://example.test/reference.png"]`,
+		`"reference_images":["https://example.test/reference.png"]`,
+		`"references":["https://example.test/reference.png"]`,
+		`"reference_urls":["https://example.test/reference.png"]`,
+	}
+
+	for _, imageField := range imageFields {
+		t.Run(imageField, func(t *testing.T) {
+			body := `{"model":"m","prompt":"p","first_frame":"https://example.test/first.png","last_frame":"https://example.test/last.png",` + imageField + `}`
+			c, _ := newAutoDLH3TestContext(t, body)
+			info := testRelayInfo()
+			info.UpstreamModelName = FirstLastWorkflowID
+
+			taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
+
+			require.NotNil(t, taskErr)
+			assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+			assert.Equal(t, "invalid_reference_count", taskErr.Code)
+		})
+	}
+}
+
 func TestValidateRequestRejectsWorkflowAndInputViolations(t *testing.T) {
 	tests := []struct {
 		name     string

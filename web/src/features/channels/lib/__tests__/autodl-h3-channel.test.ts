@@ -21,7 +21,12 @@ describe('AutoDL H3 channel configuration', () => {
     assert.deepEqual(config.supportedModels, [
       'minimax_h3_lightx2v_no_pic',
       'minimax_h3_image_audio_to_video_v2_15s',
+      'minimax_h3_b99_002',
     ])
     assert.equal(config.hints?.key, 'Raw AutoDL ComfyUI token')
+    assert.equal(
+      config.hints?.models,
+      'minimax_h3_lightx2v_no_pic,minimax_h3_image_audio_to_video_v2_15s,minimax_h3_b99_002'
+    )
   })
 })

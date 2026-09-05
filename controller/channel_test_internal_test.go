@@ -122,7 +122,7 @@ func TestAutoDLH3ChannelRegistration(t *testing.T) {
 	assert.Equal(t, constant.APITypeOpenAI, apiType)
 	assert.Equal(t, "AutoDL H3", constant.GetChannelTypeName(constant.ChannelTypeAutoDLH3))
 	assert.Equal(t, "https://autodl.art", constant.ChannelBaseURLs[constant.ChannelTypeAutoDLH3])
-	assert.Equal(t, []string{"minimax_h3_lightx2v_no_pic", "minimax_h3_image_audio_to_video_v2_15s"}, channelId2Models[constant.ChannelTypeAutoDLH3])
+	assert.Equal(t, []string{"minimax_h3_lightx2v_no_pic", "minimax_h3_image_audio_to_video_v2_15s", "minimax_h3_b99_002"}, channelId2Models[constant.ChannelTypeAutoDLH3])
 }
 
 func TestDiaomaoChannelRegistration(t *testing.T) {
