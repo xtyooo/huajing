@@ -555,6 +555,12 @@
         "parameters": [],
         "requestBody": {
           "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenAIVideoCreateRequest"
+              },
+              "examples": {}
+            },
             "multipart/form-data": {
               "schema": {
                 "type": "object",
@@ -690,7 +696,7 @@
       "get": {
         "summary": "获取视频任务状态 ",
         "deprecated": false,
-        "description": "OpenAI 兼容的视频任务状态查询接口。\n\n返回视频任务的详细状态信息。\n",
+        "description": "OpenAI 兼容的视频任务状态查询接口。标准状态为 `queued`、`in_progress`、`completed`、`failed`。媒体缓存成功后返回稳定公开地址 `video_url`，并同时返回兼容别名 `result_url`；缓存完成前不返回这两个字段。\n",
         "operationId": "getVideo",
         "tags": [
           "视频生成/Sora兼容格式"
@@ -735,6 +741,16 @@
                     },
                     "seconds": {
                       "type": "string"
+                    },
+                    "video_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "媒体缓存成功后的稳定公开视频地址"
+                    },
+                    "result_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "与 video_url 相同的兼容别名"
                     }
                   },
                   "required": [
@@ -1225,7 +1241,7 @@
       "get": {
         "summary": "获取视频生成任务状态",
         "deprecated": false,
-        "description": "查询视频生成任务的状态和结果。\n\n任务状态：\n- `queued`: 排队中\n- `in_progress`: 生成中\n- `completed`: 已完成\n- `failed`: 失败\n",
+        "description": "查询视频生成任务的状态和结果。该兼容接口在 `data.status` 中保留既有大写状态：`NOT_START`、`SUBMITTED`、`QUEUED`、`IN_PROGRESS`、`SUCCESS`、`FAILURE`、`UNKNOWN`。媒体缓存成功后，`data.media_url`、`data.video_url` 与 `data.result_url` 为同一个稳定公开地址；缓存完成前不返回 URL 别名。标准小写状态由 `/v1/videos/{task_id}` 返回。\n",
         "operationId": "getVideoGeneration",
         "tags": [
           "视频生成"
@@ -4165,6 +4181,105 @@
           }
         }
       },
+      "OpenAIVideoCreateRequest": {
+        "type": "object",
+        "description": "标准 JSON 视频生成请求。具体模型可能支持其中一部分参考素材能力。",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "模型名称"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "视频描述提示词"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": [
+              "16:9",
+              "9:16",
+              "4:3",
+              "3:4",
+              "1:1",
+              "21:9"
+            ]
+          },
+          "resolution": {
+            "type": "string",
+            "example": "720p"
+          },
+          "seconds": {
+            "description": "时长（秒），同时接受字符串或数字",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "15"
+              },
+              {
+                "type": "number",
+                "example": 15
+              }
+            ]
+          },
+          "image_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "单张主参考图"
+          },
+          "reference_image_urls": {
+            "type": "array",
+            "description": "额外参考图片；数量上限由所选模型和渠道决定（当前 naonao 最多 10 张，manying 普通模式最多 9 张，均包含单图字段）",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "reference_video": {
+            "type": "string",
+            "format": "uri",
+            "description": "单个参考视频；是否支持由所选模型和渠道决定"
+          },
+          "reference_videos": {
+            "type": "array",
+            "description": "多个参考视频；当前 naonao 不支持，manying 普通模式最多 3 个",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "单个参考音频；支持条件由所选模型和渠道决定"
+          },
+          "audio_urls": {
+            "type": "array",
+            "description": "多个参考音频；当前 naonao 最多 5 个，manying 普通模式最多 3 个",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "video_config": {
+            "type": "object",
+            "properties": {
+              "reference_mode": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "start_frame",
+                  "start_end"
+                ],
+                "description": "auto 为普通参考；start_frame 必须正好一张图；start_end 必须正好两张图且不能同时提供参考视频"
+              }
+            }
+          }
+        }
+      },
       "VideoRequest": {
         "type": "object",
         "description": "视频生成请求",
@@ -4250,41 +4365,60 @@
       },
       "VideoTaskResponse": {
         "type": "object",
-        "description": "视频任务状态查询响应",
+        "description": "兼容视频任务状态查询响应",
         "properties": {
-          "task_id": {
+          "code": {
             "type": "string",
-            "description": "任务 ID",
-            "example": "abcd1234efgh"
+            "example": "success"
           },
-          "status": {
-            "type": "string",
-            "description": "任务状态",
-            "enum": [
-              "queued",
-              "in_progress",
-              "completed",
-              "failed"
-            ],
-            "example": "completed"
-          },
-          "url": {
-            "type": "string",
-            "description": "视频资源 URL（成功时）",
-            "example": "https://example.com/video.mp4"
-          },
-          "format": {
-            "type": "string",
-            "description": "视频格式",
-            "example": "mp4"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/VideoTaskMetadata"
-          },
-          "error": {
-            "$ref": "#/components/schemas/VideoTaskError"
+          "data": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "任务 ID",
+                "example": "task_xxx"
+              },
+              "status": {
+                "type": "string",
+                "description": "兼容接口保留的大写任务状态",
+                "enum": [
+                  "NOT_START",
+                  "SUBMITTED",
+                  "QUEUED",
+                  "IN_PROGRESS",
+                  "SUCCESS",
+                  "FAILURE",
+                  "UNKNOWN"
+                ]
+              },
+              "progress": {
+                "type": "string",
+                "example": "100%"
+              },
+              "media_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "媒体缓存成功后的既有稳定公开地址"
+              },
+              "video_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "与 media_url 相同的文档标准字段"
+              },
+              "result_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "与 media_url 相同的客户端兼容别名"
+              }
+            },
+            "additionalProperties": true
           }
-        }
+        },
+        "required": [
+          "code",
+          "data"
+        ]
       },
       "VideoTaskMetadata": {
         "type": "object",
@@ -4394,6 +4528,16 @@
           "remixed_from_video_id": {
             "type": "string",
             "description": "源视频 ID（如果是基于其他视频生成）"
+          },
+          "video_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "媒体缓存成功后的稳定公开视频地址"
+          },
+          "result_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "与 video_url 相同的兼容别名"
           },
           "error": {
             "$ref": "#/components/schemas/OpenAIVideoError"

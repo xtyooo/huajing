@@ -26,6 +26,8 @@ type OpenAIVideo struct {
 	Seconds            string            `json:"seconds,omitempty"`
 	Size               string            `json:"size,omitempty"`
 	RemixedFromVideoID string            `json:"remixed_from_video_id,omitempty"`
+	VideoURL           string            `json:"video_url,omitempty"`
+	ResultURL          string            `json:"result_url,omitempty"`
 	Error              *OpenAIVideoError `json:"error,omitempty"`
 	Metadata           map[string]any    `json:"metadata,omitempty"`
 }

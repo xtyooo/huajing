@@ -515,6 +515,46 @@ func applyVideoMediaPresentation(data []byte, task *model.Task) []byte {
 	return data
 }
 
+// cachedPublicVideoURL returns the stable public URL only after a video task
+// and its media cache have both completed successfully. Upstream temporary
+// result URLs and stale MediaURL values must never be exposed through aliases.
+func cachedPublicVideoURL(task *model.Task) string {
+	if task == nil || task.Status != model.TaskStatusSuccess || task.MediaStatus != model.MediaStatusSuccess {
+		return ""
+	}
+	adaptor := GetTaskAdaptor(task.Platform)
+	if adaptor == nil {
+		return ""
+	}
+	if _, ok := adaptor.(channel.OpenAIVideoConverter); !ok {
+		return ""
+	}
+	if strings.TrimSpace(task.MediaURL) == "" {
+		return ""
+	}
+	publicStatus, _ := taskMediaPresentation(task)
+	if publicStatus != model.TaskStatusSuccess {
+		return ""
+	}
+	return task.MediaURL
+}
+
+func addOpenAIVideoURLAliases(data []byte, task *model.Task) []byte {
+	mediaURL := cachedPublicVideoURL(task)
+	if mediaURL == "" {
+		return data
+	}
+	for _, key := range []string{"video_url", "result_url"} {
+		updated, err := sjson.SetBytes(data, key, mediaURL)
+		if err != nil {
+			common.SysError(fmt.Sprintf("addOpenAIVideoURLAliases: set %s failed: %v", key, err))
+			continue
+		}
+		data = updated
+	}
+	return data
+}
+
 func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
 	taskId := c.Param("task_id")
 	if taskId == "" {
@@ -558,12 +598,13 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				openAIVideoData, _ = sjson.SetBytes(openAIVideoData, "message", "视频已被清理")
 			} else {
 				// Never expose the upstream URL to the client. Once the download
-				// has succeeded, return our local media URL; otherwise MediaURL is
-				// empty and the URL fields are blanked out (empty string), matching
-				// the legacy behavior — the upstream link is never leaked.
-				openAIVideoData = overwriteResultMediaURLs(openAIVideoData, originTask.MediaURL)
+				// has succeeded, return our local media URL. Cache-pending or failed
+				// tasks may retain stale MediaURL values, so use the same success gate
+				// as the public aliases instead of trusting the field directly.
+				openAIVideoData = overwriteResultMediaURLs(openAIVideoData, cachedPublicVideoURL(originTask))
 			}
 			openAIVideoData = applyVideoMediaPresentation(openAIVideoData, originTask)
+			openAIVideoData = addOpenAIVideoURLAliases(openAIVideoData, originTask)
 			respBody = openAIVideoData
 			return
 		}
@@ -659,6 +700,10 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		"task_id":  task.TaskID,
 		"url":      task.GetResultMediaURL(),
 	}
+	if mediaURL := cachedPublicVideoURL(task); mediaURL != "" {
+		out["video_url"] = mediaURL
+		out["result_url"] = mediaURL
+	}
 	respBody, _ := common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
 		Data: out,
@@ -721,7 +766,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		finishTime = 0
 	}
 
-	return &dto.TaskDto{
+	result := &dto.TaskDto{
 		ID:              task.ID,
 		CreatedAt:       task.CreatedAt,
 		UpdatedAt:       task.UpdatedAt,
@@ -746,4 +791,9 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		MediaStartTime:  task.MediaStartTime,
 		MediaFinishTime: task.MediaFinishTime,
 	}
+	if mediaURL := cachedPublicVideoURL(task); mediaURL != "" {
+		result.VideoURL = mediaURL
+		result.ResultURL = mediaURL
+	}
+	return result
 }
