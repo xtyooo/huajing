@@ -151,9 +151,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt must contain between 1 and 10000 characters"), "invalid_prompt", http.StatusBadRequest)
 	}
 	upstreamModel := firstNonEmpty(info.UpstreamModelName, request.Model)
-	if !supportedModel(upstreamModel) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported naonao model: %s", upstreamModel), "unsupported_model", http.StatusBadRequest)
-	}
 
 	duration := 5
 	if request.Duration != nil {
@@ -389,15 +386,6 @@ func (*TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 
 func (*TaskAdaptor) GetModelList() []string { return ModelList }
 func (*TaskAdaptor) GetChannelName() string { return ChannelName }
-
-func supportedModel(value string) bool {
-	for _, modelName := range ModelList {
-		if value == modelName {
-			return true
-		}
-	}
-	return false
-}
 
 func validRatio(value string) bool {
 	switch value {

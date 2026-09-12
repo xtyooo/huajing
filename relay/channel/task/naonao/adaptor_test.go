@@ -104,7 +104,7 @@ func TestNaonaoRejectsUnsupportedAndUnsafeInputs(t *testing.T) {
 		body  string
 		code  string
 	}{
-		{name: "unsupported mapped model", model: "other", body: `{"model":"alias","prompt":"p"}`, code: "unsupported_model"},
+		{name: "missing model", model: "", body: `{"model":" ","prompt":"p"}`, code: "missing_model"},
 		{name: "duration too short", model: "seedance-2.0", body: `{"model":"seedance-2.0","prompt":"p","duration":4}`, code: "invalid_duration"},
 		{name: "duration too long", model: "seedance-2.0", body: `{"model":"seedance-2.0","prompt":"p","seconds":31}`, code: "invalid_duration"},
 		{name: "invalid ratio", model: "seedance-2.0", body: `{"model":"seedance-2.0","prompt":"p","ratio":"21:9"}`, code: "invalid_aspect_ratio"},
@@ -122,6 +122,32 @@ func TestNaonaoRejectsUnsupportedAndUnsafeInputs(t *testing.T) {
 			require.NotNil(t, taskErr)
 			assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
 			assert.Equal(t, test.code, taskErr.Code)
+		})
+	}
+}
+
+func TestNaonaoAcceptsAdministratorConfiguredModels(t *testing.T) {
+	for _, upstreamModel := range []string{
+		"aliyun-wan3.0-video-prime", "seedance-2.0-fast-norp",
+		"seedance-2.0-deal", "seedance-2.0-mini-deal", "future-video-model",
+	} {
+		t.Run(upstreamModel, func(t *testing.T) {
+			for _, originModel := range []string{"public-alias", upstreamModel} {
+				payload, err := common.Marshal(map[string]any{"model": originModel, "prompt": "city", "seconds": 5})
+				require.NoError(t, err)
+				c, _ := newNaonaoContext(t, string(payload))
+				info := newNaonaoInfo(originModel, upstreamModel)
+				adaptor := &TaskAdaptor{}
+				require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+				reader, err := adaptor.BuildRequestBody(c, info)
+				require.NoError(t, err)
+				data, err := io.ReadAll(reader)
+				require.NoError(t, err)
+				var body map[string]any
+				require.NoError(t, common.Unmarshal(data, &body))
+				assert.Equal(t, upstreamModel, body["model"])
+				assert.Equal(t, originModel, info.OriginModelName)
+			}
 		})
 	}
 }
