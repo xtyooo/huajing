@@ -51,20 +51,20 @@ type videoConfig struct {
 }
 
 type standardVideoRequest struct {
-	Model              string       `json:"model"`
-	Prompt             string       `json:"prompt"`
-	AspectRatio        string       `json:"aspect_ratio,omitempty"`
-	Ratio              string       `json:"ratio,omitempty"`
-	Resolution         string       `json:"resolution,omitempty"`
-	Seconds            *flexibleInt `json:"seconds,omitempty"`
-	Duration           *flexibleInt `json:"duration,omitempty"`
-	ImageURL           string       `json:"image_url,omitempty"`
-	ReferenceImageURLs []string     `json:"reference_image_urls,omitempty"`
-	ReferenceVideo     string       `json:"reference_video,omitempty"`
-	ReferenceVideos    []string     `json:"reference_videos,omitempty"`
-	AudioURL           string       `json:"audio_url,omitempty"`
-	AudioURLs          []string     `json:"audio_urls,omitempty"`
-	VideoConfig        videoConfig  `json:"video_config,omitempty"`
+	Model              string                  `json:"model"`
+	Prompt             string                  `json:"prompt"`
+	AspectRatio        string                  `json:"aspect_ratio,omitempty"`
+	Ratio              string                  `json:"ratio,omitempty"`
+	Resolution         string                  `json:"resolution,omitempty"`
+	Seconds            *flexibleInt            `json:"seconds,omitempty"`
+	Duration           *flexibleInt            `json:"duration,omitempty"`
+	ImageURL           string                  `json:"image_url,omitempty"`
+	ReferenceImageURLs taskcommon.MediaURLList `json:"reference_image_urls,omitempty"`
+	ReferenceVideo     string                  `json:"reference_video,omitempty"`
+	ReferenceVideos    taskcommon.MediaURLList `json:"reference_videos,omitempty"`
+	AudioURL           string                  `json:"audio_url,omitempty"`
+	AudioURLs          taskcommon.MediaURLList `json:"audio_urls,omitempty"`
+	VideoConfig        videoConfig             `json:"video_config,omitempty"`
 }
 
 type upstreamRequest struct {

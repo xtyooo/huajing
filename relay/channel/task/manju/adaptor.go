@@ -53,28 +53,28 @@ type videoConfig struct {
 }
 
 type standardVideoRequest struct {
-	Model              string       `json:"model"`
-	Prompt             string       `json:"prompt"`
-	Duration           *flexibleInt `json:"duration,omitempty"`
-	Seconds            *flexibleInt `json:"seconds,omitempty"`
-	AspectRatio        string       `json:"aspect_ratio,omitempty"`
-	Ratio              string       `json:"ratio,omitempty"`
-	Resolution         string       `json:"resolution,omitempty"`
-	ImageURL           string       `json:"image_url,omitempty"`
-	Images             []string     `json:"images,omitempty"`
-	ImageURLs          []string     `json:"image_urls,omitempty"`
-	ReferenceImageURLs []string     `json:"reference_image_urls,omitempty"`
-	ReferenceImages    []string     `json:"reference_images,omitempty"`
-	ReferenceVideo     string       `json:"reference_video,omitempty"`
-	ReferenceVideos    []string     `json:"reference_videos,omitempty"`
-	Videos             []string     `json:"videos,omitempty"`
-	VideoURLs          []string     `json:"video_urls,omitempty"`
-	AudioURL           string       `json:"audio_url,omitempty"`
-	AudioURLs          []string     `json:"audio_urls,omitempty"`
-	ReferenceAudios    []string     `json:"reference_audios,omitempty"`
-	Audios             []string     `json:"audios,omitempty"`
-	VideoConfig        videoConfig  `json:"video_config,omitempty"`
-	PromptExtend       *bool        `json:"prompt_extend,omitempty"`
+	Model              string                  `json:"model"`
+	Prompt             string                  `json:"prompt"`
+	Duration           *flexibleInt            `json:"duration,omitempty"`
+	Seconds            *flexibleInt            `json:"seconds,omitempty"`
+	AspectRatio        string                  `json:"aspect_ratio,omitempty"`
+	Ratio              string                  `json:"ratio,omitempty"`
+	Resolution         string                  `json:"resolution,omitempty"`
+	ImageURL           string                  `json:"image_url,omitempty"`
+	Images             taskcommon.MediaURLList `json:"images,omitempty"`
+	ImageURLs          taskcommon.MediaURLList `json:"image_urls,omitempty"`
+	ReferenceImageURLs taskcommon.MediaURLList `json:"reference_image_urls,omitempty"`
+	ReferenceImages    taskcommon.MediaURLList `json:"reference_images,omitempty"`
+	ReferenceVideo     string                  `json:"reference_video,omitempty"`
+	ReferenceVideos    taskcommon.MediaURLList `json:"reference_videos,omitempty"`
+	Videos             taskcommon.MediaURLList `json:"videos,omitempty"`
+	VideoURLs          taskcommon.MediaURLList `json:"video_urls,omitempty"`
+	AudioURL           string                  `json:"audio_url,omitempty"`
+	AudioURLs          taskcommon.MediaURLList `json:"audio_urls,omitempty"`
+	ReferenceAudios    taskcommon.MediaURLList `json:"reference_audios,omitempty"`
+	Audios             taskcommon.MediaURLList `json:"audios,omitempty"`
+	VideoConfig        videoConfig             `json:"video_config,omitempty"`
+	PromptExtend       *bool                   `json:"prompt_extend,omitempty"`
 }
 
 type mediaItem struct {
