@@ -555,7 +555,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 				task.MediaStatus = model.MediaStatusPending
 				needsDownload = true
 			}
-		} else if dataURL := extractVideoURLFromRawData(task.Data); dataURL != "" {
+		} else if dataURL := extractVideoURLFromRawData(task.Data); !requiresValidatedVideoResultURL(task.Platform) && dataURL != "" {
 			// URL embedded in raw response Data but not captured by adaptor (e.g. Sora)
 			task.PrivateData.ResultURL = dataURL
 			if taskBypassesMediaCache(task) {

@@ -372,6 +372,8 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 
 	var url string
 	switch channel.Type {
+	case constant.ChannelTypeYaochen:
+		url = strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1") + "/v1/models"
 	case constant.ChannelTypeAli:
 		url = fmt.Sprintf("%s/compatible-mode/v1/models", baseURL)
 	case constant.ChannelTypeZhipu_v4:
@@ -410,6 +412,28 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 	body, err := getFetchModelsResponseBody(http.MethodGet, url, channel, headers)
 	if err != nil {
 		return nil, sanitizeFetchModelsError(err, key)
+	}
+
+	if channel.Type == constant.ChannelTypeYaochen {
+		var result struct {
+			Video map[string]struct{} `json:"video"`
+		}
+		if err := common.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("invalid Yaochen Models response: %w", sanitizeFetchModelsError(err, key))
+		}
+		if result.Video == nil {
+			return nil, fmt.Errorf("invalid Yaochen Models response: video is required")
+		}
+		ids := make([]string, 0, len(result.Video))
+		for id := range result.Video {
+			ids = append(ids, id)
+		}
+		ids = normalizeModelNames(ids)
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("Yaochen Models response contains no valid video model IDs")
+		}
+		slices.Sort(ids)
+		return ids, nil
 	}
 
 	var result OpenAIModelsResponse

@@ -216,7 +216,11 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	defer cancelDownload()
 	for i := 0; i < attempts; i++ {
 		dlHeaders := target.Headers[i%len(target.Headers)]
-		resp, err = DoDownloadRequestWithHeadersContext(downloadCtx, target.URL, dlHeaders, "download_task_result")
+		if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) || task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) {
+			resp, err = downloadChannelMedia(downloadCtx, target.URL, dlHeaders)
+		} else {
+			resp, err = DoDownloadRequestWithHeadersContext(downloadCtx, target.URL, dlHeaders, "download_task_result")
+		}
 		if err == nil && resp == nil {
 			err = fmt.Errorf("download failed: empty response")
 		}
@@ -437,7 +441,7 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}
 		return mediaDownloadTarget{URL: resultURL, Headers: headers}, nil
 	}
-	if resultURL := mediaResultURLFromTaskData(task.Data); resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
+	if resultURL := mediaResultURLFromTaskData(task.Data); !requiresValidatedVideoResultURL(task.Platform) && resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
 		headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
 		if err != nil {
 			return mediaDownloadTarget{}, err
@@ -455,6 +459,9 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}
 		if baseURL == "" {
 			return mediaDownloadTarget{}, fmt.Errorf("channel base URL is empty")
+		}
+		if channel.Type == constant.ChannelTypeWanchen || channel.Type == constant.ChannelTypeYaochen {
+			baseURL = strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
 		}
 		return mediaDownloadTarget{
 			URL:     strings.TrimRight(baseURL, "/") + "/v1/videos/" + url.PathEscape(task.GetUpstreamTaskID()) + "/content",
@@ -529,7 +536,16 @@ func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen))
+}
+
+// These adaptors validate their result URLs. An empty parsed URL means use
+// authenticated content, not a URL the adaptor already rejected from raw JSON.
+func requiresValidatedVideoResultURL(platform constant.TaskPlatform) bool {
+	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

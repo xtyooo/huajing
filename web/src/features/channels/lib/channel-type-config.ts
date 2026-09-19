@@ -26,6 +26,8 @@ import {
   CHANNEL_TYPE_MANJU,
   CHANNEL_TYPE_NAONAO,
   CHANNEL_TYPE_MANYING,
+  CHANNEL_TYPE_WANCHEN,
+  CHANNEL_TYPE_YAOCHEN,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -323,6 +325,24 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'sd-480p,sd-720p,sd-1080p,sdf-480p,sdf-720p',
       other:
         'Video-only SD/SDF channel with fixed model resolution, multimodal references, frame mode, and authenticated content download.',
+    },
+  },
+  [CHANNEL_TYPE_WANCHEN]: {
+    id: CHANNEL_TYPE_WANCHEN,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_WANCHEN],
+    icon: 'openai',
+    defaultBaseUrl: 'https://api.qilingze.com',
+    supportedModels: ['SD2.5-满血-HN-720P'],
+  },
+  [CHANNEL_TYPE_YAOCHEN]: {
+    id: CHANNEL_TYPE_YAOCHEN,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_YAOCHEN],
+    icon: 'openai',
+    defaultBaseUrl: 'https://api.chengyuapi.top',
+    // Model IDs are account-specific; fetch the video catalog using the key.
+    supportedModels: [],
+    hints: {
+      models: 'Models fetched from upstream /v1/models',
     },
   },
   [CHANNEL_TYPE_SUB2_API]: {

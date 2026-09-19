@@ -116,9 +116,12 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
 			return
 		}
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora, constant.ChannelTypeAnhe, constant.ChannelTypeShafu, constant.ChannelTypeManying:
+	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora, constant.ChannelTypeAnhe, constant.ChannelTypeShafu, constant.ChannelTypeManying, constant.ChannelTypeWanchen, constant.ChannelTypeYaochen:
 		// 安和、shafu、manying 与 OpenAI/Sora 一样通过上游 content 接口输出视频，必须携带任务提交时选中的渠道密钥。
-		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+		if channel.Type == constant.ChannelTypeWanchen || channel.Type == constant.ChannelTypeYaochen {
+			baseURL = strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
+		}
+		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, url.PathEscape(task.GetUpstreamTaskID()))
 		apiKey, keyErr := taskChannelKey(channel, task)
 		if keyErr != nil {
 			videoProxyError(c, http.StatusBadGateway, "server_error", "No available channel key")
@@ -178,6 +181,9 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	if channel.Type == constant.ChannelTypeWanchen || channel.Type == constant.ChannelTypeYaochen {
+		client = service.SameOriginMediaClient(client)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to fetch video from %s: %s", videoURL, err.Error()))

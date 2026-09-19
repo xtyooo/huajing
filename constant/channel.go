@@ -75,7 +75,9 @@ const (
 	ChannelTypeManju          = 75
 	ChannelTypeNaonao         = 76
 	ChannelTypeManying        = 77
-	ChannelTypeDummy          = 78 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeWanchen        = 78
+	ChannelTypeYaochen        = 79
+	ChannelTypeDummy          = 80 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -158,6 +160,8 @@ var ChannelBaseURLs = []string{
 	"https://api.manjuai.top",     //75 manju
 	"https://gpt.qinnaonao.com",   //76 naonao
 	"https://shafu.it.com",        //77 manying
+	"https://api.qilingze.com",    //78 wanchen
+	"https://api.chengyuapi.top",  //79 yaochen
 }
 
 var ChannelTypeNames = map[int]string{
@@ -235,6 +239,8 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeManju:          "满聚",
 	ChannelTypeNaonao:         "naonao",
 	ChannelTypeManying:        "manying",
+	ChannelTypeWanchen:        "wanchen",
+	ChannelTypeYaochen:        "yaochen",
 }
 
 func GetChannelTypeName(channelType int) string {
