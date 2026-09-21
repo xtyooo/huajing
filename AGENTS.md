@@ -129,6 +129,10 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 
 **Relay and provider behavior:**
 
+- Channel integration policy (user decision, 2026-09-22): follow `docs/channel-integration-policy.md`. Model catalogs are suggestions, never admission allowlists. Administrators configure upstream model names/mappings; providers validate model capabilities. Do not hardcode per-model duration, resolution, aspect, media-count or mode limits from a documentation snapshot.
+- Billing mode (per-request/per-second) and prices must come from explicit backend configuration for the public model, not model-name prefixes/suffixes such as `-PerSecond`. Renaming an upstream model must not change the charge. If current configuration cannot represent a required mode, implement the configuration rather than infer it from the model name.
+- Keep protocol conversion, authentication/isolation, structural validation, resource/SSRF safeguards and bounded billing inputs. These universal safeguards remain required. Existing provider-specific restrictions are legacy behavior, not templates for new integrations; do not silently migrate production billing while only updating documentation.
+
 - When implementing a new channel, confirm whether the provider supports `StreamOptions`; if supported, add the channel to `streamSupportedChannels`.
 - For request structs parsed from client JSON and re-marshaled to upstream providers, optional scalar fields MUST use pointer types with `omitempty` (for example, `*int`, `*uint`, `*float64`, `*bool`).
 - Preserve explicit zero values in upstream relay request DTOs: absent client JSON fields must become `nil` and be omitted, while explicit `0`, `0.0`, or `false` values must remain non-`nil` and be sent upstream.
