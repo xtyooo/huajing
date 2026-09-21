@@ -168,7 +168,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeNaonao)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLongxia6))
 	if info.OriginModelName != "" && needsMappedModelValidation {
 		info.UpstreamModelName = info.OriginModelName
 		if err := helper.ModelMappedHelper(c, info, nil); err != nil {

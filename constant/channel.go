@@ -77,7 +77,8 @@ const (
 	ChannelTypeManying        = 77
 	ChannelTypeWanchen        = 78
 	ChannelTypeYaochen        = 79
-	ChannelTypeDummy          = 80 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeLongxia6       = 80
+	ChannelTypeDummy          = 81 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -144,24 +145,25 @@ var ChannelBaseURLs = []string{
 	"https://api.meai.cloud",                    //59
 	"https://api.xs-token.com",                  //60
 	"http://64.81.114.92:8080/api/gateway/v1", //61
-	"",                            //62 Mimo, no default base URL
-	"",                            //63 Lingjing, no default base URL
-	"",                            //64 Advanced Custom
-	"https://api.pro666.top",      //65 Kuai
-	"https://aivideo.beauty",      //66 sd0717
-	"https://token-api.wufan.com", //67 wufan
-	"",                            //68 Sub2API
-	"",                            //69 NewAPI
-	"https://anhedean.cn",         //70 Anhe
-	"https://bf.dszyym.com",       //71 zhou_sd
-	"https://autodl.art",          //72 AutoDL H3
-	"https://llm.chre3.com",       //73 diaomao
-	"https://shafu.it.com",        //74 shafu
-	"https://api.manjuai.top",     //75 manju
-	"https://gpt.qinnaonao.com",   //76 naonao
-	"https://shafu.it.com",        //77 manying
-	"https://api.qilingze.com",    //78 wanchen
-	"https://api.chengyuapi.top",  //79 yaochen
+	"",                             //62 Mimo, no default base URL
+	"",                             //63 Lingjing, no default base URL
+	"",                             //64 Advanced Custom
+	"https://api.pro666.top",       //65 Kuai
+	"https://aivideo.beauty",       //66 sd0717
+	"https://token-api.wufan.com",  //67 wufan
+	"",                             //68 Sub2API
+	"",                             //69 NewAPI
+	"https://anhedean.cn",          //70 Anhe
+	"https://bf.dszyym.com",        //71 zhou_sd
+	"https://autodl.art",           //72 AutoDL H3
+	"https://llm.chre3.com",        //73 diaomao
+	"https://shafu.it.com",         //74 shafu
+	"https://api.manjuai.top",      //75 manju
+	"https://gpt.qinnaonao.com",    //76 naonao
+	"https://shafu.it.com",         //77 manying
+	"https://api.qilingze.com",     //78 wanchen
+	"https://api.chengyuapi.top",   //79 yaochen
+	"https://api8.longxiaai.store", //80 longxia6
 }
 
 var ChannelTypeNames = map[int]string{
@@ -241,6 +243,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeManying:        "manying",
 	ChannelTypeWanchen:        "wanchen",
 	ChannelTypeYaochen:        "yaochen",
+	ChannelTypeLongxia6:       "longxia6",
 }
 
 func GetChannelTypeName(channelType int) string {

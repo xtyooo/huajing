@@ -28,6 +28,7 @@ import {
   CHANNEL_TYPE_MANYING,
   CHANNEL_TYPE_WANCHEN,
   CHANNEL_TYPE_YAOCHEN,
+  CHANNEL_TYPE_LONGXIA6,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -341,6 +342,28 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
     defaultBaseUrl: 'https://api.chengyuapi.top',
     // Model IDs are account-specific; fetch the video catalog using the key.
     supportedModels: [],
+    hints: {
+      models: 'Models fetched from upstream /v1/models',
+    },
+  },
+  [CHANNEL_TYPE_LONGXIA6]: {
+    id: CHANNEL_TYPE_LONGXIA6,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_LONGXIA6],
+    icon: 'openai',
+    defaultBaseUrl: 'https://api8.longxiaai.store',
+    supportedModels: [
+      'LongXia-video-seedance2_0-mini-express',
+      'LongXia-video-seedance2_0-fast-express',
+      'LongXia-video-seedance2_0-standard-express',
+      'LongXia-video-seedance2_0-standard-express-PerSecond',
+      'LongXia-video-seedance2_5-standard-480p-express',
+      'LongXia-video-seedance2_5-standard-480p-express-PerSecond',
+      'LongXia-video-seedance2_5-standard-720p-express',
+      'LongXia-video-seedance2_5-standard-720p-express-PerSecond',
+      'LongXia-video-seedance2_5-standard-720p-reference-video-express',
+      'LongXia-video-minimax-h3-express',
+      'LongXia-video-gemini-omni-flash-express',
+    ],
     hints: {
       models: 'Models fetched from upstream /v1/models',
     },

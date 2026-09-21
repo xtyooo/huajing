@@ -545,7 +545,8 @@ func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 // authenticated content, not a URL the adaptor already rejected from raw JSON.
 func requiresValidatedVideoResultURL(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLongxia6))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {
