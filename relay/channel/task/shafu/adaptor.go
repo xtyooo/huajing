@@ -23,7 +23,7 @@ import (
 )
 
 // TaskAdaptor reuses the upstream NewAPI/Sora video protocol while exposing
-// shafu's fixed model catalog as an independent channel type.
+// shafu as an independent channel type with administrator-managed models.
 type TaskAdaptor struct {
 	sora.TaskAdaptor
 }
@@ -42,13 +42,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	request, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
-	}
-	upstreamModel := strings.TrimSpace(info.UpstreamModelName)
-	if upstreamModel == "" {
-		upstreamModel = strings.TrimSpace(request.Model)
-	}
-	if !isSupportedModel(upstreamModel) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported shafu model: %s", upstreamModel), "unsupported_model", http.StatusBadRequest)
 	}
 
 	duration := 4
@@ -169,15 +162,6 @@ func (*TaskAdaptor) GetModelList() []string {
 
 func (*TaskAdaptor) GetChannelName() string {
 	return ChannelName
-}
-
-func isSupportedModel(modelName string) bool {
-	for _, candidate := range ModelList {
-		if modelName == candidate {
-			return true
-		}
-	}
-	return false
 }
 
 func parseInteger(value any) (int, error) {

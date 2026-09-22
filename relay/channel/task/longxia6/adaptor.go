@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -44,9 +43,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return invalid("missing_model", "model is required")
 	}
 	upstreamModel := firstNonEmpty(info.UpstreamModelName, request.Model)
-	limits := modelCapabilities(upstreamModel)
-	if strings.TrimSpace(request.Prompt) == "" || utf8.RuneCountInString(request.Prompt) > limits.promptMax {
-		return invalid("invalid_prompt", fmt.Sprintf("prompt must contain 1–%d characters", limits.promptMax))
+	if strings.TrimSpace(request.Prompt) == "" {
+		return invalid("invalid_prompt", "prompt is required")
 	}
 	duration := 8
 	if request.Duration != nil {
@@ -58,15 +56,12 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 		duration = int(*request.Seconds)
 	}
-	if duration < limits.minDuration || duration > limits.maxDuration {
-		return invalid("invalid_duration", fmt.Sprintf("duration must be %d–%d seconds", limits.minDuration, limits.maxDuration))
+	if duration < 1 || duration > relaycommon.MaxTaskDurationSeconds {
+		return invalid("invalid_duration", fmt.Sprintf("duration must be 1–%d seconds", relaycommon.MaxTaskDurationSeconds))
 	}
 	ratio, err := normalizeRatio(request)
 	if err != nil {
 		return invalid("invalid_aspect_ratio", err.Error())
-	}
-	if !limits.wideRatios && ratio != "9:16" && ratio != "16:9" {
-		return invalid("invalid_aspect_ratio", "this model supports only 9:16 and 16:9")
 	}
 	mode := strings.ToLower(firstNonEmpty(request.VideoConfig.ReferenceMode, request.ReferenceMode, "auto"))
 	if mode != "auto" && mode != "image" && mode != "reference" || firstNonEmpty(request.FirstFrame, request.LastFrame, request.FirstFrameURL, request.LastFrameURL) != "" {
@@ -76,7 +71,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if err != nil {
 		return invalid("invalid_reference_media", err.Error())
 	}
-	if err := validateReferences(request.Prompt, assets, limits); err != nil {
+	if err := validateReferences(request.Prompt, assets); err != nil {
 		return invalid("invalid_reference_media", err.Error())
 	}
 	pricing, err := model.LoadResolutionPricing(info.OriginModelName)

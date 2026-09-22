@@ -41,7 +41,7 @@ func TestBuildRequestBodyPreservesShafuVideoFields(t *testing.T) {
 		ChannelMeta:   &relaycommon.ChannelMeta{},
 		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
 	}
-	info.UpstreamModelName = "sdf-720p"
+	info.UpstreamModelName = "administrator-new-video-model"
 	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
 
 	reader, err := adaptor.BuildRequestBody(c, info)
@@ -51,7 +51,7 @@ func TestBuildRequestBodyPreservesShafuVideoFields(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, common.Unmarshal(data, &body))
 
-	assert.Equal(t, "sdf-720p", body["model"])
+	assert.Equal(t, "administrator-new-video-model", body["model"])
 	assert.Equal(t, "10", body["duration"])
 	assert.Equal(t, "9:16", body["aspectRatio"])
 	assert.Equal(t, "blur", body["negativePrompt"])
@@ -116,7 +116,6 @@ func TestValidateRequestRejectsProviderIncompatibleInputs(t *testing.T) {
 		body          string
 		code          string
 	}{
-		{name: "unsupported mapped model", upstreamModel: "sdf-1080p", body: `{"model":"alias","prompt":"p"}`, code: "unsupported_model"},
 		{name: "duration below minimum", upstreamModel: "sd-720p", body: `{"model":"sd-720p","prompt":"p","duration":3}`, code: "invalid_duration"},
 		{name: "duration above maximum", upstreamModel: "sd-720p", body: `{"model":"sd-720p","prompt":"p","duration":16}`, code: "invalid_duration"},
 		{name: "decimal duration", upstreamModel: "sd-720p", body: `{"model":"sd-720p","prompt":"p","duration":4.5}`, code: "invalid_duration"},

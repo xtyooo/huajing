@@ -13,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
 type flexibleInt int
@@ -121,30 +120,6 @@ type upstreamRequest struct {
 	Assets   []asset `json:"assets,omitempty"`
 }
 
-type capabilities struct {
-	minDuration, maxDuration, promptMax, images, audios, videos int
-	wideRatios, imageRequired, audioNeedsImage                  bool
-}
-
-func modelCapabilities(name string) capabilities {
-	// Unrecognized mappings retain common resource limits and leave provider capabilities upstream.
-	result := capabilities{1, relaycommon.MaxTaskDurationSeconds, 9500, 30, 10, 10, true, false, false}
-	base := strings.TrimSuffix(name, "-PerSecond")
-	switch base {
-	case "LongXia-video-seedance2_0-mini-express", "LongXia-video-seedance2_0-fast-express", "LongXia-video-seedance2_0-standard-express":
-		return capabilities{4, 15, 5000, 6, 2, 0, false, false, true}
-	case "LongXia-video-seedance2_5-standard-480p-express", "LongXia-video-seedance2_5-standard-720p-express":
-		return capabilities{4, 25, 9500, 30, 10, 0, true, false, true}
-	case "LongXia-video-seedance2_5-standard-720p-reference-video-express":
-		return capabilities{4, 15, 9500, 30, 10, 10, true, false, true}
-	case "LongXia-video-minimax-h3-express":
-		return capabilities{5, 15, 2000, 5, 3, 0, true, false, true}
-	case "LongXia-video-gemini-omni-flash-express":
-		return capabilities{3, 10, 5000, 5, 0, 0, false, true, false}
-	}
-	return result
-}
-
 func normalizeRatio(request standardRequest) (string, error) {
 	ratio := firstNonEmpty(request.AspectRatio, request.Ratio)
 	if request.AspectRatio != "" && request.Ratio != "" && strings.TrimSpace(request.AspectRatio) != strings.TrimSpace(request.Ratio) {
@@ -172,11 +147,7 @@ func normalizeRatio(request standardRequest) (string, error) {
 		return "", fmt.Errorf("size and aspect ratio conflict")
 	}
 	ratio = firstNonEmpty(ratio, size, "9:16")
-	switch ratio {
-	case "9:16", "16:9", "1:1", "4:3", "3:4", "21:9":
-		return ratio, nil
-	}
-	return "", fmt.Errorf("unsupported aspect ratio")
+	return ratio, nil
 }
 
 func mediaValues(groups ...[]string) []string {
@@ -260,19 +231,10 @@ func normalizeAssets(request standardRequest) ([]asset, error) {
 
 var referenceTag = regexp.MustCompile(`@(image|audio|video)([0-9]+)`)
 
-func validateReferences(prompt string, assets []asset, limits capabilities) error {
+func validateReferences(prompt string, assets []asset) error {
 	counts := map[string]int{"image": 0, "audio": 0, "video": 0}
 	for _, item := range assets {
 		counts[item.Category]++
-	}
-	if counts["image"] > limits.images || counts["audio"] > limits.audios || counts["video"] > limits.videos {
-		return fmt.Errorf("reference counts exceed this model's image/audio/video limits")
-	}
-	if limits.imageRequired && counts["image"] == 0 {
-		return fmt.Errorf("this model requires at least one reference image")
-	}
-	if limits.audioNeedsImage && counts["audio"] > 0 && counts["image"] == 0 {
-		return fmt.Errorf("reference audio requires an image")
 	}
 	seen := map[string]map[int]bool{"image": {}, "audio": {}, "video": {}}
 	for _, match := range referenceTag.FindAllStringSubmatch(prompt, -1) {

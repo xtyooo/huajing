@@ -43,62 +43,27 @@ func TestExactUpstreamRequestPreservesAssetsAndTags(t *testing.T) {
 	assert.Nil(t, a.EstimateBilling(c, info))
 }
 
-func TestModelCapabilitiesAndSKUBilling(t *testing.T) {
-	models := []struct {
-		name             string
-		min, max         int
-		wide, needsImage bool
-	}{
-		{"LongXia-video-seedance2_0-mini-express", 4, 15, false, false},
-		{"LongXia-video-seedance2_0-fast-express", 4, 15, false, false},
-		{"LongXia-video-seedance2_0-standard-express", 4, 15, false, false},
-		{"LongXia-video-seedance2_0-standard-express-PerSecond", 4, 15, false, false},
-		{"LongXia-video-seedance2_5-standard-480p-express", 4, 25, true, false},
-		{"LongXia-video-seedance2_5-standard-480p-express-PerSecond", 4, 25, true, false},
-		{"LongXia-video-seedance2_5-standard-720p-express", 4, 25, true, false},
-		{"LongXia-video-seedance2_5-standard-720p-express-PerSecond", 4, 25, true, false},
-		{"LongXia-video-seedance2_5-standard-720p-reference-video-express", 4, 15, true, false},
-		{"LongXia-video-minimax-h3-express", 5, 15, true, false},
-		{"LongXia-video-gemini-omni-flash-express", 3, 10, false, true},
+func TestConfiguredModelsDelegateCapabilitiesAndKeepBilling(t *testing.T) {
+	for _, upstream := range append(append([]string{}, ModelList...), "future-video", "future-video-PerSecond") {
+		c, _, info := contextFor(t, `{"model":"public-video","prompt":"scene","duration":100,"ratio":"2:1"}`, upstream)
+		a := &TaskAdaptor{}
+		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+		if strings.HasSuffix(upstream, "-PerSecond") {
+			assert.Equal(t, map[string]float64{"seconds": 100}, a.EstimateBilling(c, info))
+		} else {
+			assert.Nil(t, a.EstimateBilling(c, info))
+		}
+		reader, err := a.BuildRequestBody(c, info)
+		require.NoError(t, err)
+		var body upstreamRequest
+		require.NoError(t, common.DecodeJson(reader, &body))
+		assert.Equal(t, upstream, body.Model)
+		assert.Equal(t, 100, body.Duration)
+		assert.Equal(t, "2:1", body.Size)
 	}
-	for _, tc := range models {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, duration := range []int{tc.min - 1, tc.min, tc.max, tc.max + 1} {
-				input := map[string]any{"model": "public-video", "prompt": "scene", "duration": duration}
-				if tc.needsImage {
-					input["prompt"] = "animate @image1"
-					input["image"] = "https://example.com/image.png"
-				}
-				data, err := common.Marshal(input)
-				require.NoError(t, err)
-				c, _, info := contextFor(t, string(data), tc.name)
-				a := &TaskAdaptor{}
-				validationErr := a.ValidateRequestAndSetAction(c, info)
-				if duration < tc.min || duration > tc.max {
-					require.NotNil(t, validationErr)
-					assert.Equal(t, "invalid_duration", validationErr.Code)
-					continue
-				}
-				require.Nil(t, validationErr)
-				if strings.HasSuffix(tc.name, "-PerSecond") {
-					assert.Equal(t, map[string]float64{"seconds": float64(duration)}, a.EstimateBilling(c, info))
-				} else {
-					assert.Nil(t, a.EstimateBilling(c, info))
-				}
-			}
-			input := `{"model":"public-video","prompt":"scene","ratio":"1:1"}`
-			if tc.needsImage {
-				input = `{"model":"public-video","prompt":"@image1","image":"https://example.com/image.png","ratio":"1:1"}`
-			}
-			c, _, info := contextFor(t, input, tc.name)
-			err := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
-			if tc.wide {
-				require.Nil(t, err)
-			} else {
-				require.NotNil(t, err)
-				assert.Equal(t, "invalid_aspect_ratio", err.Code)
-			}
-		})
+	for _, duration := range []int{0, -1, relaycommon.MaxTaskDurationSeconds + 1} {
+		c, _, info := contextFor(t, fmt.Sprintf(`{"model":"public-video","prompt":"scene","duration":%d}`, duration), "future-video")
+		require.NotNil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info))
 	}
 }
 
@@ -147,43 +112,29 @@ func TestAliasesAndScalarArrayMedia(t *testing.T) {
 	}
 }
 
-func TestAssetCountsAndAudioPairing(t *testing.T) {
-	for _, tc := range []struct {
-		name                   string
-		images, audios, videos int
-	}{
-		{"LongXia-video-seedance2_0-mini-express", 6, 2, 0},
-		{"LongXia-video-seedance2_5-standard-480p-express", 30, 10, 0},
-		{"LongXia-video-seedance2_5-standard-720p-express", 30, 10, 0},
-		{"LongXia-video-seedance2_5-standard-720p-reference-video-express", 30, 10, 10},
-		{"LongXia-video-minimax-h3-express", 5, 3, 0},
-		{"LongXia-video-gemini-omni-flash-express", 5, 0, 0},
-	} {
-		for category, max := range map[string]int{"image": tc.images, "audio": tc.audios, "video": tc.videos} {
-			for _, count := range []int{max, max + 1} {
-				assets := []asset{}
-				tags := []string{}
-				if category != "image" {
-					assets = append(assets, asset{Category: "image", URL: "https://example.com/i"})
-					tags = append(tags, "@image1")
-				}
-				for i := 1; i <= count; i++ {
-					assets = append(assets, asset{Category: category, URL: "https://example.com/ref"})
-					tags = append(tags, fmt.Sprintf("@%s%d", category, i))
-				}
-				input := map[string]any{"model": "public-video", "prompt": "animate " + strings.Join(tags, " "), "assets": assets}
-				data, err := common.Marshal(input)
-				require.NoError(t, err)
-				c, _, info := contextFor(t, string(data), tc.name)
-				validationErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
-				if count == max {
-					require.Nil(t, validationErr, "%s %s", tc.name, category)
-				} else {
-					require.NotNil(t, validationErr, "%s %s", tc.name, category)
-				}
-			}
+func TestKnownModelsDoNotImposeOldMaterialLimits(t *testing.T) {
+	assets := []asset{}
+	tags := []string{}
+	for _, category := range []string{"image", "audio", "video"} {
+		for n := 1; n <= 31; n++ {
+			assets = append(assets, asset{Category: category, URL: "https://example.com/ref"})
+			tags = append(tags, fmt.Sprintf("@%s%d", category, n))
 		}
 	}
+	data, err := common.Marshal(map[string]any{"model": "public-video", "prompt": strings.Join(tags, " "), "assets": assets})
+	require.NoError(t, err)
+	for _, upstream := range ModelList {
+		c, _, info := contextFor(t, string(data), upstream)
+		a := &TaskAdaptor{}
+		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+		reader, err := a.BuildRequestBody(c, info)
+		require.NoError(t, err)
+		var body upstreamRequest
+		require.NoError(t, common.DecodeJson(reader, &body))
+		assert.Equal(t, assets, body.Assets)
+	}
+	c, _, info := contextFor(t, `{"model":"public-video","prompt":"@audio1","audios":"https://example.com/a.mp3"}`, "LongXia-video-minimax-h3-express")
+	require.Nil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info))
 }
 
 func TestInvalidRequests(t *testing.T) {
@@ -194,7 +145,6 @@ func TestInvalidRequests(t *testing.T) {
 		{"zero-index", `,"images":"https://example.com/i"`, "@image0"},
 		{"leading-zero", `,"images":"https://example.com/i"`, "@image01"},
 		{"nonexistent", ``, "@video1"},
-		{"audio-only", `,"audios":"https://example.com/a"`, "@audio1"},
 		{"both-sources", `,"assets":[{"category":"image","url":"https://example.com/i","data_base64":"YWJj"}]`, "@image1"},
 		{"empty-source", `,"assets":[{"category":"image","url":""}]`, "@image1"},
 		{"extra-field", `,"assets":[{"category":"image","url":"https://example.com/i","role":"reference"}]`, "@image1"},
@@ -220,21 +170,10 @@ func TestInvalidRequests(t *testing.T) {
 	}
 }
 
-func TestPromptLimitsCountUnicode(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		limit int
-	}{{"LongXia-video-minimax-h3-express", 2000}, {"LongXia-video-seedance2_5-standard-720p-express", 9500}, {"LongXia-video-seedance2_0-mini-express", 5000}} {
-		for _, length := range []int{tc.limit, tc.limit + 1} {
-			c, _, info := contextFor(t, `{"model":"public-video","prompt":"`+strings.Repeat("图", length)+`"}`, tc.name)
-			err := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
-			if length == tc.limit {
-				require.Nil(t, err)
-			} else {
-				require.NotNil(t, err)
-				assert.Equal(t, "invalid_prompt", err.Code)
-			}
-		}
+func TestPromptLengthIsDelegatedToProvider(t *testing.T) {
+	for _, upstream := range ModelList {
+		c, _, info := contextFor(t, `{"model":"public-video","prompt":"`+strings.Repeat("图", 10001)+`"}`, upstream)
+		require.Nil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info))
 	}
 }
 

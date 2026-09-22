@@ -148,15 +148,11 @@ func TestManyingRejectsInvalidFrameAndReferenceCounts(t *testing.T) {
 		{name: "start end needs two images", body: `{"model":"sd-720p","prompt":"p","image_url":"https://example.test/a.png","video_config":{"reference_mode":"start_end"}}`, code: "invalid_reference_count"},
 		{name: "frame rejects video", body: `{"model":"sd-720p","prompt":"p","image_url":"https://example.test/a.png","reference_video":"https://example.test/v.mp4","video_config":{"reference_mode":"start_frame"}}`, code: "unsupported_reference_media"},
 		{name: "too many image references", body: `{"model":"sd-720p","prompt":"p","reference_image_urls":["1","2","3","4","5","6","7","8","9","10"]}`, code: "invalid_reference_count"},
-		{name: "unsupported mapped model", body: `{"model":"alias","prompt":"p"}`, code: "unsupported_model"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			modelName := "sd-720p"
-			if test.name == "unsupported mapped model" {
-				modelName = "other"
-			}
 			c, _ := newManyingContext(t, test.body)
 			taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, newManyingInfo(test.body, modelName))
 			require.NotNil(t, taskErr)

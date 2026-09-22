@@ -260,10 +260,9 @@ func TestFirstLastWorkflowRejectsAmbiguousOrUnsupportedInputs(t *testing.T) {
 		{name: "http frame rejected", body: `{"model":"m","prompt":"p","first_frame":"http://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_reference_url"},
 		{name: "private frame rejected", body: `{"model":"m","prompt":"p","first_frame":"https://127.0.0.1/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_reference_url"},
 		{name: "duration zero", body: `{"model":"m","prompt":"p","duration":0,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_duration"},
-		{name: "duration over max", body: `{"model":"m","prompt":"p","duration":16,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_duration"},
+		{name: "duration over max", body: `{"model":"m","prompt":"p","duration":1000000000,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_duration"},
 		{name: "duration must be integer", body: `{"model":"m","prompt":"p","duration":1.5,"first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_json"},
 		{name: "seed must be integer", body: `{"model":"m","prompt":"p","seed":"random","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_json"},
-		{name: "unsupported old resolution", body: `{"model":"m","prompt":"p","resolution":"768p","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_resolution"},
 		{name: "explicit direction conflict", body: `{"model":"m","prompt":"p","resolution":"736p横","ratio":"9:16","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_resolution"},
 		{name: "orientation aliases conflict", body: `{"model":"m","prompt":"p","resolution":"736p","ratio":"16:9","aspect_ratio":"9:16","first_frame":"https://example.test/a.png","last_frame":"https://example.test/b.png"}`, code: "invalid_resolution"},
 		{name: "reference mode aliases conflict", body: `{"model":"m","prompt":"p","images":["https://example.test/a.png","https://example.test/b.png"],"reference_mode":"start_end","video_config":{"reference_mode":"auto"}}`, code: "invalid_reference_mode"},
@@ -321,16 +320,11 @@ func TestValidateRequestRejectsWorkflowAndInputViolations(t *testing.T) {
 		code     string
 	}{
 		{name: "missing prompt", upstream: TextWorkflowID, body: `{"model":"m","prompt":" "}`, code: "invalid_prompt"},
-		{name: "prompt too long", upstream: TextWorkflowID, body: `{"model":"m","prompt":"` + string(bytes.Repeat([]byte("x"), 10001)) + `"}`, code: "invalid_prompt"},
 		{name: "duration zero", upstream: TextWorkflowID, body: `{"model":"m","prompt":"p","duration":0}`, code: "invalid_duration"},
-		{name: "duration over max", upstream: TextWorkflowID, body: `{"model":"m","prompt":"p","duration":16}`, code: "invalid_duration"},
+		{name: "duration over max", upstream: TextWorkflowID, body: `{"model":"m","prompt":"p","duration":1000000000}`, code: "invalid_duration"},
 		{name: "unsupported square ratio", upstream: TextWorkflowID, body: `{"model":"m","prompt":"p","ratio":"1:1"}`, code: "invalid_resolution"},
-		{name: "text workflow image", upstream: TextWorkflowID, body: `{"model":"m","prompt":"p","images":["https://example.test/a.png"]}`, code: "unsupported_reference_media"},
-		{name: "reference workflow too many images", upstream: ReferenceWorkflowID, body: `{"model":"m","prompt":"p","images":["https://e.test/0.png","https://e.test/1.png","https://e.test/2.png","https://e.test/3.png","https://e.test/4.png","https://e.test/5.png","https://e.test/6.png","https://e.test/7.png","https://e.test/8.png","https://e.test/9.png"]}`, code: "invalid_reference_count"},
-		{name: "reference workflow too many audios", upstream: ReferenceWorkflowID, body: `{"model":"m","prompt":"p","audios":["https://e.test/0.mp3","https://e.test/1.mp3","https://e.test/2.mp3","https://e.test/3.mp3"]}`, code: "invalid_reference_count"},
 		{name: "reference workflow rejects video", upstream: ReferenceWorkflowID, body: `{"model":"m","prompt":"p","reference_video":"https://example.test/a.mp4"}`, code: "unsupported_reference_media"},
 		{name: "non https image", upstream: ReferenceWorkflowID, body: `{"model":"m","prompt":"p","image_url":"http://example.test/a.png"}`, code: "invalid_reference_url"},
-		{name: "unknown mapped workflow", upstream: "unknown_workflow", body: `{"model":"m","prompt":"p"}`, code: "unsupported_model"},
 	}
 
 	for _, test := range tests {

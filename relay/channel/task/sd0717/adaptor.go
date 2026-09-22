@@ -70,7 +70,7 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, _ *relaycommon.RelayInfo) (io.Reader, error) {
+func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return nil, errors.Wrap(err, "get_request_body_failed")
@@ -79,9 +79,22 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, _ *relaycommon.RelayInfo)
 	if err != nil {
 		return nil, errors.Wrap(err, "read_body_bytes_failed")
 	}
-	updated, err := sjson.SetBytes(body, "model", UpstreamModelAivide2)
-	if err == nil {
-		body = updated
+	upstreamModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	explicitMapping := false
+	if info != nil && info.ChannelMeta != nil {
+		explicitMapping = info.IsModelMapped
+		if info.UpstreamModelName != "" {
+			upstreamModel = info.UpstreamModelName
+		}
+	}
+	// Preserve the old channel-label shortcut, but never overwrite an explicit
+	// administrator mapping or a newly introduced provider model.
+	if upstreamModel == "" || (upstreamModel == ChannelName && !explicitMapping) {
+		upstreamModel = UpstreamModelAivide2
+	}
+	body, err = sjson.SetBytes(body, "model", upstreamModel)
+	if err != nil {
+		return nil, errors.Wrap(err, "set_upstream_model_failed")
 	}
 	return bytes.NewReader(body), nil
 }

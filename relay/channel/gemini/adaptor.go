@@ -61,10 +61,8 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	if !strings.HasPrefix(info.UpstreamModelName, "imagen") {
-		return nil, errors.New("not supported model for image generation, only imagen models are supported")
-	}
-
+	// The image endpoint selects the Imagen predict protocol. Model availability
+	// is controlled by the administrator and upstream, not a name prefix.
 	// convert size to aspect ratio but allow user to specify aspect ratio
 	aspectRatio := "1:1" // default aspect ratio
 	size := strings.TrimSpace(request.Size)
@@ -139,6 +137,10 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.RelayMode == constant.RelayModeImagesGenerations || info.RelayMode == constant.RelayModeImagesEdits {
+		version := model_setting.GetGeminiVersionSetting(info.UpstreamModelName)
+		return fmt.Sprintf("%s/%s/models/%s:predict", info.ChannelBaseUrl, version, info.UpstreamModelName), nil
+	}
 
 	if model_setting.GetGeminiSettings().ThinkingAdapterEnabled &&
 		!model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
@@ -263,6 +265,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if info.RelayMode == constant.RelayModeImagesGenerations || info.RelayMode == constant.RelayModeImagesEdits {
+		return GeminiImageHandler(c, info, resp)
+	}
 	if info.RelayMode == constant.RelayModeResponses {
 		if info.IsStream {
 			return GeminiResponsesStreamHandler(c, info, resp)

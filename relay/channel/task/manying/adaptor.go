@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/task/shafu"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -54,6 +55,7 @@ type standardRequest struct {
 	AspectRatioCamel        string                  `json:"aspectRatio,omitempty"`
 	Ratio                   string                  `json:"ratio,omitempty"`
 	Resolution              string                  `json:"resolution,omitempty"`
+	Size                    string                  `json:"size,omitempty"`
 	Image                   string                  `json:"image,omitempty"`
 	ImageURL                string                  `json:"image_url,omitempty"`
 	InputReference          string                  `json:"input_reference,omitempty"`
@@ -125,7 +127,12 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		if a.duration == 0 {
 			a.duration = 4
 		}
-		return a.validateModelPricing(info, firstNonEmpty(info.UpstreamModelName, request.Model))
+		form, err := common.ParseMultipartFormReusable(c)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_multipart_form", http.StatusBadRequest)
+		}
+		defer form.RemoveAll()
+		return a.validateModelPricing(info, firstNonEmpty(info.UpstreamModelName, request.Model), firstNonEmpty(form.Value["resolution"]...), firstNonEmpty(form.Value["size"]...))
 	}
 
 	var request standardRequest
@@ -140,9 +147,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt must contain between 1 and 10000 characters"), "invalid_prompt", http.StatusBadRequest)
 	}
 	upstreamModel := firstNonEmpty(info.UpstreamModelName, request.Model)
-	if !supportedModel(upstreamModel) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported manying model: %s", upstreamModel), "unsupported_model", http.StatusBadRequest)
-	}
 
 	duration := 4
 	if request.Duration != nil {
@@ -228,21 +232,44 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	} else {
 		info.Action = constant.TaskActionTextGenerate
 	}
-	return a.validateModelPricing(info, upstreamModel)
+	return a.validateModelPricing(info, upstreamModel, request.Resolution, request.Size)
 }
 
-func (a *TaskAdaptor) validateModelPricing(info *relaycommon.RelayInfo, upstreamModel string) *dto.TaskError {
+func (a *TaskAdaptor) validateModelPricing(info *relaycommon.RelayInfo, upstreamModel, requestedResolution, size string) *dto.TaskError {
+	pricing, err := model.LoadResolutionPricing(info.OriginModelName)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "resolution_price_invalid", http.StatusBadRequest)
+	}
+	if pricing == nil {
+		return nil
+	}
+	// Preserve legacy fixed-output pricing; new models need an explicit tier.
 	resolution, ok := fixedModelResolution(upstreamModel)
 	if !ok {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported manying model: %s", upstreamModel), "unsupported_model", http.StatusBadRequest)
+		resolution = strings.ToUpper(strings.TrimSpace(requestedResolution))
+		if resolution == "" {
+			resolution = strings.ToUpper(strings.TrimSpace(size))
+			parts := strings.Split(strings.ToLower(resolution), "x")
+			if len(parts) == 2 {
+				width, widthErr := strconv.Atoi(parts[0])
+				height, heightErr := strconv.Atoi(parts[1])
+				if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+					return service.TaskErrorWrapperLocal(fmt.Errorf("invalid size for resolution pricing"), "resolution_price_invalid", http.StatusBadRequest)
+				}
+				resolution = strconv.Itoa(min(width, height)) + "P"
+			}
+		}
+		if resolution == "" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("resolution pricing requires explicit resolution or pixel size for this model"), "resolution_price_invalid", http.StatusBadRequest)
+		}
 	}
-	price, enabled, err := taskcommon.ResolutionPrice(info.OriginModelName, resolution)
+	price, err := model.GetResolutionPriceFromSetting(info.OriginModelName, resolution, pricing)
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "resolution_price_invalid", http.StatusBadRequest)
 	}
 	a.fixedResolution = resolution
 	a.resolutionPrice = price
-	a.useResolutionPricing = enabled
+	a.useResolutionPricing = true
 	return nil
 }
 
@@ -251,7 +278,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return a.TaskAdaptor.BuildRequestBody(c, info)
 	}
 	body := *a.body
-	body.Model = info.UpstreamModelName
+	body.Model = firstNonEmpty(info.UpstreamModelName, body.Model)
 	data, err := common.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -272,11 +299,6 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 
 func (*TaskAdaptor) GetModelList() []string { return ModelList }
 func (*TaskAdaptor) GetChannelName() string { return ChannelName }
-
-func supportedModel(value string) bool {
-	_, ok := fixedModelResolution(value)
-	return ok
-}
 
 func fixedModelResolution(value string) (string, bool) {
 	switch value {

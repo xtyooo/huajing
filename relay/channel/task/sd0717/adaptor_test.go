@@ -25,7 +25,7 @@ func newSD0717TestContext(t *testing.T, body string) *gin.Context {
 	return ctx
 }
 
-func TestBuildRequestBodyForcesAivideModel(t *testing.T) {
+func TestBuildRequestBodyKeepsLegacyChannelAlias(t *testing.T) {
 	ctx := newSD0717TestContext(t, `{
 		"model":"sd0717",
 		"prompt":"test",
@@ -48,6 +48,27 @@ func TestBuildRequestBodyForcesAivideModel(t *testing.T) {
 	assert.EqualValues(t, 10, payload["duration"])
 	assert.Equal(t, "16:9", payload["ratio"])
 	assert.Equal(t, "720p", payload["resolution"])
+}
+
+func TestBuildRequestBodyPreservesNewAndMappedModels(t *testing.T) {
+	for _, tc := range []struct {
+		input, mapped, want string
+		explicit            bool
+	}{
+		{"future-video", "", "future-video", false},
+		{"public-alias", "provider-new-model", "provider-new-model", true},
+		{"public-alias", "sd0717", "sd0717", true},
+		{"sd0717", "sd0717", UpstreamModelAivide2, false},
+	} {
+		ctx := newSD0717TestContext(t, `{"model":"`+tc.input+`","prompt":"p","images":["https://example.test/image.png"]}`)
+		info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tc.mapped, IsModelMapped: tc.explicit}}
+		reader, err := (&TaskAdaptor{}).BuildRequestBody(ctx, info)
+		require.NoError(t, err)
+		var body map[string]any
+		require.NoError(t, common.DecodeJson(reader, &body))
+		assert.Equal(t, tc.want, body["model"])
+		assert.Equal(t, []any{"https://example.test/image.png"}, body["images"])
+	}
 }
 
 func TestParseTaskResultCompletedUsesVideoURLPriority(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -150,8 +149,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("model is required"), "missing_model", http.StatusBadRequest)
 	}
 	prompt := strings.TrimSpace(request.Prompt)
-	if utf8.RuneCountInString(prompt) < 1 || utf8.RuneCountInString(prompt) > 10000 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt length must be between 1 and 10000 characters"), "invalid_prompt", http.StatusBadRequest)
+	if prompt == "" {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt is required"), "invalid_prompt", http.StatusBadRequest)
 	}
 
 	duration := 5
@@ -160,19 +159,11 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	} else if request.Seconds != nil {
 		duration = int(*request.Seconds)
 	}
-	if duration < 1 || duration > 15 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be between 1 and 15"), "invalid_duration", http.StatusBadRequest)
+	if duration < 1 || duration > relaycommon.MaxTaskDurationSeconds {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be between 1 and %d", relaycommon.MaxTaskDurationSeconds), "invalid_duration", http.StatusBadRequest)
 	}
 
 	workflow := strings.TrimSpace(info.UpstreamModelName)
-	rawOrientation := firstNonEmpty(request.Ratio, request.AspectRatio, request.Size)
-	resolution, ok := normalizeResolution(request.Resolution, rawOrientation)
-	if workflow == FirstLastWorkflowID {
-		resolution, ok = normalizeFirstLastResolution(request.Resolution, request.Ratio, request.AspectRatio, request.Size)
-	}
-	if !ok {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported resolution or aspect ratio"), "invalid_resolution", http.StatusBadRequest)
-	}
 
 	images := firstNonEmptySlice(request.Images, request.ImageURLs)
 	if len(images) == 0 {
@@ -199,18 +190,43 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 
-	switch workflow {
-	case TextWorkflowID:
-		if len(images)+len(audios)+len(videos) > 0 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("text workflow does not support reference media"), "unsupported_reference_media", http.StatusBadRequest)
+	referenceMode, modeOK := normalizeFirstLastReferenceMode(request.VideoConfig.ReferenceMode, request.ReferenceMode, request.ReferenceModeCamel, request.VideoReferenceMode, request.VideoReferenceModeCamel)
+	if !modeOK {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("conflicting reference modes"), "invalid_reference_mode", http.StatusBadRequest)
+	}
+	if len(videos) > 0 {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("AutoDL request schema cannot express reference videos"), "unsupported_reference_media", http.StatusBadRequest)
+	}
+	// Workflow IDs are administrator-owned; the client inputs select the supported wire schema.
+	schema := TextWorkflowID
+	if workflow == ReferenceWorkflowID || len(images)+len(audios) > 0 || request.Seed != nil {
+		schema = ReferenceWorkflowID
+	}
+	if workflow == FirstLastWorkflowID || request.FirstFrame != "" || request.LastFrame != "" || referenceMode == "start_end" {
+		schema = FirstLastWorkflowID
+	}
+	if referenceMode != "" && referenceMode != "auto" && referenceMode != "image" && referenceMode != "reference" && referenceMode != "start_end" {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported reference mode"), "invalid_reference_mode", http.StatusBadRequest)
+	}
+	rawOrientation := firstNonEmpty(request.Ratio, request.AspectRatio, request.Size)
+	resolution, ok := normalizeResolution(request.Resolution, rawOrientation)
+	if schema == FirstLastWorkflowID {
+		resolution, ok = normalizeFirstLastResolution(request.Resolution, request.Ratio, request.AspectRatio, request.Size)
+	}
+	if !ok {
+		// An explicit provider resolution may describe a newly configured workflow.
+		resolution = strings.TrimSpace(request.Resolution)
+		if resolution == "" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("aspect ratio cannot be expressed by this workflow resolution schema; supply resolution"), "invalid_resolution", http.StatusBadRequest)
 		}
-	case ReferenceWorkflowID:
-		if len(images) > 9 || len(audios) > 3 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("reference workflow supports at most 9 images and 3 audios"), "invalid_reference_count", http.StatusBadRequest)
+		if request.Ratio != "" && request.AspectRatio != "" && request.Ratio != request.AspectRatio {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("conflicting aspect ratios"), "invalid_resolution", http.StatusBadRequest)
 		}
-		if len(videos) > 0 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("reference workflow does not support reference videos"), "unsupported_reference_media", http.StatusBadRequest)
+		if orientation, valid := normalizeOrientation(rawOrientation); valid && (strings.HasSuffix(resolution, "横") || strings.HasSuffix(resolution, "竖")) && !strings.HasSuffix(resolution, orientation) {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("resolution and aspect ratio conflict"), "invalid_resolution", http.StatusBadRequest)
 		}
+	}
+	switch schema {
 	case FirstLastWorkflowID:
 		if len(audios)+len(videos) > 0 {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("first-last workflow does not support audio or video references"), "unsupported_reference_media", http.StatusBadRequest)
@@ -255,8 +271,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			return service.TaskErrorWrapperLocal(fmt.Errorf("first_frame and last_frame must use public HTTPS URLs"), "invalid_reference_url", http.StatusBadRequest)
 		}
 		images = []string{firstFrame, lastFrame}
-	default:
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported AutoDL H3 workflow"), "unsupported_model", http.StatusBadRequest)
 	}
 
 	body := map[string]any{
@@ -264,19 +278,19 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		"duration":   duration,
 		"resolution": resolution,
 	}
-	if workflow == ReferenceWorkflowID || workflow == FirstLastWorkflowID {
+	if schema == ReferenceWorkflowID || schema == FirstLastWorkflowID {
 		if request.Seed != nil {
 			body["seed"] = int(*request.Seed)
 		}
 	}
-	if workflow == ReferenceWorkflowID {
+	if schema == ReferenceWorkflowID {
 		for index, rawURL := range images {
 			body[fmt.Sprintf("ref_image_%d", index)] = rawURL
 		}
 		for index, rawURL := range audios {
 			body[fmt.Sprintf("ref_audio_%d", index)] = rawURL
 		}
-	} else if workflow == FirstLastWorkflowID {
+	} else if schema == FirstLastWorkflowID {
 		body["first_frame"] = images[0]
 		body["last_frame"] = images[1]
 	}
@@ -285,14 +299,14 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	a.duration = duration
 	a.workflow = workflow
 	info.Action = constant.TaskActionTextGenerate
-	if workflow == FirstLastWorkflowID || len(images)+len(audios) > 0 {
+	if schema == FirstLastWorkflowID || len(images)+len(audios) > 0 {
 		info.Action = constant.TaskActionGenerate
 	}
 	return nil
 }
 
 func (a *TaskAdaptor) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
-	if a.duration < 1 || a.duration > 15 {
+	if a.duration < 1 || a.duration > relaycommon.MaxTaskDurationSeconds {
 		return nil
 	}
 	return map[string]float64{"seconds": float64(a.duration)}

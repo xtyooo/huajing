@@ -114,7 +114,9 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
-	if strings.HasPrefix(info.UpstreamModelName, "claude") {
+	if info.RelayMode == constant.RelayModeImagesGenerations || info.RelayMode == constant.RelayModeImagesEdits {
+		a.RequestMode = RequestModeGemini
+	} else if strings.HasPrefix(info.UpstreamModelName, "claude") {
 		a.RequestMode = RequestModeClaude
 	} else if strings.Contains(info.UpstreamModelName, "llama") ||
 		// open source models
@@ -168,6 +170,9 @@ func (a *Adaptor) getRequestUrl(info *relaycommon.RelayInfo, modelName, suffix s
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.RelayMode == constant.RelayModeImagesGenerations || info.RelayMode == constant.RelayModeImagesEdits {
+		return a.getRequestUrl(info, info.UpstreamModelName, "predict")
+	}
 	suffix := ""
 	if a.RequestMode == RequestModeGemini {
 		if model_setting.GetGeminiSettings().ThinkingAdapterEnabled &&
@@ -337,6 +342,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if info.RelayMode == constant.RelayModeImagesGenerations || info.RelayMode == constant.RelayModeImagesEdits {
+		return gemini.GeminiImageHandler(c, info, resp)
+	}
 	claudeAdaptor := claude.Adaptor{}
 	if info.IsStream {
 		switch a.RequestMode {

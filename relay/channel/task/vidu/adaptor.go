@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -120,13 +119,6 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	body, err := a.convertToRequestPayload(&req, info)
 	if err != nil {
 		return nil, err
-	}
-
-	if info.Action == constant.TaskActionReferenceGenerate {
-		if strings.Contains(body.Model, "viduq2") {
-			// 参考图生视频只能用 viduq2 模型, 不能带有pro或turbo后缀 https://platform.vidu.cn/docs/reference-to-video
-			body.Model = "viduq2"
-		}
 	}
 
 	data, err := common.Marshal(body)
