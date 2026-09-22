@@ -6,6 +6,7 @@ const (
 	tasksPath       = "/videos/tasks"
 )
 
+// ModelList is a recommendation list, not a model admission allowlist.
 var ModelList = []string{
 	"wan3.0-t2v",
 	"wan3.0-i2v",

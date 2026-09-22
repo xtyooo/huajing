@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -74,6 +73,11 @@ type standardVideoRequest struct {
 	ReferenceAudios    taskcommon.MediaURLList `json:"reference_audios,omitempty"`
 	Audios             taskcommon.MediaURLList `json:"audios,omitempty"`
 	VideoConfig        videoConfig             `json:"video_config,omitempty"`
+	ReferenceMode      string                  `json:"reference_mode,omitempty"`
+	FirstFrame         string                  `json:"first_frame,omitempty"`
+	FirstFrameURL      string                  `json:"first_frame_url,omitempty"`
+	LastFrame          string                  `json:"last_frame,omitempty"`
+	LastFrameURL       string                  `json:"last_frame_url,omitempty"`
 	PromptExtend       *bool                   `json:"prompt_extend,omitempty"`
 }
 
@@ -134,6 +138,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	a.body = nil
 	a.resolutionPrice = 0
 	a.useResolutionPricing = false
 	var request standardVideoRequest
@@ -144,17 +149,13 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("model is required"), "missing_model", http.StatusBadRequest)
 	}
 	prompt := strings.TrimSpace(request.Prompt)
-	if prompt == "" || utf8.RuneCountInString(prompt) > 10000 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt must contain between 1 and 10000 characters"), "invalid_prompt", http.StatusBadRequest)
+	if prompt == "" {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt is required"), "invalid_prompt", http.StatusBadRequest)
 	}
 
 	upstreamModel := strings.TrimSpace(info.UpstreamModelName)
 	if upstreamModel == "" {
 		upstreamModel = strings.TrimSpace(request.Model)
-	}
-	mode, ok := modelMode(upstreamModel)
-	if !ok {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported manju model: %s", upstreamModel), "unsupported_model", http.StatusBadRequest)
 	}
 
 	if request.Duration == nil && request.Seconds == nil {
@@ -171,8 +172,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 		duration = seconds
 	}
-	if duration < 2 || duration > 30 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be between 2 and 30"), "invalid_duration", http.StatusBadRequest)
+	if duration <= 0 || duration > relaycommon.MaxTaskDurationSeconds {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be between 1 and %d", relaycommon.MaxTaskDurationSeconds), "invalid_duration", http.StatusBadRequest)
 	}
 
 	ratio := strings.TrimSpace(request.AspectRatio)
@@ -183,8 +184,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if ratio == "" {
 		ratio = ratioAlias
 	}
-	if !validRatio(ratio) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported aspect_ratio: %s", ratio), "invalid_aspect_ratio", http.StatusBadRequest)
+	if ratio == "" {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("aspect_ratio is required"), "invalid_aspect_ratio", http.StatusBadRequest)
 	}
 
 	resolution := strings.ToUpper(strings.TrimSpace(request.Resolution))
@@ -217,61 +218,43 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	audios = appendNormalized(audios, request.AudioURLs)
 	audios = appendNormalized(audios, request.ReferenceAudios)
 	audios = appendNormalized(audios, request.Audios)
-	if len(images) > 10 || len(videos) > 5 || len(audios) > 5 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("reference media exceeds provider limits"), "invalid_reference_count", http.StatusBadRequest)
-	}
-	if len(audios) > 0 && len(images) == 0 {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("audio references require at least one image"), "invalid_reference_count", http.StatusBadRequest)
-	}
+	firstFrame := firstNonEmpty(request.FirstFrameURL, request.FirstFrame)
+	images = appendNonEmpty(images, firstFrame)
 	for _, rawURL := range append(append(append([]string{}, images...), videos...), audios...) {
 		if !validPublicHTTPSURL(rawURL) {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("reference media must use a public HTTPS URL"), "invalid_reference_url", http.StatusBadRequest)
 		}
 	}
 
-	referenceMode := strings.ToLower(strings.TrimSpace(request.VideoConfig.ReferenceMode))
+	referenceMode := strings.ToLower(firstNonEmpty(request.VideoConfig.ReferenceMode, request.ReferenceMode))
 	if referenceMode == "" {
 		referenceMode = "auto"
 	}
-	if referenceMode == "start_end" {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("start_end is not supported by manju mode-specific models"), "unsupported_reference_mode", http.StatusBadRequest)
+	if referenceMode == "start_end" || firstNonEmpty(request.LastFrame, request.LastFrameURL) != "" {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("manju protocol does not support a last-frame role"), "unsupported_reference_mode", http.StatusBadRequest)
 	}
 	if referenceMode != "auto" && referenceMode != "start_frame" {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported reference_mode: %s", referenceMode), "invalid_reference_mode", http.StatusBadRequest)
 	}
 
 	media := make([]mediaItem, 0, len(images)+len(videos)+len(audios))
-	switch mode {
-	case "t2v":
-		if len(images)+len(videos)+len(audios) > 0 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("t2v models do not accept reference media"), "unsupported_reference_media", http.StatusBadRequest)
-		}
-		if referenceMode != "auto" {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("t2v models do not support reference_mode"), "invalid_reference_mode", http.StatusBadRequest)
-		}
-		info.Action = constant.TaskActionTextGenerate
-	case "i2v":
-		if len(images) != 1 || len(videos) > 0 || len(audios) > 0 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("i2v models require exactly one image and no video or audio"), "invalid_reference_count", http.StatusBadRequest)
-		}
-		media = append(media, mediaItem{Type: "first_frame", URL: images[0]})
-		info.Action = constant.TaskActionGenerate
-	case "r2v":
-		if referenceMode != "auto" {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("r2v models only support automatic reference roles"), "invalid_reference_mode", http.StatusBadRequest)
-		}
-		if len(images)+len(videos)+len(audios) == 0 {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("r2v models require at least one reference item"), "invalid_reference_count", http.StatusBadRequest)
-		}
-		for _, itemURL := range images {
-			media = append(media, mediaItem{Type: "reference_image", URL: itemURL})
-		}
-		for _, itemURL := range videos {
-			media = append(media, mediaItem{Type: "reference_video", URL: itemURL})
-		}
-		for _, itemURL := range audios {
-			media = append(media, mediaItem{Type: "audio", URL: itemURL})
-		}
+	// Preserve first-frame roles for the two legacy i2v names, without treating
+	// the recommendation list or model suffixes as an admission/capability rule.
+	imageRole := "reference_image"
+	if referenceMode == "start_frame" || firstFrame != "" || upstreamModel == "wan3.0-i2v" || upstreamModel == "wan3.0-prime-i2v" {
+		imageRole = "first_frame"
+	}
+	for _, itemURL := range images {
+		media = append(media, mediaItem{Type: imageRole, URL: itemURL})
+	}
+	for _, itemURL := range videos {
+		media = append(media, mediaItem{Type: "reference_video", URL: itemURL})
+	}
+	for _, itemURL := range audios {
+		media = append(media, mediaItem{Type: "audio", URL: itemURL})
+	}
+	info.Action = constant.TaskActionTextGenerate
+	if len(media) > 0 {
 		info.Action = constant.TaskActionGenerate
 	}
 
@@ -288,7 +271,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	if a.body == nil || a.body.Duration < 2 || a.body.Duration > 30 {
+	if a.body == nil || a.body.Duration <= 0 || a.body.Duration > relaycommon.MaxTaskDurationSeconds {
 		return nil
 	}
 	if a.useResolutionPricing {
@@ -329,7 +312,7 @@ func (a *TaskAdaptor) BuildRequestBody(_ *gin.Context, info *relaycommon.RelayIn
 		return nil, fmt.Errorf("validated request is unavailable")
 	}
 	body := *a.body
-	body.Model = info.UpstreamModelName
+	body.Model = firstNonEmpty(info.UpstreamModelName, body.Model)
 	data, err := common.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -463,25 +446,6 @@ func (*TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 		}
 	}
 	return common.Marshal(video)
-}
-
-func modelMode(modelName string) (string, bool) {
-	for _, candidate := range ModelList {
-		if modelName == candidate {
-			parts := strings.Split(candidate, "-")
-			return parts[len(parts)-1], true
-		}
-	}
-	return "", false
-}
-
-func validRatio(value string) bool {
-	switch value {
-	case "16:9", "9:16", "4:3", "3:4", "1:1", "21:9":
-		return true
-	default:
-		return false
-	}
 }
 
 func validResolution(value string) bool {

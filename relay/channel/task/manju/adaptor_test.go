@@ -230,26 +230,16 @@ func TestValidateRequestRejectsModeAndProviderViolations(t *testing.T) {
 		body  string
 		code  string
 	}{
-		{name: "unsupported mapped model", model: "wan3.0-video", body: `{"model":"alias","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p"}`, code: "unsupported_model"},
 		{name: "missing duration", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","aspect_ratio":"16:9","resolution":"720p"}`, code: "invalid_duration"},
 		{name: "duration conflict", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":5,"seconds":6,"aspect_ratio":"16:9","resolution":"720p"}`, code: "invalid_duration"},
 		{name: "automatic duration rejected", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":-1,"aspect_ratio":"16:9","resolution":"720p"}`, code: "invalid_duration"},
-		{name: "duration above maximum", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":31,"aspect_ratio":"16:9","resolution":"720p"}`, code: "invalid_duration"},
+		{name: "duration above billing safety maximum", model: "wan3.0-t2v", body: fmt.Sprintf(`{"model":"wan3.0-t2v","prompt":"p","duration":%d,"aspect_ratio":"16:9","resolution":"720p"}`, relaycommon.MaxTaskDurationSeconds+1), code: "invalid_duration"},
 		{name: "missing ratio", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":5,"resolution":"720p"}`, code: "invalid_aspect_ratio"},
-		{name: "invalid ratio", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":5,"aspect_ratio":"2:1","resolution":"720p"}`, code: "invalid_aspect_ratio"},
 		{name: "missing resolution", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":5,"aspect_ratio":"16:9"}`, code: "invalid_resolution"},
 		{name: "invalid resolution", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"4k"}`, code: "invalid_resolution"},
-		{name: "t2v rejects media", model: "wan3.0-t2v", body: `{"model":"wan3.0-t2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","image_url":"https://example.test/a.png"}`, code: "unsupported_reference_media"},
-		{name: "i2v requires image", model: "wan3.0-i2v", body: `{"model":"wan3.0-i2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p"}`, code: "invalid_reference_count"},
-		{name: "i2v rejects two images", model: "wan3.0-i2v", body: `{"model":"wan3.0-i2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","reference_image_urls":["https://example.test/a.png","https://example.test/b.png"]}`, code: "invalid_reference_count"},
-		{name: "i2v rejects video", model: "wan3.0-i2v", body: `{"model":"wan3.0-i2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","image_url":"https://example.test/a.png","reference_video":"https://example.test/v.mp4"}`, code: "invalid_reference_count"},
-		{name: "r2v requires media", model: "wan3.0-r2v", body: `{"model":"wan3.0-r2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p"}`, code: "invalid_reference_count"},
-		{name: "audio requires image", model: "wan3.0-r2v", body: `{"model":"wan3.0-r2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","audio_url":"https://example.test/a.mp3"}`, code: "invalid_reference_count"},
 		{name: "start end rejected", model: "wan3.0-i2v", body: `{"model":"wan3.0-i2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","reference_image_urls":["https://example.test/a.png","https://example.test/b.png"],"video_config":{"reference_mode":"start_end"}}`, code: "unsupported_reference_mode"},
-		{name: "r2v rejects frame mode", model: "wan3.0-r2v", body: `{"model":"wan3.0-r2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","image_url":"https://example.test/a.png","video_config":{"reference_mode":"start_frame"}}`, code: "invalid_reference_mode"},
 		{name: "http media rejected", model: "wan3.0-i2v", body: `{"model":"wan3.0-i2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","image_url":"http://example.test/a.png"}`, code: "invalid_reference_url"},
 		{name: "private address rejected", model: "wan3.0-i2v", body: `{"model":"wan3.0-i2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","image_url":"https://127.0.0.1/a.png"}`, code: "invalid_reference_url"},
-		{name: "image limit", model: "wan3.0-r2v", body: `{"model":"wan3.0-r2v","prompt":"p","duration":5,"aspect_ratio":"16:9","resolution":"720p","reference_image_urls":["https://example.test/1.png","https://example.test/2.png","https://example.test/3.png","https://example.test/4.png","https://example.test/5.png","https://example.test/6.png","https://example.test/7.png","https://example.test/8.png","https://example.test/9.png","https://example.test/10.png","https://example.test/11.png"]}`, code: "invalid_reference_count"},
 	}
 
 	for _, test := range tests {
