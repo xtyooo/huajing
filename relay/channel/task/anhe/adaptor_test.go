@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -337,7 +338,12 @@ func TestParseTaskResultMapsStatusesAndURLPriority(t *testing.T) {
 	}`))
 	require.NoError(t, err)
 	assert.Equal(t, string(model.TaskStatusSuccess), completed.Status)
-	assert.Equal(t, "https://example.test/result.mp4", completed.Url)
+	assert.Equal(t, "https://example.test/legacy-content.mp4", completed.Url)
+
+	nested, err := adaptor.ParseTaskResult([]byte("{\"status\":\"succeeded\",\"data\":{\"data\":{\"content\":{\"video_url\":\"https://example.test/current.mp4\"}}}}"))
+	require.NoError(t, err)
+	assert.Equal(t, string(model.TaskStatusSuccess), nested.Status)
+	assert.Equal(t, "https://example.test/current.mp4", nested.Url)
 
 	failed, err := adaptor.ParseTaskResult([]byte(`{"status":"expired","error":{"message":"result expired"}}`))
 	require.NoError(t, err)
@@ -348,4 +354,31 @@ func TestParseTaskResultMapsStatusesAndURLPriority(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(model.TaskStatusInProgress), missingURL.Status)
 	assert.Equal(t, "99%", missingURL.Progress)
+}
+
+func TestParseTaskResultSupportsDocumentedURLAliases(t *testing.T) {
+	paths := []string{
+		"content.video_url", "result_url", "video_url", "url", "metadata.url",
+		"metadata.result_url", "result.url", "result.video_url", "data.video_url",
+		"data.result_url", "data.url",
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			body := map[string]any{"status": "succeeded"}
+			current := body
+			parts := strings.Split(path, ".")
+			for _, part := range parts[:len(parts)-1] {
+				next := map[string]any{}
+				current[part] = next
+				current = next
+			}
+			current[parts[len(parts)-1]] = "https://example.test/" + strings.ReplaceAll(path, ".", "-") + ".mp4"
+			data, err := common.Marshal(body)
+			require.NoError(t, err)
+			result, err := (&TaskAdaptor{}).ParseTaskResult(data)
+			require.NoError(t, err)
+			assert.Equal(t, string(model.TaskStatusSuccess), result.Status)
+			assert.Contains(t, result.Url, strings.ReplaceAll(path, ".", "-"))
+		})
+	}
 }

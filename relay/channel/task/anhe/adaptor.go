@@ -447,7 +447,22 @@ func buildVideoGenerationsURL(baseURL string) string {
 }
 
 func extractResultURL(body []byte) string {
-	for _, path := range []string{"result_url", "url"} {
+	// Keep the documented priority. Current provider responses may wrap the
+	// result once more under data.data, so support that observed shape too.
+	for _, path := range []string{
+		"content.video_url",
+		"data.data.content.video_url",
+		"result_url",
+		"video_url",
+		"url",
+		"metadata.url",
+		"metadata.result_url",
+		"result.url",
+		"result.video_url",
+		"data.video_url",
+		"data.result_url",
+		"data.url",
+	} {
 		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
 		if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
 			return value
