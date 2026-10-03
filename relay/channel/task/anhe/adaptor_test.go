@@ -356,6 +356,25 @@ func TestParseTaskResultMapsStatusesAndURLPriority(t *testing.T) {
 	assert.Equal(t, "99%", missingURL.Progress)
 }
 
+func TestParseTaskResultSupportsSuccessfulNewAPIEnvelope(t *testing.T) {
+	body := []byte(`{"code":"success","data":{"status":"SUCCESS","task_id":"remote-public","data":{"status":"succeeded","content":{"video_url":"https://cdn.example.test/current.mp4"}},"result_url":"https://anhe.example.test/stale.mp4"}}`)
+
+	result, err := (&TaskAdaptor{}).ParseTaskResult(body)
+	require.NoError(t, err)
+	assert.Equal(t, string(model.TaskStatusSuccess), result.Status)
+	assert.Equal(t, "100%", result.Progress)
+	assert.Equal(t, "https://cdn.example.test/current.mp4", result.Url)
+}
+
+func TestParseTaskResultKeepsNestedTaskInProgressWhenURLIsMissing(t *testing.T) {
+	body := []byte(`{"code":"success","data":{"status":"SUCCESS","data":{"status":"processing"}}}`)
+
+	result, err := (&TaskAdaptor{}).ParseTaskResult(body)
+	require.NoError(t, err)
+	assert.Equal(t, string(model.TaskStatusInProgress), result.Status)
+	assert.Equal(t, "30%", result.Progress)
+}
+
 func TestParseTaskResultSupportsDocumentedURLAliases(t *testing.T) {
 	paths := []string{
 		"content.video_url", "result_url", "video_url", "url", "metadata.url",

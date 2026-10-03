@@ -479,19 +479,28 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	snap := task.Snapshot()
 
 	taskResult := &relaycommon.TaskInfo{}
-	// try parse as New API response format
-	var responseItems taskdto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
-		logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
-		t := responseItems.Data
-		taskResult.TaskID = t.TaskID
-		taskResult.Status = string(t.Status)
-		taskResult.Url = t.GetResultURL()
-		taskResult.Progress = t.Progress
-		taskResult.Reason = t.FailReason
-		task.Data = t.Data
-	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
-		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+	// Anhe wraps a provider task in a successful New API envelope, but its
+	// nested status/result payload is not model.Task. Let its adaptor parse the
+	// complete response before the generic New API decoder can discard it.
+	if platform := constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)); task.Platform == platform {
+		if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
+			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+		}
+	} else {
+		// try parse as New API response format
+		var responseItems taskdto.TaskResponse[model.Task]
+		if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
+			logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
+			t := responseItems.Data
+			taskResult.TaskID = t.TaskID
+			taskResult.Status = string(t.Status)
+			taskResult.Url = t.GetResultURL()
+			taskResult.Progress = t.Progress
+			taskResult.Reason = t.FailReason
+			task.Data = t.Data
+		} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
+			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+		}
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)

@@ -266,40 +266,20 @@ func TestResolveSoraMediaDownloadTargetBuildsContentURLForProxyResult(t *testing
 	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
 }
 
-// TestResolveAnheMediaDownloadTargetFallsBackToAuthenticatedContentEndpoint 验证安和缺少可直连产物时会通过带鉴权的上游 content 接口下载。
-func TestResolveAnheMediaDownloadTargetFallsBackToAuthenticatedContentEndpoint(t *testing.T) {
-	previousMemoryCache := common.MemoryCacheEnabled
-	common.MemoryCacheEnabled = false
-	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCache })
-
-	baseURL := "https://anhe.example.test"
-	channel := &model.Channel{
-		Id:      990070,
-		Type:    constant.ChannelTypeAnhe,
-		Key:     "fallback-key",
-		BaseURL: &baseURL,
-	}
-	require.NoError(t, model.DB.Create(channel).Error)
-	t.Cleanup(func() { model.DB.Delete(channel) })
-
-	assert.True(t, usesOpenAIVideoContentEndpoint(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))))
+// TestResolveAnheMediaDownloadTargetDoesNotGuessContentEndpoint 验证安和缺少直链时不会拼接不存在的 content 接口。
+func TestResolveAnheMediaDownloadTargetDoesNotGuessContentEndpoint(t *testing.T) {
 	task := &model.Task{
-		ChannelId: channel.Id,
-		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
-		TaskID:    "task_public",
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)),
+		TaskID:   "task_public",
 		PrivateData: model.TaskPrivateData{
-			Key:            "selected-key",
-			UpstreamTaskID: "task_upstream",
-			ResultURL:      taskcommon.BuildProxyURL("task_public"),
+			ResultURL: taskcommon.BuildProxyURL("task_public"),
 		},
 	}
 
-	target, err := resolveMediaDownloadTarget(task)
-
-	require.NoError(t, err)
-	assert.Equal(t, "https://anhe.example.test/v1/videos/task_upstream/content", target.URL)
-	require.NotEmpty(t, target.Headers)
-	assert.Equal(t, "Bearer selected-key", target.Headers[0]["Authorization"])
+	assert.False(t, usesOpenAIVideoContentEndpoint(task.Platform))
+	_, err := resolveMediaDownloadTarget(task)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing a valid video URL")
 }
 
 func TestResolveShafuMediaDownloadTargetUsesAuthenticatedContentEndpoint(t *testing.T) {

@@ -296,7 +296,7 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
-	status := strings.ToLower(strings.TrimSpace(gjson.GetBytes(respBody, "status").String()))
+	status := extractTaskStatus(respBody)
 	result := &relaycommon.TaskInfo{Code: 0}
 	switch status {
 	case "queued", "pending":
@@ -447,25 +447,15 @@ func buildVideoGenerationsURL(baseURL string) string {
 }
 
 func extractResultURL(body []byte) string {
-	// Keep the documented priority. Current provider responses may wrap the
-	// result once more under data.data, so support that observed shape too.
-	for _, path := range []string{
-		"content.video_url",
-		"data.data.content.video_url",
-		"result_url",
-		"video_url",
-		"url",
-		"metadata.url",
-		"metadata.result_url",
-		"result.url",
-		"result.video_url",
-		"data.video_url",
-		"data.result_url",
-		"data.url",
-	} {
-		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
-		if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
-			return value
+	return taskcommon.ExtractAnheResultURL(body)
+}
+
+func extractTaskStatus(body []byte) string {
+	// Anhe wraps the actual task payload in data.data. Prefer the deepest
+	// status so a successful API envelope cannot hide an in-progress task.
+	for _, path := range []string{"data.data.status", "data.status", "status"} {
+		if status := strings.TrimSpace(gjson.GetBytes(body, path).String()); status != "" {
+			return strings.ToLower(status)
 		}
 	}
 	return ""
@@ -482,7 +472,13 @@ func extractErrorMessage(body []byte) string {
 }
 
 func progressFromBody(body []byte, fallback string) string {
-	progress := gjson.GetBytes(body, "progress").Int()
+	progress := int64(0)
+	for _, path := range []string{"data.data.progress", "data.progress", "progress"} {
+		progress = gjson.GetBytes(body, path).Int()
+		if progress > 0 {
+			break
+		}
+	}
 	if progress <= 0 {
 		return fallback
 	}

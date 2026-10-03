@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/tidwall/gjson"
 )
@@ -441,6 +442,15 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}
 		return mediaDownloadTarget{URL: resultURL, Headers: headers}, nil
 	}
+	if isAnheTask(task) {
+		// Historical tasks may have persisted the public proxy URL before the
+		// polling parser learned Anhe's nested result envelope. Recover the
+		// direct CDN URL from the stored raw response and never guess /content.
+		if resultURL := taskcommon.ExtractAnheResultURL(task.Data); resultURL != "" {
+			return mediaDownloadTarget{URL: resultURL, Headers: []map[string]string{nil}}, nil
+		}
+		return mediaDownloadTarget{}, fmt.Errorf("anhe task result is missing a valid video URL")
+	}
 	if resultURL := mediaResultURLFromTaskData(task.Data); !requiresValidatedVideoResultURL(task.Platform) && resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
 		headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
 		if err != nil {
@@ -534,7 +544,6 @@ func mediaDownloadAuthHeaders(task *model.Task, channel *model.Channel) []map[st
 func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManying)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
@@ -544,9 +553,14 @@ func usesOpenAIVideoContentEndpoint(platform constant.TaskPlatform) bool {
 // These adaptors validate their result URLs. An empty parsed URL means use
 // authenticated content, not a URL the adaptor already rejected from raw JSON.
 func requiresValidatedVideoResultURL(platform constant.TaskPlatform) bool {
-	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
+	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLongxia6))
+}
+
+func isAnheTask(task *model.Task) bool {
+	return task != nil && task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))
 }
 
 func removeInvalidCachedMediaFiles(mediaDir string, mediaURLs []string) {

@@ -508,7 +508,7 @@ func TestUpdateVideoTasksAnheCompletedWithoutURLStaysInProgress(t *testing.T) {
 	assert.Empty(t, reloaded.PrivateData.ResultURL)
 }
 
-// TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache 验证安和返回嵌套 New API 成功结果时会启动鉴权产物下载。
+// TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache 验证安和嵌套结果使用直链进入媒体缓存，不构造 content 地址。
 func TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache(t *testing.T) {
 	truncate(t)
 
@@ -533,6 +533,11 @@ func TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache(t *testing
 				}
 			}
 		}`),
+		taskInfo: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+			Url:      "https://private-media.example.test/result.mp4",
+		},
 	}
 	previousFactory := GetTaskAdaptorFunc
 	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
@@ -549,7 +554,7 @@ func TestUpdateVideoTasksAnheWrappedSuccessQueuesContentForMediaCache(t *testing
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), reloaded.Status)
 	assert.Equal(t, model.MediaStatusPending, reloaded.MediaStatus)
-	assert.Equal(t, taskcommon.BuildProxyURL(task.TaskID), reloaded.PrivateData.ResultURL)
+	assert.Equal(t, "https://private-media.example.test/result.mp4", reloaded.PrivateData.ResultURL)
 	assert.Empty(t, reloaded.MediaURL, "视频下载成功前不得向客户端暴露未鉴权的上游地址")
 }
 
