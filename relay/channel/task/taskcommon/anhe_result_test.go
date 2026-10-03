@@ -15,6 +15,12 @@ func TestExtractAnheResultURLUsesNestedContentBeforeEnvelopeResultURL(t *testing
 	require.Equal(t, "https://cdn.example.test/current.mp4", ExtractAnheResultURL(body))
 }
 
+func TestExtractAnheResultURLUsesNestedResultBeforeStaleWrapperResultURL(t *testing.T) {
+	body := []byte(`{"data":{"data":{"result_url":"https://cdn.example.test/current.mp4"},"result_url":"https://anhe.example.test/stale.mp4"}}`)
+
+	require.Equal(t, "https://cdn.example.test/current.mp4", ExtractAnheResultURL(body))
+}
+
 func TestExtractAnheResultURLSupportsDocumentedAliases(t *testing.T) {
 	paths := []string{
 		"content.video_url", "result_url", "video_url", "url", "metadata.url",

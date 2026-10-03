@@ -15,6 +15,15 @@ func ExtractAnheResultURL(body []byte) string {
 		"content.video_url",
 		"data.data.content.video_url",
 		"data.content.video_url",
+		// When data.data is the provider payload, check all of its
+		// documented aliases before the wrapper's potentially stale result_url.
+		"data.data.result_url",
+		"data.data.video_url",
+		"data.data.url",
+		"data.data.metadata.url",
+		"data.data.metadata.result_url",
+		"data.data.result.url",
+		"data.data.result.video_url",
 		"result_url",
 		"video_url",
 		"url",
@@ -28,12 +37,6 @@ func ExtractAnheResultURL(body []byte) string {
 		// Some deployments wrap the documented payload aliases one level
 		// deeper than the public response contract. Keep these fallbacks after
 		// the documented top-level priority.
-		"data.data.video_url",
-		"data.data.url",
-		"data.data.metadata.url",
-		"data.data.metadata.result_url",
-		"data.data.result.url",
-		"data.data.result.video_url",
 	}
 	for _, path := range paths {
 		if candidate := validHTTPResultURL(gjson.GetBytes(body, path).String()); candidate != "" {
