@@ -246,7 +246,7 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 }
 
 func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error) {
-	status := strings.ToLower(extractString(body, "data.status", "status", "result.status", "data.data.status"))
+	status := strings.ToLower(extractString(body, "data.data.status", "data.status", "result.status", "status"))
 	result := &relaycommon.TaskInfo{Code: 0}
 	switch status {
 	case "queued", "pending", "submitted", "not_start", "waiting":
@@ -339,7 +339,7 @@ func buildUpstreamBody(modelName, prompt string, duration *int, resolution, size
 }
 
 func extractResultURL(body []byte) string {
-	paths := []string{"content.video_url", "result_url", "video_url", "url", "metadata.url", "metadata.result_url", "result.url", "result.video_url", "data.video_url", "data.result_url", "data.url", "data.metadata.url", "data.metadata.result_url", "data.content.video_url", "data.data.video_url", "data.data.result_url", "data.data.url", "data.data.metadata.url", "data.data.metadata.result_url", "data.data.content.video_url", "result.metadata.url", "result.metadata.result_url"}
+	paths := []string{"content.video_url", "data.data.content.video_url", "data.content.video_url", "result_url", "video_url", "url", "metadata.url", "metadata.result_url", "result.url", "result.video_url", "data.video_url", "data.result_url", "data.url", "data.metadata.url", "data.metadata.result_url", "data.data.video_url", "data.data.result_url", "data.data.url", "data.data.metadata.url", "data.data.metadata.result_url", "result.metadata.url", "result.metadata.result_url"}
 	for _, path := range paths {
 		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
 		if validMediaURL(value) {
