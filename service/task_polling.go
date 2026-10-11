@@ -479,10 +479,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	snap := task.Snapshot()
 
 	taskResult := &relaycommon.TaskInfo{}
-	// Anhe wraps a provider task in a successful New API envelope, but its
-	// nested status/result payload is not model.Task. Let its adaptor parse the
-	// complete response before the generic New API decoder can discard it.
-	if platform := constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)); task.Platform == platform {
+	// Provider envelopes can look like model.Task while carrying a differently
+	// nested result. Let these adaptors parse it before the generic decoder
+	// discards the result URL.
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
+		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) {
 		if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 		}

@@ -42,43 +42,6 @@ func (n *flexibleInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type standardRequest struct {
-	Model              string                  `json:"model"`
-	Prompt             string                  `json:"prompt"`
-	Duration           *flexibleInt            `json:"duration,omitempty"`
-	Seconds            *flexibleInt            `json:"seconds,omitempty"`
-	Resolution         string                  `json:"resolution,omitempty"`
-	Size               string                  `json:"size,omitempty"`
-	AspectRatio        string                  `json:"aspect_ratio,omitempty"`
-	Ratio              string                  `json:"ratio,omitempty"`
-	Image              string                  `json:"image,omitempty"`
-	ImageURL           string                  `json:"image_url,omitempty"`
-	InputReference     string                  `json:"input_reference,omitempty"`
-	Images             taskcommon.MediaURLList `json:"images,omitempty"`
-	ImageURLs          taskcommon.MediaURLList `json:"image_urls,omitempty"`
-	ReferenceImages    taskcommon.MediaURLList `json:"reference_images,omitempty"`
-	ReferenceImageURLs taskcommon.MediaURLList `json:"reference_image_urls,omitempty"`
-	References         taskcommon.MediaURLList `json:"references,omitempty"`
-	ReferenceURLs      taskcommon.MediaURLList `json:"reference_urls,omitempty"`
-	Video              string                  `json:"video,omitempty"`
-	VideoURL           string                  `json:"video_url,omitempty"`
-	ReferenceVideo     string                  `json:"reference_video,omitempty"`
-	Videos             taskcommon.MediaURLList `json:"videos,omitempty"`
-	VideoURLs          taskcommon.MediaURLList `json:"video_urls,omitempty"`
-	ReferenceVideos    taskcommon.MediaURLList `json:"reference_videos,omitempty"`
-	Audio              string                  `json:"audio,omitempty"`
-	AudioURL           string                  `json:"audio_url,omitempty"`
-	Audios             taskcommon.MediaURLList `json:"audios,omitempty"`
-	AudioURLs          taskcommon.MediaURLList `json:"audio_urls,omitempty"`
-	ReferenceAudios    taskcommon.MediaURLList `json:"reference_audios,omitempty"`
-	GenerateAudio      *bool                   `json:"generate_audio,omitempty"`
-	FirstFrame         string                  `json:"first_frame,omitempty"`
-	LastFrame          string                  `json:"last_frame,omitempty"`
-	FirstFrameURL      string                  `json:"first_frame_url,omitempty"`
-	LastFrameURL       string                  `json:"last_frame_url,omitempty"`
-	Metadata           map[string]any          `json:"metadata,omitempty"`
-}
-
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
 	apiKey, baseURL string
@@ -96,14 +59,35 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	a.body = nil
-	var request standardRequest
-	if err := common.UnmarshalBodyReusable(c, &request); err != nil {
+	request, err := readStandardRequest(c)
+	if err != nil {
 		return invalid("invalid_json", "invalid video request JSON")
 	}
 	if strings.TrimSpace(request.Model) == "" {
 		return invalid("missing_model", "model is required")
 	}
-	if strings.TrimSpace(request.Prompt) == "" {
+	prompt, images, videos, audios, err := requestMaterials(request)
+	if err != nil {
+		return invalid("invalid_reference_media", err.Error())
+	}
+	if strings.TrimSpace(prompt) == "" {
+		// Keep provider-native metadata.content intact while accepting its text
+		// as the standard prompt, when there is no top-level prompt/content.
+		if content, ok := request.Metadata["content"].([]any); ok {
+			parts := []string{}
+			for _, value := range content {
+				part, ok := value.(map[string]any)
+				if !ok || part["type"] != "text" {
+					continue
+				}
+				if text, ok := part["text"].(string); ok && strings.TrimSpace(text) != "" {
+					parts = append(parts, text)
+				}
+			}
+			prompt = strings.Join(parts, "\n")
+		}
+	}
+	if strings.TrimSpace(prompt) == "" {
 		return invalid("invalid_prompt", "prompt is required")
 	}
 
@@ -115,25 +99,29 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		value := int(*request.Seconds)
 		duration = &value
 	}
-	if duration != nil && *duration != -1 && (*duration <= 0 || *duration > relaycommon.MaxTaskDurationSeconds) {
+	if request.Duration != nil && request.Seconds != nil && *request.Duration != *request.Seconds {
+		return invalid("invalid_duration", "seconds and duration conflict")
+	}
+	if duration != nil && !validDuration(*duration) {
 		return invalid("invalid_duration", fmt.Sprintf("duration must be -1 or between 1 and %d seconds", relaycommon.MaxTaskDurationSeconds))
 	}
-
-	images := mediaValues(firstNonEmpty(request.ImageURL, request.Image, request.InputReference), request.Images, request.ImageURLs, request.ReferenceImages, request.ReferenceImageURLs, request.References, request.ReferenceURLs)
-	videos := mediaValues(firstNonEmpty(request.VideoURL, request.Video, request.ReferenceVideo), request.Videos, request.VideoURLs, request.ReferenceVideos)
-	audios := mediaValues(firstNonEmpty(request.AudioURL, request.Audio), request.Audios, request.AudioURLs, request.ReferenceAudios)
-	for _, value := range append(append(append([]string{}, images...), videos...), audios...) {
-		if !validMediaURL(value) {
-			return invalid("invalid_reference_url", "reference materials must use public HTTPS URLs or data URLs")
-		}
+	if err := validateDurationFields(request.Metadata); err != nil {
+		return invalid("invalid_duration", err.Error())
 	}
-	if len(images)+len(videos)+len(audios) > 100 {
-		return invalid("invalid_reference_count", "too many reference materials")
-	}
-
 	modelName := firstNonEmpty(info.UpstreamModelName, request.Model)
+	grok := strings.HasPrefix(strings.ToLower(modelName), "grok-imagine-video-")
+	if err := validateReferenceInputs(images, videos, audios, grok); err != nil {
+		return err
+	}
+	if err := validateForwardedMetadata(request.Metadata, grok); err != nil {
+		return err
+	}
+	pricing, err := model.LoadResolutionPricing(info.OriginModelName)
+	if err != nil || pricing != nil {
+		return invalid("unsupported_pricing", "snumom requires configured model base pricing; resolution-per-second pricing is not supported")
+	}
 	a.doubaoEndpoint = strings.HasPrefix(strings.ToLower(modelName), "doubao-seedance-")
-	a.body = buildUpstreamBody(modelName, request.Prompt, duration, request.Resolution, request.Size, firstNonEmpty(request.AspectRatio, request.Ratio), images, videos, audios, request.GenerateAudio, request.Metadata, a.doubaoEndpoint)
+	a.body = buildVideoProtocolBody(modelName, request, duration, prompt, images, videos, audios, a.doubaoEndpoint)
 	info.Action = constant.TaskActionTextGenerate
 	if len(images)+len(videos)+len(audios) > 0 {
 		info.Action = constant.TaskActionGenerate
@@ -147,9 +135,9 @@ func invalid(code, message string) *dto.TaskError {
 
 func (a *TaskAdaptor) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
 	// Snumom exposes both per-call and seconds/token products. The selected
-	// pricing mode is controlled by the administrator's model configuration;
-	// the adapter therefore avoids guessing a billing multiplier from a model
-	// name. Resolution-per-second pricing is handled by the common billing path.
+	// base price is controlled by the administrator's model configuration.
+	// The adapter never infers a multiplier from model names. Unsupported
+	// resolution-per-second pricing is rejected before submission.
 	return nil
 }
 
@@ -201,6 +189,17 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusBadGateway)
 	}
+	if !gjson.ValidBytes(data) {
+		return "", nil, service.TaskErrorWrapper(fmt.Errorf("invalid upstream task response JSON"), "invalid_response", http.StatusBadGateway)
+	}
+	result, err := a.ParseTaskResult(data)
+	if err != nil {
+		return "", nil, service.TaskErrorWrapper(err, "invalid_response", http.StatusBadGateway)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || result.Status == model.TaskStatusFailure || hasUpstreamError(data) {
+		message := firstNonEmpty(result.Reason, "upstream rejected video task")
+		return "", nil, service.TaskErrorWrapper(fmt.Errorf("%s", common.MaskSensitiveInfo(message)), "upstream_error", http.StatusBadGateway)
+	}
 	id := extractString(data, "id", "task_id", "data.id", "data.task_id", "data.data.id", "data.data.task_id", "result.id", "result.task_id")
 	if id == "" {
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusBadGateway)
@@ -241,12 +240,19 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 			_ = resp.Body.Close()
 			continue
 		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("snumom task query returned HTTP %d", resp.StatusCode)
+		}
 		return resp, nil
 	}
 	return nil, fmt.Errorf("snumom task query failed")
 }
 
 func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error) {
+	if !gjson.ValidBytes(body) {
+		return nil, fmt.Errorf("invalid upstream task response JSON")
+	}
 	status := strings.ToLower(extractString(body, "data.data.status", "data.status", "result.status", "status"))
 	result := &relaycommon.TaskInfo{Code: 0}
 	switch status {
@@ -257,19 +263,31 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 	case "completed", "success", "succeeded", "done":
 		result.Url = extractResultURL(body)
 		result.Status, result.Progress = model.TaskStatusSuccess, taskcommon.ProgressComplete
+		if result.Url == "" {
+			result.Status = model.TaskStatusFailure
+			result.Reason = "completed task is missing a valid video URL; check the upstream result response"
+		}
 	case "failed", "failure", "error", "cancelled", "canceled", "expired":
-		result.Status, result.Progress, result.Reason = model.TaskStatusFailure, taskcommon.ProgressComplete, extractString(body, "error.message", "error", "message", "detail")
+		result.Status, result.Progress, result.Reason = model.TaskStatusFailure, taskcommon.ProgressComplete, common.MaskSensitiveInfo(extractString(body, "error.message", "error", "message", "detail", "data.error.message", "data.message"))
 		if result.Reason == "" {
 			result.Reason = "task failed"
 		}
 	default:
 		result.Status, result.Progress = model.TaskStatusInProgress, progress(body, taskcommon.ProgressInProgress)
+		if hasUpstreamError(body) {
+			result.Status, result.Progress = model.TaskStatusFailure, taskcommon.ProgressComplete
+			result.Reason = common.MaskSensitiveInfo(firstNonEmpty(extractString(body, "error.message", "error", "message"), "upstream task query failed"))
+		}
 	}
 	return result, nil
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
-	video := task.ToOpenAIVideo()
+	publicTask := *task
+	if task.Status != model.TaskStatusSuccess || task.MediaStatus != model.MediaStatusSuccess {
+		publicTask.MediaURL = ""
+	}
+	video := publicTask.ToOpenAIVideo()
 	video.TaskID = task.TaskID
 	if task.Status == model.TaskStatusFailure {
 		video.Error = &relaydto.OpenAIVideoError{Message: firstNonEmpty(task.FailReason, "task failed"), Code: "upstream_error"}
@@ -280,84 +298,50 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 func (*TaskAdaptor) GetModelList() []string { return ModelList }
 func (*TaskAdaptor) GetChannelName() string { return ChannelName }
 
-func buildUpstreamBody(modelName, prompt string, duration *int, resolution, size, ratio string, images, videos, audios []string, generateAudio *bool, customMetadata map[string]any, doubao bool) map[string]any {
-	body := map[string]any{"model": modelName, "prompt": prompt}
-	for key, value := range customMetadata {
-		if key != "model" && key != "prompt" {
-			body[key] = value
-		}
-	}
-	if duration != nil {
-		if doubao {
-			body["duration"] = *duration
-		} else if strings.HasPrefix(strings.ToLower(modelName), "wan3.") {
-			body["seconds"] = strconv.Itoa(*duration)
-		} else {
-			body["duration"] = *duration
-		}
-	}
-	if resolution != "" {
-		body["resolution"] = resolution
-	} else if size != "" {
-		body["size"] = size
-	}
-	if ratio != "" {
-		body["aspect_ratio"] = ratio
-	}
-	if doubao {
-		content := []map[string]any{{"type": "text", "text": prompt}}
-		for _, value := range images {
-			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": value}, "role": "reference_image"})
-		}
-		for _, value := range videos {
-			content = append(content, map[string]any{"type": "video_url", "video_url": map[string]string{"url": value}, "role": "reference_video"})
-		}
-		for _, value := range audios {
-			content = append(content, map[string]any{"type": "audio_url", "audio_url": map[string]string{"url": value}, "role": "reference_audio"})
-		}
-		metadata := map[string]any{"content": content, "resolution": firstNonEmpty(resolution, "720p"), "ratio": firstNonEmpty(ratio, "16:9")}
-		if raw, ok := customMetadata["metadata"].(map[string]any); ok {
-			for key, value := range raw {
-				metadata[key] = value
-			}
-		}
-		body["metadata"] = metadata
-		delete(body, "resolution")
-		delete(body, "size")
-		delete(body, "aspect_ratio")
-		if generateAudio != nil {
-			metadata["generate_audio"] = *generateAudio
-		}
-		return body
-	}
-	if len(images) > 0 {
-		if strings.EqualFold(modelName, "sd-2.5") {
-			body["images"] = images
-		} else {
-			body["reference_images"] = images
-		}
-	}
-	if len(videos) > 0 {
-		body["reference_videos"] = videos
-	}
-	if len(audios) > 0 {
-		body["reference_audios"] = audios
-	}
-	if generateAudio != nil {
-		body["generate_audio"] = *generateAudio
-	}
-	return body
-}
-
 func extractResultURL(body []byte) string {
 	paths := []string{"content.video_url", "data.data.content.video_url", "data.content.video_url", "result_url", "video_url", "url", "metadata.url", "metadata.result_url", "result.url", "result.video_url", "data.video_url", "data.result_url", "data.url", "data.metadata.url", "data.metadata.result_url", "data.data.video_url", "data.data.result_url", "data.data.url", "data.data.metadata.url", "data.data.metadata.result_url", "result.metadata.url", "result.metadata.result_url"}
+	// Grok never requires a model echo on polling. Its top-level url is the
+	// canonical result, ahead of metadata and nested compatibility envelopes.
+	paths = append([]string{"url"}, paths...)
+	name := strings.ToLower(extractString(body, "model", "data.model", "data.data.model"))
+	if name == "" || strings.HasPrefix(name, "grok-imagine-video-") || strings.HasPrefix(name, "dreamina-seedance-") {
+		paths = append([]string{"url", "result_url", "video_url"}, paths...)
+	}
 	for _, path := range paths {
 		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
-		if validMediaURL(value) {
+		if validPublicHTTPURL(value) {
 			return value
 		}
 	}
 	return ""
+}
+
+func hasUpstreamError(body []byte) bool {
+	for _, path := range []string{"error", "data.error", "data.data.error", "result.error"} {
+		value := gjson.GetBytes(body, path)
+		if value.Type == gjson.Null {
+			continue
+		}
+		if value.Type == gjson.String && strings.TrimSpace(value.String()) != "" {
+			return true
+		}
+		if value.IsObject() && (value.Get("message").String() != "" || value.Get("code").String() != "") {
+			return true
+		}
+	}
+	if success := gjson.GetBytes(body, "success"); success.Type == gjson.False {
+		return true
+	}
+	// A flat error code/message without task status is an error response, not a
+	// task that should remain in_progress forever.
+	if extractString(body, "status", "data.status", "data.data.status", "result.status") == "" {
+		code := gjson.GetBytes(body, "code")
+		if code.Exists() && code.Type != gjson.Null {
+			value := code.String()
+			return value != "" && value != "0" && value != "200" && value != "201" && value != "202" && value != "success"
+		}
+	}
+	return false
 }
 
 func extractTaskStatus(body []byte) string {
@@ -399,30 +383,6 @@ func providerURL(base, endpoint string) string {
 		return base + strings.TrimPrefix(endpoint, "/v1")
 	}
 	return base + endpoint
-}
-
-func mediaValues(scalar string, groups ...[]string) []string {
-	values := make([]string, 0, 1)
-	if strings.TrimSpace(scalar) != "" {
-		values = append(values, strings.TrimSpace(scalar))
-	}
-	for _, group := range groups {
-		for _, value := range group {
-			if strings.TrimSpace(value) != "" {
-				values = append(values, strings.TrimSpace(value))
-			}
-		}
-	}
-	return values
-}
-
-func validMediaURL(value string) bool {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "data:") {
-		return len(value) <= 64<<20
-	}
-	parsed, err := url.Parse(value)
-	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
 }
 
 func cloneMap(input map[string]any) map[string]any {

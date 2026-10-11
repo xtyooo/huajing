@@ -75,7 +75,7 @@ func TestSubmit202AndPublicIDPrivacy(t *testing.T) {
 
 func TestResultURLPriorityAndStatuses(t *testing.T) {
 	a := &TaskAdaptor{}
-	completed := `{"status":"completed","data":{"data":{"status":"completed","content":{"video_url":"https://cdn.example/current.mp4"}}},"result_url":"https://cdn.example/stale.mp4"}`
+	completed := `{"model":"seedance-933","status":"completed","data":{"data":{"status":"completed","content":{"video_url":"https://cdn.example/current.mp4"}}},"result_url":"https://cdn.example/stale.mp4"}`
 	result, err := a.ParseTaskResult([]byte(completed))
 	require.NoError(t, err)
 	assert.Equal(t, "https://cdn.example/current.mp4", result.Url)

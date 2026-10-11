@@ -217,7 +217,9 @@ func (dm *downloadManager) downloadTaskResult(task *model.Task) {
 	defer cancelDownload()
 	for i := 0; i < attempts; i++ {
 		dlHeaders := target.Headers[i%len(target.Headers)]
-		if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) || task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) {
+		if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
+			task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) ||
+			task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) {
 			resp, err = downloadChannelMedia(downloadCtx, target.URL, dlHeaders)
 		} else {
 			resp, err = DoDownloadRequestWithHeadersContext(downloadCtx, target.URL, dlHeaders, "download_task_result")
@@ -656,7 +658,7 @@ func resolveMediaFileExtension(platform constant.TaskPlatform, rawURL string, co
 		return urlExt
 	}
 	contentTypeExt := getExtFromContentType(contentType)
-	if usesOpenAIVideoContentEndpoint(platform) {
+	if usesOpenAIVideoContentEndpoint(platform) || platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) {
 		if knownMediaExts[strings.ToLower(contentTypeExt)] {
 			return contentTypeExt
 		}
@@ -724,6 +726,7 @@ func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
 func mediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
 	requiresSameOriginAuth := task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) ||
 		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju)) ||
+		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) ||
 		usesOpenAIVideoContentEndpoint(task.Platform)
 	if !isAuthDownloadPlatform(task.Platform) && !requiresSameOriginAuth {
 		return []map[string]string{nil}, nil

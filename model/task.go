@@ -266,7 +266,8 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeShafu ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeManju ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeNaonao ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeManying {
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeManying ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSnumom {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
 		if relayInfo.UpstreamModelName != "" {
