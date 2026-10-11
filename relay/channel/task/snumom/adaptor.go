@@ -76,6 +76,7 @@ type standardRequest struct {
 	LastFrame          string                  `json:"last_frame,omitempty"`
 	FirstFrameURL      string                  `json:"first_frame_url,omitempty"`
 	LastFrameURL       string                  `json:"last_frame_url,omitempty"`
+	Metadata           map[string]any          `json:"metadata,omitempty"`
 }
 
 type TaskAdaptor struct {
@@ -132,7 +133,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 	modelName := firstNonEmpty(info.UpstreamModelName, request.Model)
 	a.doubaoEndpoint = strings.HasPrefix(strings.ToLower(modelName), "doubao-seedance-")
-	a.body = buildUpstreamBody(modelName, request.Prompt, duration, request.Resolution, request.Size, firstNonEmpty(request.AspectRatio, request.Ratio), images, videos, audios, request.GenerateAudio, a.doubaoEndpoint)
+	a.body = buildUpstreamBody(modelName, request.Prompt, duration, request.Resolution, request.Size, firstNonEmpty(request.AspectRatio, request.Ratio), images, videos, audios, request.GenerateAudio, request.Metadata, a.doubaoEndpoint)
 	info.Action = constant.TaskActionTextGenerate
 	if len(images)+len(videos)+len(audios) > 0 {
 		info.Action = constant.TaskActionGenerate
@@ -279,8 +280,13 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 func (*TaskAdaptor) GetModelList() []string { return ModelList }
 func (*TaskAdaptor) GetChannelName() string { return ChannelName }
 
-func buildUpstreamBody(modelName, prompt string, duration *int, resolution, size, ratio string, images, videos, audios []string, generateAudio *bool, doubao bool) map[string]any {
+func buildUpstreamBody(modelName, prompt string, duration *int, resolution, size, ratio string, images, videos, audios []string, generateAudio *bool, customMetadata map[string]any, doubao bool) map[string]any {
 	body := map[string]any{"model": modelName, "prompt": prompt}
+	for key, value := range customMetadata {
+		if key != "model" && key != "prompt" {
+			body[key] = value
+		}
+	}
 	if duration != nil {
 		if doubao {
 			body["duration"] = *duration
@@ -310,6 +316,11 @@ func buildUpstreamBody(modelName, prompt string, duration *int, resolution, size
 			content = append(content, map[string]any{"type": "audio_url", "audio_url": map[string]string{"url": value}, "role": "reference_audio"})
 		}
 		metadata := map[string]any{"content": content, "resolution": firstNonEmpty(resolution, "720p"), "ratio": firstNonEmpty(ratio, "16:9")}
+		if raw, ok := customMetadata["metadata"].(map[string]any); ok {
+			for key, value := range raw {
+				metadata[key] = value
+			}
+		}
 		body["metadata"] = metadata
 		delete(body, "resolution")
 		delete(body, "size")
