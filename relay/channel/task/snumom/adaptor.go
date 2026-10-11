@@ -47,6 +47,9 @@ type TaskAdaptor struct {
 	apiKey, baseURL string
 	body            map[string]any
 	doubaoEndpoint  bool
+	resolutionPrice float64
+	resolution      string
+	billedDuration  int
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
@@ -59,6 +62,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	a.body = nil
+	a.resolutionPrice, a.resolution, a.billedDuration = 0, "", 0
 	request, err := readStandardRequest(c)
 	if err != nil {
 		return invalid("invalid_json", "invalid video request JSON")
@@ -117,10 +121,26 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return err
 	}
 	pricing, err := model.LoadResolutionPricing(info.OriginModelName)
-	if err != nil || pricing != nil {
-		return invalid("unsupported_pricing", "snumom requires configured model base pricing; resolution-per-second pricing is not supported")
+	if err != nil {
+		return invalid("resolution_price_invalid", err.Error())
+	}
+	if pricing != nil {
+		resolution, seconds, pricingErr := resolutionBillingAttributes(&request, duration)
+		if pricingErr != nil {
+			return pricingErr
+		}
+		price, priceErr := model.GetResolutionPriceFromSetting(info.OriginModelName, resolution, pricing)
+		if priceErr != nil {
+			return invalid("resolution_price_invalid", priceErr.Error())
+		}
+		a.resolutionPrice, a.resolution, a.billedDuration = price, resolution, seconds
+		duration = &seconds
 	}
 	a.doubaoEndpoint = strings.HasPrefix(strings.ToLower(modelName), "doubao-seedance-")
+	if pricing != nil && a.doubaoEndpoint && request.Resolution == "" && strings.Contains(strings.ToLower(request.Size), "x") {
+		// Doubao emits only metadata.resolution, not a pixel-size field.
+		request.Resolution = a.resolution
+	}
 	a.body = buildVideoProtocolBody(modelName, request, duration, prompt, images, videos, audios, a.doubaoEndpoint)
 	info.Action = constant.TaskActionTextGenerate
 	if len(images)+len(videos)+len(audios) > 0 {
@@ -133,11 +153,13 @@ func invalid(code, message string) *dto.TaskError {
 	return service.TaskErrorWrapperLocal(fmt.Errorf("%s", message), code, http.StatusBadRequest)
 }
 
-func (a *TaskAdaptor) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
-	// Snumom exposes both per-call and seconds/token products. The selected
-	// base price is controlled by the administrator's model configuration.
-	// The adapter never infers a multiplier from model names. Unsupported
-	// resolution-per-second pricing is rejected before submission.
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	if a.body != nil && a.billedDuration > 0 {
+		// The common price helper has already rebuilt PriceData. Set the complete
+		// charge now, without adding a seconds ratio that would multiply it again.
+		taskcommon.ApplyResolutionPerSecondBilling(c, info, a.resolution, a.billedDuration, a.resolutionPrice)
+	}
+	// Disabled resolution pricing preserves administrator-configured base price.
 	return nil
 }
 

@@ -225,7 +225,7 @@ func TestPublicVideoNeverContainsUnreadyCacheURL(t *testing.T) {
 	}
 }
 
-func TestUnsupportedResolutionPricingIsRejectedBeforeUpstream(t *testing.T) {
+func TestConfiguredResolutionPricingIsAccepted(t *testing.T) {
 	key := model.ResolutionPriceKey("public-video")
 	common.OptionMapRWMutex.Lock()
 	if common.OptionMap == nil {
@@ -245,6 +245,5 @@ func TestUnsupportedResolutionPricingIsRejectedBeforeUpstream(t *testing.T) {
 	})
 	c, _, info := testContext(t, `{"model":"public-video","prompt":"scene","seconds":8,"resolution":"720p"}`, "dreamina-seedance-2-0")
 	err := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
-	require.NotNil(t, err)
-	assert.Equal(t, "unsupported_pricing", err.Code)
+	require.Nil(t, err)
 }
