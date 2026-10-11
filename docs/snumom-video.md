@@ -3,8 +3,10 @@
 渠道名 `snumom`，默认地址 `https://snumom.com`，用户侧继续调用标准 `/v1/videos`。
 模型目录仅供后台推荐；管理员可配置上游新增模型名和映射，不使用固定模型白名单。
 
-当前推荐模型包括 `sd-2.5`、`seedance2.5-1`、`seedance2.5-2`、`seedance2-5`、
-Doubao Seedance Token、Seedance mini/933/2.5、Dreamina、Grok、MiniMax H3 和 Wan3.0。
+本渠道只推荐截图红框模型：`sd-2.5`、`seedance2.5-1`、`seedance2.5-2`、
+`seedance2-5`、`seedance-2.0-mini`、`seedance-933`、`seedance2.0-933-V`、
+`seedance2.5`、`rh-minimaxh3-overseas`、`rh-minimaxh3-pro-overseas`，以及
+`wan3.0-video`、`wan3.0-video-prime`、`wan3.0-image`、`wan3.0-image-prime`。
 
 适配器把标准图片、视频、音频字符串/数组转换为上游字段。Doubao Token 模型使用
 `POST /v1/video/generations`，把素材放入 `metadata.content`，分辨率和画幅也放入
