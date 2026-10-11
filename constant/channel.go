@@ -78,7 +78,8 @@ const (
 	ChannelTypeWanchen        = 78
 	ChannelTypeYaochen        = 79
 	ChannelTypeLongxia6       = 80
-	ChannelTypeDummy          = 81 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeSnumom         = 81
+	ChannelTypeDummy          = 82 // 仅用于统计渠道数量，禁止在其后新增渠道类型
 
 )
 
@@ -164,6 +165,7 @@ var ChannelBaseURLs = []string{
 	"https://api.qilingze.com",     //78 wanchen
 	"https://api.chengyuapi.top",   //79 yaochen
 	"https://api8.longxiaai.store", //80 longxia6
+	"https://snumom.com",           //81 snumom
 }
 
 var ChannelTypeNames = map[int]string{
@@ -244,6 +246,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeWanchen:        "wanchen",
 	ChannelTypeYaochen:        "yaochen",
 	ChannelTypeLongxia6:       "longxia6",
+	ChannelTypeSnumom:         "snumom",
 }
 
 func GetChannelTypeName(channelType int) string {

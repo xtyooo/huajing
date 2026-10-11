@@ -556,7 +556,8 @@ func requiresValidatedVideoResultURL(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLongxia6))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLongxia6)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom))
 }
 
 func isAnheTask(task *model.Task) bool {
