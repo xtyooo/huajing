@@ -4,6 +4,16 @@ DO NOT send optional commentary
 
 ## Overview
 
+### Required retrospective and handoff reading
+
+Before cross-session work, channel integration, billing/cache changes, or official upstream integration, read:
+
+- [New-session handoff](docs/new-session-handoff.md)
+- [Development pitfalls and accountable AI retrospective](docs/development-pitfalls.md)
+- [Current-window thematic history](docs/conversation-history-2026-10-12.md)
+
+These documents distinguish verified code, dated production snapshots, historical reports, and pending work. Do not treat a later documentation HEAD as a deployed binary, infer a root cause from an old report, or advance the paused official-main task without a new request. Never copy credentials or signed query strings into documentation or memories. See the existing channel policy below for model admission and pricing boundaries.
+
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
 
 ## Repository and Branch Workflow
