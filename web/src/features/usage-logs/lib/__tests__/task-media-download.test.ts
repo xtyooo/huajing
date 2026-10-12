@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+
+import { describe, test } from 'vitest'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
 import { getDownloadableCachedMediaUrl } from '../task-media'
@@ -28,6 +29,8 @@ describe('任务缓存媒体下载', () => {
 
     assert.equal(
       getDownloadableCachedMediaUrl({
+        platform: '81',
+        media_status: 3,
         status: TASK_STATUS.SUCCESS,
         action: TASK_ACTIONS.IMAGE_GENERATE,
         media_url: mediaUrl,
@@ -36,6 +39,8 @@ describe('任务缓存媒体下载', () => {
     )
     assert.equal(
       getDownloadableCachedMediaUrl({
+        platform: '81',
+        media_status: 3,
         status: TASK_STATUS.SUCCESS,
         action: TASK_ACTIONS.TEXT_GENERATE,
         media_url: mediaUrl,
@@ -47,6 +52,8 @@ describe('任务缓存媒体下载', () => {
   test('失败任务和无效缓存地址不显示下载入口', () => {
     assert.equal(
       getDownloadableCachedMediaUrl({
+        platform: '81',
+        media_status: 3,
         status: TASK_STATUS.FAILURE,
         action: TASK_ACTIONS.TEXT_GENERATE,
         media_url: 'https://example.test/cached-media',
@@ -55,6 +62,8 @@ describe('任务缓存媒体下载', () => {
     )
     assert.equal(
       getDownloadableCachedMediaUrl({
+        platform: '81',
+        media_status: 3,
         status: TASK_STATUS.SUCCESS,
         action: TASK_ACTIONS.TEXT_GENERATE,
         media_url: 'javascript:alert(1)',
@@ -62,4 +71,30 @@ describe('任务缓存媒体下载', () => {
       ''
     )
   })
+})
+
+for (const mediaStatus of [-1, 0, 1, 2, 4]) {
+  test(`cache status ${mediaStatus} suppresses stale URL even when task is successful`, () => {
+    assert.equal(
+      getDownloadableCachedMediaUrl({
+        platform: '81',
+        media_status: mediaStatus,
+        status: TASK_STATUS.SUCCESS,
+        action: TASK_ACTIONS.GENERATE,
+        media_url: 'https://example.test/stale',
+      }),
+      ''
+    )
+  })
+}
+test('completed kuai direct URL remains available without cache and disappears after cleanup', () => {
+  const task = {
+    platform: '65',
+    media_status: 0,
+    status: TASK_STATUS.SUCCESS,
+    action: TASK_ACTIONS.GENERATE,
+    media_url: 'https://example.test/direct',
+  }
+  assert.equal(getDownloadableCachedMediaUrl(task), task.media_url)
+  assert.equal(getDownloadableCachedMediaUrl({ ...task, media_status: 4 }), '')
 })

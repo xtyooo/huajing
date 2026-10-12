@@ -16,15 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
 import { SectionPageLayout } from '@/components/layout'
 
 import { InvitationRecordsProvider } from './components/invitation-records-provider'
 import { InvitationRecordsTable } from './components/invitation-records-table'
 
 function InvitationRecordsContent() {
+  const { t } = useTranslation()
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>邀请记录</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t('Invitation records')}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <InvitationRecordsTable />
       </SectionPageLayout.Content>

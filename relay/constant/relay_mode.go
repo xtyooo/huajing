@@ -36,10 +36,6 @@ const (
 	RelayModeAudioTranscription // whisper
 	RelayModeAudioTranslation   // whisper
 
-	RelayModeSunoFetch
-	RelayModeSunoFetchByID
-	RelayModeSunoSubmit
-
 	RelayModeVideoFetchByID
 	RelayModeVideoSubmit
 
@@ -54,6 +50,10 @@ const (
 	RelayModeResponsesCompact
 
 	RelayModeAlphaSearch
+
+	RelayModeSunoFetch
+	RelayModeSunoFetchByID
+	RelayModeSunoSubmit
 )
 
 func Path2RelayMode(path string) int {

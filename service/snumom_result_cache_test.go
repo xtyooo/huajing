@@ -21,10 +21,10 @@ type snumomEnvelopePollingAdaptor struct {
 }
 
 func (*snumomEnvelopePollingAdaptor) Init(*relaycommon.RelayInfo) {}
-func (a *snumomEnvelopePollingAdaptor) FetchTask(string, string, map[string]any, string) (*http.Response, error) {
+func (a *snumomEnvelopePollingAdaptor) FetchTask(string, string, *model.Task, string) (*http.Response, error) {
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(a.body))}, nil
 }
-func (a *snumomEnvelopePollingAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+func (a *snumomEnvelopePollingAdaptor) ParseTaskResult(*model.Task, *http.Response, []byte) (*relaycommon.TaskInfo, error) {
 	a.called = true
 	return &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, Progress: "100%", Url: "https://cdn.example.test/current.mp4?sig=a%2Fb"}, nil
 }

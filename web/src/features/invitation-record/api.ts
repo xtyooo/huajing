@@ -28,7 +28,7 @@ import type {
 // ============================================================================
 
 function buildApiPath(endpoint: string, isAdmin: boolean): string {
-  return isAdmin ? endpoint : `${endpoint}/self`
+  return isAdmin ? `${endpoint}/` : `${endpoint}/self`
 }
 
 function buildQueryParams(params: Record<string, unknown>): URLSearchParams {
@@ -46,10 +46,9 @@ async function fetchInvitationRecord(
   params: GetInvitationRecordsParams,
   isAdmin: boolean
 ): Promise<GetInvitationRecordsResponse> {
-  const paramRecord = params as unknown as Record<string, unknown>
   const queryParams = buildQueryParams({
-    p: paramRecord.p || 1,
-    page_size: paramRecord.page_size || 20,
+    p: params.p ?? 1,
+    page_size: params.page_size ?? 20,
     ...params,
   })
   const path = buildApiPath(endpoint, isAdmin)

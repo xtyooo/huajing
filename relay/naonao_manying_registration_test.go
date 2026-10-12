@@ -27,6 +27,6 @@ func TestNaonaoAndManyingTaskAdaptorRegistration(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, constant.APITypeOpenAI, apiType)
 		assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(test.channelType, test.model))
-		assert.IsType(t, test.wantAdaptor, GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(test.channelType))))
+		assert.IsType(t, test.wantAdaptor, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(test.channelType))))
 	}
 }

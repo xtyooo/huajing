@@ -24,7 +24,7 @@ func TestWanchenYaochenRegistration(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, constant.APITypeOpenAI, api)
 		require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(tc.channelType, "admin-model"))
-		require.IsType(t, tc.adaptor, GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(tc.channelType))))
+		require.IsType(t, tc.adaptor, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(tc.channelType))))
 	}
 }
 

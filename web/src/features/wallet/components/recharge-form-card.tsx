@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,7 @@ import {
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
+  getDiscountLabel,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -231,13 +232,17 @@ export function RechargeFormCard({
                         preset.discount ||
                         topupInfo?.discount?.[preset.value] ||
                         1.0
-                      const { displayValue, hasDiscount } =
-                        calculatePresetPricing(
-                          preset.value,
-                          priceRatio,
-                          discount,
-                          usdExchangeRate
-                        )
+                      const {
+                        displayValue,
+                        hasDiscount,
+                        actualPrice,
+                        savedAmount,
+                      } = calculatePresetPricing(
+                        preset.value,
+                        priceRatio,
+                        discount,
+                        usdExchangeRate
+                      )
                       return (
                         <Button
                           key={preset.value}
@@ -252,32 +257,48 @@ export function RechargeFormCard({
                         >
                           <div className='flex w-full items-center justify-between'>
                             <div className='w-full flex-1 text-center text-base font-semibold sm:text-lg'>
-                              ⚡{formatNumber(displayValue)}
+                              <span aria-hidden='true'>⚡</span>
+                              {formatNumber(displayValue)}
                             </div>
-                            {/*{hasDiscount && (*/}
-                            {/*  <div className='text-xs font-medium text-green-600'>*/}
-                            {/*    {getDiscountLabel(discount)}*/}
-                            {/*  </div>*/}
-                            {/*)}*/}
+                            {hasDiscount && (
+                              <span className='text-xs font-medium text-green-600'>
+                                {getDiscountLabel(discount, t)}
+                              </span>
+                            )}
+                          </div>
+                          <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
+                            {hasDiscount && savedAmount > 0 ? (
+                              <Trans
+                                t={t}
+                                i18nKey='Pay {{amount}} <savings>• Save {{saved}}</savings>'
+                                values={{
+                                  amount: formatCurrency(actualPrice),
+                                  saved: formatCurrency(savedAmount),
+                                }}
+                                components={{
+                                  savings: <span className='text-green-600' />,
+                                }}
+                              />
+                            ) : (
+                              t('Pay {{amount}}', {
+                                amount: formatCurrency(actualPrice),
+                              })
+                            )}
                           </div>
                           {hasDiscount && (
                             <div className='text-muted-foreground mt-0.5 w-full flex-1 text-center text-xs sm:mt-1 sm:text-sm'>
-                              <span>{(discount * 10).toFixed(2)}折</span>
-                              {/* <span>{((1 - discount) * 10).toFixed(1)}折</span> */}
+                              <span>
+                                {t('{{discount}}折', {
+                                  discount: (discount * 10).toFixed(2),
+                                })}
+                              </span>{' '}
                               <span className='text-green-600'>
-                                节省 {((1 - discount) * 100).toFixed(1)}%
+                                {t('Save {{percentage}}%', {
+                                  percentage: ((1 - discount) * 100).toFixed(1),
+                                })}
                               </span>
                             </div>
                           )}
-                          {/*<div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>*/}
-                          {/*  Pay {formatCurrency(actualPrice)}*/}
-                          {/*  {hasDiscount && savedAmount > 0 && (*/}
-                          {/*    <span className='text-green-600'>*/}
-                          {/*      {' '}*/}
-                          {/*      • Save {formatCurrency(savedAmount)}*/}
-                          {/*    </span>*/}
-                          {/*  )}*/}
-                          {/*</div>*/}
                         </Button>
                       )
                     })}
@@ -299,7 +320,7 @@ export function RechargeFormCard({
                     value={localAmount}
                     onChange={(e) => handleAmountChange(e.target.value)}
                     min={minTopup}
-                    placeholder={`Minimum ${minTopup}`}
+                    placeholder={t('Minimum {{amount}}', { amount: minTopup })}
                     className='h-9 text-base sm:h-10 sm:text-lg'
                   />
                   <div className='bg-muted/30 flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>

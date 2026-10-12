@@ -5,13 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -45,6 +51,13 @@ type OpenAICreditGrants struct {
 	TotalGranted   float64 `json:"total_granted"`
 	TotalUsed      float64 `json:"total_used"`
 	TotalAvailable float64 `json:"total_available"`
+}
+
+const maxAdvancedCustomBalanceResponseBytes = 256 << 10
+
+type channelBalanceResult struct {
+	Balance     float64
+	RawResponse string
 }
 
 type OpenAIUsageResponse struct {
@@ -144,7 +157,8 @@ func GetResponseBody(method, url string, channel *model.Channel, headers http.He
 	for k := range headers {
 		req.Header.Add(k, headers.Get(k))
 	}
-	client, err := service.GetHttpClientWithProxy(channel.GetSetting().Proxy)
+	setting := channel.GetSetting()
+	client, err := service.GetHttpClientWithProxySettings(setting.Proxy, setting)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +188,7 @@ func updateChannelCloseAIBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := OpenAICreditGrants{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -189,7 +203,7 @@ func updateChannelOpenAISBBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := OpenAISBUsageResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -213,7 +227,7 @@ func updateChannelAIProxyBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := AIProxyUserOverviewResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -232,7 +246,7 @@ func updateChannelAPI2GPTBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := API2GPTUsageResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -247,7 +261,7 @@ func updateChannelSiliconFlowBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := SiliconFlowUsageResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -262,6 +276,67 @@ func updateChannelSiliconFlowBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
+func getDeepSeekBalanceUSD(response DeepSeekUsageResponse, usdExchangeRate float64) (float64, error) {
+	var usdBalance *string
+	var cnyBalance *string
+
+	for i := range response.BalanceInfos {
+		balanceInfo := &response.BalanceInfos[i]
+		switch balanceInfo.Currency {
+		case "USD":
+			if usdBalance == nil {
+				usdBalance = &balanceInfo.TotalBalance
+			}
+		case "CNY":
+			if cnyBalance == nil {
+				cnyBalance = &balanceInfo.TotalBalance
+			}
+		}
+	}
+
+	if usdBalance != nil {
+		balance, err := strconv.ParseFloat(*usdBalance, 64)
+		if err != nil {
+			return 0, err
+		}
+		if math.IsNaN(balance) || math.IsInf(balance, 0) {
+			return 0, errors.New("USD balance must be finite")
+		}
+		if balance < 0 {
+			return 0, errors.New("USD balance must be non-negative")
+		}
+		return balance, nil
+	}
+	if cnyBalance == nil {
+		return 0, errors.New("currency USD or CNY not found")
+	}
+	if math.IsNaN(usdExchangeRate) || math.IsInf(usdExchangeRate, 0) {
+		return 0, errors.New("USD exchange rate must be finite")
+	}
+	if usdExchangeRate <= 0 {
+		return 0, errors.New("USD exchange rate must be greater than zero")
+	}
+
+	balanceCNY, err := strconv.ParseFloat(*cnyBalance, 64)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(balanceCNY) || math.IsInf(balanceCNY, 0) {
+		return 0, errors.New("CNY balance must be finite")
+	}
+	if balanceCNY < 0 {
+		return 0, errors.New("CNY balance must be non-negative")
+	}
+	balanceUSD := decimal.NewFromFloat(balanceCNY).Div(decimal.NewFromFloat(usdExchangeRate)).InexactFloat64()
+	if math.IsNaN(balanceUSD) || math.IsInf(balanceUSD, 0) {
+		return 0, errors.New("converted USD balance must be finite")
+	}
+	if balanceUSD < 0 {
+		return 0, errors.New("converted USD balance must be non-negative")
+	}
+	return balanceUSD, nil
+}
+
 func updateChannelDeepSeekBalance(channel *model.Channel) (float64, error) {
 	url := "https://api.deepseek.com/user/balance"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
@@ -269,21 +344,11 @@ func updateChannelDeepSeekBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := DeepSeekUsageResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
-	index := -1
-	for i, balanceInfo := range response.BalanceInfos {
-		if balanceInfo.Currency == "CNY" {
-			index = i
-			break
-		}
-	}
-	if index == -1 {
-		return 0, errors.New("currency CNY not found")
-	}
-	balance, err := strconv.ParseFloat(response.BalanceInfos[index].TotalBalance, 64)
+	balance, err := getDeepSeekBalanceUSD(response, operation_setting.USDExchangeRate)
 	if err != nil {
 		return 0, err
 	}
@@ -298,7 +363,7 @@ func updateChannelAIGC2DBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := APGC2DGPTUsageResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -313,7 +378,7 @@ func updateChannelOpenRouterBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	response := OpenRouterCreditResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -343,7 +408,7 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	}
 
 	response := MoonshotBalanceResponse{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -375,7 +440,7 @@ func updateChannelHJBalance(channel *model.Channel) (float64, error) {
 			Balance float64 `json:"balance"`
 		} `json:"balance"`
 	}{}
-	err = json.Unmarshal(body, &response)
+	err = common.Unmarshal(body, &response)
 	if err != nil {
 		return 0, err
 	}
@@ -400,7 +465,7 @@ func updateChannelMimoBalance(channel *model.Channel) (float64, error) {
 	}
 
 	response := struct {
-		Code int `json:"code"`
+		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
 			Credits float64 `json:"credits"`
@@ -417,8 +482,102 @@ func updateChannelMimoBalance(channel *model.Channel) (float64, error) {
 	return response.Data.Credits, nil
 }
 
-func updateChannelBalance(channel *model.Channel) (float64, error) {
-	baseURL := constant.ChannelBaseURLs[channel.Type]
+func fetchAdvancedCustomBalance(channel *model.Channel) (channelBalanceResult, error) {
+	key := strings.TrimSpace(channel.Key)
+	info := &relaycommon.RelayInfo{
+		RelayFormat:    types.RelayFormatOpenAI,
+		RelayMode:      relayconstant.RelayModeUnknown,
+		RequestURLPath: dto.AdvancedCustomBalancePath,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:          constant.ChannelTypeAdvancedCustom,
+			ChannelBaseUrl:       channel.GetBaseURL(),
+			ApiKey:               key,
+			ChannelOtherSettings: channel.GetOtherSettings(),
+		},
+	}
+	requestURL, headers, err := (&advancedcustom.Adaptor{}).BuildBalanceRequest(info)
+	if err != nil {
+		return channelBalanceResult{}, sanitizeFetchModelsError(err, key)
+	}
+	if err := applyFetchModelsHeaderOverrides(channel, key, headers); err != nil {
+		return channelBalanceResult{}, sanitizeFetchModelsError(err, key)
+	}
+
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		return channelBalanceResult{}, sanitizeFetchModelsError(err, key)
+	}
+	for name, values := range headers {
+		for _, value := range values {
+			request.Header.Add(name, value)
+		}
+		if strings.EqualFold(name, "Host") {
+			request.Host = headers.Get(name)
+		}
+	}
+	setting := channel.GetSetting()
+	client, err := service.GetHttpClientWithProxySettings(setting.Proxy, setting)
+	if err != nil {
+		return channelBalanceResult{}, sanitizeFetchModelsError(err, key)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return channelBalanceResult{}, sanitizeAdvancedCustomRequestError(err, key, requestURL)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return channelBalanceResult{}, fmt.Errorf("status code: %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxAdvancedCustomBalanceResponseBytes+1))
+	if err != nil {
+		return channelBalanceResult{}, sanitizeAdvancedCustomRequestError(err, key, requestURL)
+	}
+	if len(body) > maxAdvancedCustomBalanceResponseBytes {
+		return channelBalanceResult{}, fmt.Errorf("balance response exceeds %d bytes", maxAdvancedCustomBalanceResponseBytes)
+	}
+
+	var validated json.RawMessage
+	if err := common.Unmarshal(body, &validated); err != nil {
+		return channelBalanceResult{}, fmt.Errorf("invalid balance JSON response: %w", err)
+	}
+	if common.GetJsonType(validated) == "object" {
+		var creditSummary struct {
+			Object         string          `json:"object"`
+			TotalAvailable json.RawMessage `json:"total_available"`
+		}
+		if err := common.Unmarshal(body, &creditSummary); err != nil {
+			return channelBalanceResult{}, fmt.Errorf("invalid balance JSON response: %w", err)
+		}
+		if creditSummary.Object == "credit_summary" &&
+			common.GetJsonType(creditSummary.TotalAvailable) == "number" {
+			var balance float64
+			if err := common.Unmarshal(creditSummary.TotalAvailable, &balance); err == nil &&
+				balance >= 0 &&
+				!math.IsNaN(balance) &&
+				!math.IsInf(balance, 0) {
+				channel.UpdateBalance(balance)
+				return channelBalanceResult{Balance: balance}, nil
+			}
+		}
+	}
+
+	formatted, err := common.IndentJson(body)
+	if err != nil {
+		return channelBalanceResult{}, fmt.Errorf("invalid balance JSON response: %w", err)
+	}
+	return channelBalanceResult{RawResponse: string(formatted)}, nil
+}
+
+func updateChannelBalance(channel *model.Channel) (channelBalanceResult, error) {
+	if channel.Type == constant.ChannelTypeAdvancedCustom {
+		return fetchAdvancedCustomBalance(channel)
+	}
+	balance, err := updateStandardChannelBalance(channel)
+	return channelBalanceResult{Balance: balance}, err
+}
+
+func updateStandardChannelBalance(channel *model.Channel) (float64, error) {
+	baseURL := constant.GetChannelBaseURL(channel.Type)
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL
 	}
@@ -428,7 +587,7 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 			baseURL = channel.GetBaseURL()
 		}
 	case constant.ChannelTypeAzure:
-		return 0, errors.New("尚未实现")
+		return 0, common.NewMessage("Not implemented yet")
 	case constant.ChannelTypeCustom:
 		baseURL = channel.GetBaseURL()
 	//case common.ChannelTypeOpenAISB:
@@ -452,7 +611,7 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 	case constant.ChannelTypeMimo:
 		return updateChannelMimoBalance(channel)
 	default:
-		return 0, errors.New("尚未实现")
+		return 0, common.NewMessage("Not implemented yet")
 	}
 	url := fmt.Sprintf("%s/v1/dashboard/billing/subscription", baseURL)
 
@@ -461,7 +620,7 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	subscription := OpenAISubscriptionResponse{}
-	err = json.Unmarshal(body, &subscription)
+	err = common.Unmarshal(body, &subscription)
 	if err != nil {
 		return 0, err
 	}
@@ -477,7 +636,7 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	usage := OpenAIUsageResponse{}
-	err = json.Unmarshal(body, &usage)
+	err = common.Unmarshal(body, &usage)
 	if err != nil {
 		return 0, err
 	}
@@ -497,23 +656,29 @@ func UpdateChannelBalance(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if channel.ChannelInfo.IsMultiKey {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "多密钥渠道不支持余额查询",
-		})
+	if channel.Type == constant.ChannelTypeTaskPlugin {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Task Plugin channels do not support balance queries"})
 		return
 	}
-	balance, err := updateChannelBalance(channel)
+	if channel.ChannelInfo.IsMultiKey {
+		common.ApiErrorT(c, "Multi-key channels do not support balance queries")
+		return
+	}
+	result, err := updateChannelBalance(channel)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"success": true,
 		"message": "",
-		"balance": balance,
-	})
+	}
+	if result.RawResponse == "" {
+		response["balance"] = result.Balance
+	} else {
+		response["raw_response"] = result.RawResponse
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func updateAllChannelsBalance() error {
@@ -532,13 +697,13 @@ func updateAllChannelsBalance() error {
 		//if channel.Type != common.ChannelTypeOpenAI && channel.Type != common.ChannelTypeCustom {
 		//	continue
 		//}
-		balance, err := updateChannelBalance(channel)
+		result, err := updateChannelBalance(channel)
 		if err != nil {
 			continue
-		} else {
+		} else if result.RawResponse == "" {
 			// err is nil & balance <= 0 means quota is used up
-			if balance <= 0 {
-				service.DisableChannel(*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, "", channel.GetAutoBan()), "余额不足")
+			if result.Balance <= 0 {
+				service.DisableChannel(*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, "", channel.GetAutoBan()), "Insufficient balance")
 			}
 		}
 		time.Sleep(common.RequestInterval)
@@ -563,8 +728,8 @@ func UpdateAllChannelsBalance(c *gin.Context) {
 func AutomaticallyUpdateChannels(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Minute)
-		common.SysLog("updating all channels")
+		common.SysLog(common.LogText("updating all channels"))
 		_ = updateAllChannelsBalance()
-		common.SysLog("channels update done")
+		common.SysLog(common.LogText("channels update done"))
 	}
 }

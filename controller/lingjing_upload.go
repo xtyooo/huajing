@@ -3,7 +3,6 @@ package controller
 import (
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -90,11 +89,10 @@ func LingjingUpload(c *gin.Context) {
 
 func getUploadChannel(c *gin.Context, channelType int) (*model.Channel, error) {
 	specificChannelID := 0
-	if rawID, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
-		if id, ok := rawID.(string); ok {
-			specificChannelID, _ = strconv.Atoi(id)
-		}
+	if pin, found, _ := service.GetChannelConstraints(c).ResolvedPin(); found {
+		specificChannelID = pin.ChannelId
 	}
+
 	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	return model.GetUploadChannel(channelType, group, specificChannelID)
 }

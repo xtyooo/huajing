@@ -131,11 +131,13 @@ func TestRelayTaskSubmitImageSizePricingDoesNotMergeVideoEstimateRatios(t *testi
 }
 
 func TestTaskImageSizePricingCapabilityIsScopedToStandardSoraAdaptor(t *testing.T) {
-	_, soraSupportsImagePricing := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSora))).(channel.TaskImageSizePricingAdaptor)
-	_, openAISupportsImagePricing := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAI))).(channel.TaskImageSizePricingAdaptor)
-	_, anheSupportsImagePricing := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))).(channel.TaskImageSizePricingAdaptor)
-
-	assert.True(t, soraSupportsImagePricing)
-	assert.True(t, openAISupportsImagePricing)
-	assert.False(t, anheSupportsImagePricing)
+	for _, fixture := range []struct {
+		channelType int
+		supports    bool
+	}{{constant.ChannelTypeSora, true}, {constant.ChannelTypeOpenAI, true}, {constant.ChannelTypeAnhe, false}} {
+		adaptor := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(fixture.channelType)))
+		provider, ok := adaptor.(channel.TaskImageSizePricingAdaptor)
+		require.True(t, ok)
+		assert.Equal(t, fixture.supports, provider.SupportsImageSizePricing())
+	}
 }

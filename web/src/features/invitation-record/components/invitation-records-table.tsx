@@ -32,7 +32,6 @@ import {
 } from '@tanstack/react-table'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import {
   DataTablePagination,
@@ -40,6 +39,7 @@ import {
   TableEmpty,
   MobileCardList,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
 import { PageFooterPortal } from '@/components/layout'
 import {
   Table,
@@ -50,11 +50,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useMediaQuery } from '@/hooks'
-// import { useInvitationRecords } from './invitation-records-provider'
-import { useIsAdmin } from '@/hooks/use-admin'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
+// import { useInvitationRecords } from './invitation-records-provider'
+import { useAuthStore } from '@/stores/auth-store'
 
+import { canReadAllInvitationRecords } from '../lib/permissions'
 import { fetchInvitationRecords } from '../lib/utils'
 import { useInvitationRecordsColumns } from './invitation-records-columns'
 
@@ -62,13 +64,16 @@ const route = getRouteApi('/_authenticated/invitation-records/')
 
 export function InvitationRecordsTable() {
   const { t } = useTranslation()
-  const isAdmin = useIsAdmin()
+  const isAdmin = useAuthStore((state) =>
+    canReadAllInvitationRecords(state.auth.user)
+  )
   const columns = useInvitationRecordsColumns(isAdmin)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const [rowSelection, setRowSelection] = useState({})
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
+  const search = route.useSearch()
   const {
     globalFilter,
     onGlobalFilterChange,
@@ -78,7 +83,7 @@ export function InvitationRecordsTable() {
     onPaginationChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
+    search,
     navigate: route.useNavigate(),
     pagination: { defaultPage: 1, defaultPageSize: isMobile ? 10 : 20 },
     globalFilter: { enabled: false, key: 'filter' },
@@ -86,32 +91,34 @@ export function InvitationRecordsTable() {
   })
 
   // Fetch data with React Query
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: [
       'invitationRecords',
       isAdmin,
       pagination.pageIndex + 1,
       pagination.pageSize,
+      search.inviter_name,
+      search.invitee_name,
+      search.startTime,
+      search.endTime,
     ],
     queryFn: async () => {
       const result = await fetchInvitationRecords({
         isAdmin,
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
-        searchParams: {},
+        searchParams: search,
       })
 
-      if (!result.success) {
-        toast.error(result.message || `Failed to load records`)
-        return { items: [], total: 0 }
-      }
+      requireServerSuccess(result)
 
       return {
         items: result.data?.items || [],
         total: result.data?.total || 0,
       }
     },
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === isAdmin ? previousData : undefined,
   })
 
   const records = data?.items || []
@@ -172,6 +179,12 @@ export function InvitationRecordsTable() {
         ))}
       </TableRow>
     ))
+  }
+
+  if (isError) {
+    return (
+      <ErrorState description={error.message} onRetry={() => void refetch()} />
+    )
   }
 
   return (

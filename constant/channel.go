@@ -79,10 +79,15 @@ const (
 	ChannelTypeYaochen        = 79
 	ChannelTypeLongxia6       = 80
 	ChannelTypeSnumom         = 81
-	ChannelTypeDummy          = 82 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	ChannelTypeTaskPlugin     = 82
+	ChannelTypeVLLM           = 83
+	ChannelTypeSGLang         = 84
+	ChannelTypeDummy          = 85 // count sentinel; never a persisted channel type
 
 )
 
+// ChannelBaseURLs 保存各渠道类型的内置默认 Base URL。
+// 非空值会通过 /api/channel/default_base_urls 下发到前端，作为渠道表单的 API 地址占位提示。
 var ChannelBaseURLs = []string{
 	"",                                    // 0
 	"https://api.openai.com",              // 1
@@ -166,6 +171,16 @@ var ChannelBaseURLs = []string{
 	"https://api.chengyuapi.top",   //79 yaochen
 	"https://api8.longxiaai.store", //80 longxia6
 	"https://snumom.com",           //81 snumom
+	"",                             //82 TaskPlugin
+	"",                             //83 VLLM
+	"",                             //84 SGLang
+}
+
+func GetChannelBaseURL(channelType int) string {
+	if channelType < 0 || channelType >= len(ChannelBaseURLs) {
+		return ""
+	}
+	return ChannelBaseURLs[channelType]
 }
 
 var ChannelTypeNames = map[int]string{
@@ -219,7 +234,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeJimeng:         "Jimeng",
 	ChannelTypeVidu:           "Vidu",
 	ChannelTypeSubmodel:       "Submodel",
-	ChannelTypeDoubaoVideo:    "DoubaoVideo",
+	ChannelTypeDoubaoVideo:    "Doubao",
 	ChannelTypeSora:           "Sora",
 	ChannelTypeReplicate:      "Replicate",
 	ChannelTypeCodex:          "ChatGPT Subscription (Codex)",
@@ -247,6 +262,9 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeYaochen:        "yaochen",
 	ChannelTypeLongxia6:       "longxia6",
 	ChannelTypeSnumom:         "snumom",
+	ChannelTypeTaskPlugin:     "Task Plugin",
+	ChannelTypeVLLM:           "vLLM",
+	ChannelTypeSGLang:         "SGLang",
 }
 
 func GetChannelTypeName(channelType int) string {
@@ -278,4 +296,33 @@ var ChannelSpecialBases = map[string]ChannelSpecialBase{
 		ClaudeBaseURL: "https://ark.cn-beijing.volces.com/api/coding",
 		OpenAIBaseURL: "https://ark.cn-beijing.volces.com/api/coding/v3",
 	},
+}
+
+// IsAdvancedCustomChannel includes named channels backed by route presets.
+func IsAdvancedCustomChannel(channelType int) bool {
+	switch channelType {
+	case ChannelTypeAdvancedCustom, ChannelTypeVLLM, ChannelTypeSGLang:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsNativeTaskChannel identifies persisted channel types served by native
+// adapters. Plugin channel bindings use their explicit plugin identity.
+func IsNativeTaskChannel(channelType int) bool {
+	switch channelType {
+	case ChannelTypeOpenAI, ChannelTypeAli, ChannelTypeGemini, ChannelTypeMiniMax,
+		ChannelTypeSunoAPI, ChannelTypeVertexAi, ChannelTypeVolcEngine, ChannelTypeXai,
+		ChannelTypeKling, ChannelTypeJimeng, ChannelTypeVidu, ChannelTypeDoubaoVideo,
+		ChannelTypeSora, ChannelTypeMuse, ChannelTypeMeAI, ChannelTypeXs,
+		ChannelTypeHJ, ChannelTypeMimo, ChannelTypeLingjing, ChannelTypeKuai,
+		ChannelTypeSD0717, ChannelTypeWufan, ChannelTypeAnhe, ChannelTypeZhouSD,
+		ChannelTypeAutoDLH3, ChannelTypeDiaomao, ChannelTypeShafu, ChannelTypeManju,
+		ChannelTypeNaonao, ChannelTypeManying, ChannelTypeWanchen, ChannelTypeYaochen,
+		ChannelTypeLongxia6, ChannelTypeSnumom:
+		return true
+	default:
+		return false
+	}
 }

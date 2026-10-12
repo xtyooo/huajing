@@ -18,7 +18,7 @@ func TestAnheChannelRegistration(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, constant.APITypeOpenAI, apiType)
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(constant.ChannelTypeAnhe, anhe.ModelList[0]))
-	assert.IsType(t, &anhe.TaskAdaptor{}, GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))))
+	assert.IsType(t, &anhe.TaskAdaptor{}, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe))))
 }
 
 func TestAnheFixedPriceCanSkipSecondsRatio(t *testing.T) {

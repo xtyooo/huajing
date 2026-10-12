@@ -19,10 +19,10 @@ func TestTaskPrivateDataImageSizeBillingContextRoundTrip(t *testing.T) {
 
 	value, err := original.Value()
 	require.NoError(t, err)
-	bytesValue, ok := value.([]byte)
+	textValue, ok := value.(string)
 	require.True(t, ok)
 	var restored TaskPrivateData
-	require.NoError(t, restored.Scan(bytesValue))
+	require.NoError(t, restored.Scan(textValue))
 	require.NotNil(t, restored.BillingContext)
 	assert.Equal(t, original.BillingContext, restored.BillingContext)
 }

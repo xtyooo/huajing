@@ -438,7 +438,7 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		return mediaDownloadTarget{}, fmt.Errorf("task is nil")
 	}
 	if resultURL := strings.TrimSpace(task.PrivateData.ResultURL); resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
-		headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
+		headers, err := MediaDownloadHeadersForResultURL(task, resultURL)
 		if err != nil {
 			return mediaDownloadTarget{}, err
 		}
@@ -454,7 +454,7 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		return mediaDownloadTarget{}, fmt.Errorf("anhe task result is missing a valid video URL")
 	}
 	if resultURL := mediaResultURLFromTaskData(task.Data); !requiresValidatedVideoResultURL(task.Platform) && resultURL != "" && !isTaskProxyResultURL(resultURL, task.TaskID) {
-		headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
+		headers, err := MediaDownloadHeadersForResultURL(task, resultURL)
 		if err != nil {
 			return mediaDownloadTarget{}, err
 		}
@@ -467,7 +467,7 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}
 		baseURL := channel.GetBaseURL()
 		if baseURL == "" {
-			baseURL = constant.ChannelBaseURLs[channel.Type]
+			baseURL = constant.GetChannelBaseURL(channel.Type)
 		}
 		if baseURL == "" {
 			return mediaDownloadTarget{}, fmt.Errorf("channel base URL is empty")
@@ -481,7 +481,7 @@ func resolveMediaDownloadTarget(task *model.Task) (mediaDownloadTarget, error) {
 		}, nil
 	}
 	resultURL := strings.TrimSpace(task.PrivateData.ResultURL)
-	headers, err := mediaDownloadHeadersForResultURL(task, resultURL)
+	headers, err := MediaDownloadHeadersForResultURL(task, resultURL)
 	if err != nil {
 		return mediaDownloadTarget{}, err
 	}
@@ -722,8 +722,10 @@ func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
 	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLingjing))
 }
 
-// mediaDownloadHeadersForResultURL 仅向需要鉴权且与渠道同源的结果地址附加渠道密钥，避免泄露给第三方 CDN。
-func mediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
+// MediaDownloadHeadersForResultURL shares the provider-specific credential
+// policy between cache downloads and native content proxy requests. Providers
+// requiring same-origin authentication never send channel keys to a CDN.
+func MediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
 	requiresSameOriginAuth := task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) ||
 		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju)) ||
 		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) ||
@@ -754,7 +756,7 @@ func isResultURLFromChannelOrigin(resultURL string, channel *model.Channel) bool
 	}
 	baseURL := channel.GetBaseURL()
 	if baseURL == "" {
-		baseURL = constant.ChannelBaseURLs[channel.Type]
+		baseURL = constant.GetChannelBaseURL(channel.Type)
 	}
 	result, resultErr := url.Parse(strings.TrimSpace(resultURL))
 	base, baseErr := url.Parse(strings.TrimSpace(baseURL))

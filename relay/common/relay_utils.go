@@ -239,9 +239,9 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		return taskErr
 	}
 
-	action := constant.TaskActionTextGenerate
+	action := constant.TaskActionTextToVideo
 	if hasInputReference {
-		action = constant.TaskActionGenerate
+		action = constant.TaskActionImageToVideo
 	}
 	if strings.HasPrefix(model, "sora-2") {
 

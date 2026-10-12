@@ -2,8 +2,10 @@ package service
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -18,7 +20,9 @@ import (
 func TestNewBillingSessionMasksRequiredQuota(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(nil)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("Accept-Language", "zh-CN")
 
 	const (
 		userID           = 91001
@@ -26,11 +30,12 @@ func TestNewBillingSessionMasksRequiredQuota(t *testing.T) {
 		preConsumedQuota = 3520
 	)
 	seedUser(t, userID, userQuota)
+	userSetting := dto.UserSetting{BillingPreference: "wallet_only", Language: "zhCN"}
+	c.Set("id", userID)
+	c.Set(string(constant.ContextKeyUserSetting), userSetting)
 	relayInfo := &relaycommon.RelayInfo{
-		UserId: userID,
-		UserSetting: dto.UserSetting{
-			BillingPreference: "wallet_only",
-		},
+		UserId:      userID,
+		UserSetting: userSetting,
 	}
 
 	session, apiErr := NewBillingSession(c, relayInfo, preConsumedQuota)

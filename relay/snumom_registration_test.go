@@ -18,7 +18,7 @@ func TestSnumomVideoRegistration(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, constant.APITypeOpenAI, apiType)
 	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(channelType, "future-snumom-model"))
-	require.IsType(t, &snumom.TaskAdaptor{}, GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(channelType))))
+	require.IsType(t, &snumom.TaskAdaptor{}, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(channelType))))
 }
 
 func TestSnumomPublicVideoIsGatedByCacheCompletion(t *testing.T) {

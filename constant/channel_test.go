@@ -64,9 +64,14 @@ func TestCustomChannelTypeIDsRemainStable(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, actual)
-	assert.Equal(t, 82, ChannelTypeDummy)
+	assert.Equal(t, 85, ChannelTypeDummy)
 	require.Len(t, ChannelBaseURLs, ChannelTypeDummy)
 	for name, channelType := range actual {
 		assert.Equal(t, name, ChannelTypeNames[channelType])
 	}
+}
+
+func TestGetChannelBaseURLIsBoundsSafe(t *testing.T) {
+	assert.Empty(t, GetChannelBaseURL(ChannelTypeTaskPlugin))
+	assert.Empty(t, GetChannelBaseURL(9999))
 }
