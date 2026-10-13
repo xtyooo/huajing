@@ -170,7 +170,7 @@ func TestRedactVideoResponseBodyPreservesPollingPayloadShape(t *testing.T) {
 	require.NoError(t, err)
 
 	var stored map[string]any
-	require.NoError(t, common.Unmarshal(redactVideoResponseBody(body), &stored))
+	require.NoError(t, common.Unmarshal(redactVideoResponseBody(body, false), &stored))
 	assert.Equal(t, true, stored["done"])
 	assert.Equal(t, "operations/provider-task", stored["name"])
 	response, ok := stored["response"].(map[string]any)

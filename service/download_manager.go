@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -397,6 +398,47 @@ func streamMediaDownloadToFile(reader io.Reader, filePath string) error {
 	return os.Rename(tempPath, filePath)
 }
 
+// Inline videos cannot be redacted and then handed to the HTTP downloader.
+// Cache the bounded complete bytes while the poller owns them; the caller
+// commits the URL with its terminal status CAS or removes this owned file.
+func cacheInlineVideoResult(taskID, dataURL string) (mediaURL, filePath string, err error) {
+	metadata, encoded, found := strings.Cut(dataURL, ",")
+	metadata, base64Encoded := strings.CutSuffix(metadata, ";base64")
+	if !found || !base64Encoded || len(metadata) > 255 || !strings.HasPrefix(metadata, "data:") {
+		return "", "", fmt.Errorf("invalid inline video data")
+	}
+	mediaType, _, err := mime.ParseMediaType(strings.TrimPrefix(metadata, "data:"))
+	if err != nil || !strings.HasPrefix(mediaType, "video/") {
+		return "", "", fmt.Errorf("invalid inline video media type")
+	}
+	maxBytes := int64(mediaDownloadLimitMB()) * 1024 * 1024
+	// DecodedLen is an upper bound before accounting for at most two padding
+	// bytes; the existing bounded stream writer enforces the exact limit.
+	if int64(base64.StdEncoding.DecodedLen(len(encoded)))-2 > maxBytes {
+		return "", "", fmt.Errorf("inline video exceeds maximum allowed size")
+	}
+	ext := getExtFromContentType(mediaType)
+	if ext == "" {
+		return "", "", fmt.Errorf("unsupported inline video media type")
+	}
+	unique, err := common.GenerateRandomCharsKey(16)
+	if err != nil {
+		return "", "", fmt.Errorf("create inline media identity failed: %w", err)
+	}
+	fileName := time.Now().Format("20060102150405") + "_" + taskID + "." + unique + ext
+	// Besides keeping cleanup compatible, this excludes paths and unexpected
+	// task ids from escaping the configured media directory.
+	if !mediaFileNameRegex.MatchString(fileName) {
+		return "", "", fmt.Errorf("invalid inline video task identity")
+	}
+	filePath = filepath.Join(common.GetMediaDir(), fileName)
+	if err := streamMediaDownloadToFile(base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded)), filePath); err != nil {
+		return "", "", err
+	}
+	baseURL := strings.TrimRight(common.GetEnvOrDefaultString("MEDIA_BASE_URL", "https://huajingapi.top"), "/")
+	return baseURL + "/media/" + fileName, filePath, nil
+}
+
 func validateMediaDownloadResponse(resp *http.Response) error {
 	if resp == nil {
 		return fmt.Errorf("download failed: empty response")
@@ -726,10 +768,11 @@ func isAuthDownloadPlatform(platform constant.TaskPlatform) bool {
 // policy between cache downloads and native content proxy requests. Providers
 // requiring same-origin authentication never send channel keys to a CDN.
 func MediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map[string]string, error) {
+	gemini := task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGemini))
 	requiresSameOriginAuth := task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao)) ||
 		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeManju)) ||
 		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) ||
-		usesOpenAIVideoContentEndpoint(task.Platform)
+		usesOpenAIVideoContentEndpoint(task.Platform) || gemini
 	if !isAuthDownloadPlatform(task.Platform) && !requiresSameOriginAuth {
 		return []map[string]string{nil}, nil
 	}
@@ -745,6 +788,13 @@ func MediaDownloadHeadersForResultURL(task *model.Task, resultURL string) ([]map
 		if !isResultURLFromChannelOrigin(resultURL, channel) {
 			return []map[string]string{nil}, nil
 		}
+	}
+	if gemini {
+		key := strings.TrimSpace(task.PrivateData.Key)
+		if key == "" {
+			return nil, fmt.Errorf("Gemini task selected key is unavailable")
+		}
+		return []map[string]string{{"x-goog-api-key": key}}, nil
 	}
 	return mediaDownloadAuthHeaders(task, channel), nil
 }

@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,29 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestLegacyVideoBridgeUsesActualNormalResultFields(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("complete fixture video bytes"))
+	uri := "https://gemini.example.test/video.mp4?signature=fixture%2Funchanged"
+	for _, tc := range []struct{ name, platform, body, want string }{
+		{"Vertex video array", "41", `{"done":true,"response":{"videos":[{"mimeType":"video/mp4","bytesBase64Encoded":"` + encoded + `"}]}}`, "data:video/mp4;base64," + encoded},
+		{"Vertex response bytes", "41", `{"done":true,"response":{"bytesBase64Encoded":"` + encoded + `"}}`, "data:video/mp4;base64," + encoded},
+		{"Vertex video bytes", "41", `{"done":true,"response":{"video":"` + encoded + `"}}`, "data:video/mp4;base64," + encoded},
+		{"Gemini nested URI", "24", `{"done":true,"response":{"generateVideoResponse":{"generatedVideos":[{"video":{"uri":"` + uri + `"}}]}}}`, uri},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adaptor := GetTaskAdaptor(constant.TaskPlatform(tc.platform))
+			require.NotNil(t, adaptor)
+			info, err := adaptor.ParseTaskResult(&model.Task{TaskID: "task_public", Platform: constant.TaskPlatform(tc.platform)}, &http.Response{StatusCode: http.StatusOK}, []byte(tc.body))
+			require.NoError(t, err)
+			require.Equal(t, model.TaskStatusSuccess, info.Status)
+			require.Equal(t, tc.want, info.Url, "the actual legacy producer must populate the new host's cache field")
+			if tc.platform == "24" {
+				require.Equal(t, tc.want, info.RemoteUrl, "the old Gemini content consumer keeps its field")
+			}
+		})
+	}
+}
 
 func TestNativeTaskRegistrySurvivesPluginDisable(t *testing.T) {
 	previous := constant.TaskPluginEnabled

@@ -119,6 +119,8 @@ type ExtendedModelFormValues = z.infer<typeof extendedModelFormSchema>
 type PricingMode = ModelPricingMode
 type PricingSubMode = 'ratio' | 'price'
 
+type ModelPricingReadVersion = { modelName: string; version: string }
+
 type ModelMutateDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -149,6 +151,10 @@ export function AtomicModelMutateDrawer({
   const [imageSize4k, setImageSize4k] = useState('')
   const [skipSeconds, setSkipSeconds] = useState(false)
   const [tieredExpr, setTieredExpr] = useState('')
+  const [sourcePricingRead, setSourcePricingRead] =
+    useState<ModelPricingReadVersion>()
+  const [destinationPricingRead, setDestinationPricingRead] =
+    useState<ModelPricingReadVersion>()
 
   // Fetch vendors for dropdown
   const { data: vendorsData } = useQuery({
@@ -179,13 +185,15 @@ export function AtomicModelMutateDrawer({
     queryKey: ['atomic-model-pricing-options', pricingModelName],
     queryFn: async () =>
       requireServerSuccess(await getModelPricingOptions(pricingModelName)),
+    refetchOnWindowFocus: false,
     enabled:
       open &&
+      isEditing &&
       Boolean(pricingModelName) &&
-      (!isEditing || Boolean(modelData?.data)),
+      Boolean(modelData?.data),
   })
 
-  const systemOptionsData = pricingOptionsQuery.data
+  const systemOptionsData = isEditing ? pricingOptionsQuery.data : undefined
 
   // Get model settings from system options
   const modelSettings = useMemo(() => {
@@ -238,6 +246,55 @@ export function AtomicModelMutateDrawer({
       audioCompletionRatio: '',
     },
   })
+
+  const destinationModelName = form.watch('model_name')
+  const destinationPricingQuery = useQuery({
+    queryKey: ['atomic-model-pricing-options', destinationModelName],
+    queryFn: async () =>
+      requireServerSuccess(await getModelPricingOptions(destinationModelName)),
+    enabled:
+      open &&
+      Boolean(destinationModelName) &&
+      (!isEditing || destinationModelName !== pricingModelName),
+    refetchOnWindowFocus: false,
+  })
+  const sourcePricingVersion =
+    sourcePricingRead?.modelName === pricingModelName
+      ? sourcePricingRead.version
+      : undefined
+  let destinationPricingVersion: string | undefined
+  if (isEditing && destinationModelName === pricingModelName) {
+    destinationPricingVersion = sourcePricingVersion
+  } else if (destinationPricingRead?.modelName === destinationModelName) {
+    destinationPricingVersion = destinationPricingRead.version
+  }
+  const pricingVersionsReady = Boolean(
+    destinationPricingVersion && (!isEditing || sourcePricingVersion)
+  )
+
+  useEffect(() => {
+    if (!open || (isEditing && destinationModelName === pricingModelName)) {
+      setDestinationPricingRead(undefined)
+      return
+    }
+    // A refreshed cache entry must not advance the version of an existing
+    // destination draft. Capture again only when the edited name changes.
+    if (destinationPricingRead?.modelName === destinationModelName) return
+    if (!destinationPricingQuery.isFetching && destinationPricingQuery.data) {
+      setDestinationPricingRead({
+        modelName: destinationModelName,
+        version: destinationPricingQuery.data.pricing_version,
+      })
+    }
+  }, [
+    open,
+    isEditing,
+    destinationModelName,
+    pricingModelName,
+    destinationPricingRead,
+    destinationPricingQuery.isFetching,
+    destinationPricingQuery.data,
+  ])
 
   const validateNumber = (value: string) => {
     if (value === '') return true
@@ -454,6 +511,16 @@ export function AtomicModelMutateDrawer({
         form.reset(baseModelData)
         setAdvancedOpen(false)
       }
+      // Capture the source version in the same effect that loads its actual
+      // pricing fields. Never submit a newly refetched version with old fields.
+      setSourcePricingRead(
+        modelSettings && systemOptionsData?.pricing_version
+          ? {
+              modelName: model.model_name,
+              version: systemOptionsData.pricing_version,
+            }
+          : undefined
+      )
     } else if (open && !isEditing) {
       // Pre-fill model name if passed from missing models
       setOldModelName('')
@@ -496,13 +563,17 @@ export function AtomicModelMutateDrawer({
     form,
     modelSettings,
     systemOptionsData?.data,
+    systemOptionsData?.pricing_version,
   ])
 
   const onSubmit = useCallback(
     async (values: ExtendedModelFormValues): Promise<void> => {
       setIsSubmitting(true)
       try {
-        if (isEditing && !modelSettings) {
+        if (
+          !destinationPricingVersion ||
+          (isEditing && (!modelSettings || !sourcePricingVersion))
+        ) {
           throw new Error(t('Pricing settings are still loading'))
         }
 
@@ -568,6 +639,12 @@ export function AtomicModelMutateDrawer({
         const response = await saveModelWithPricing({
           model: modelData,
           old_model_name: isEditing ? oldModelName : '',
+          expected_pricing_versions: {
+            ...(isEditing && sourcePricingVersion
+              ? { [oldModelName]: sourcePricingVersion }
+              : {}),
+            [values.model_name]: destinationPricingVersion,
+          },
           pricing,
         })
 
@@ -609,6 +686,8 @@ export function AtomicModelMutateDrawer({
       imageSize4k,
       t,
       modelSettings,
+      sourcePricingVersion,
+      destinationPricingVersion,
     ]
   )
 
@@ -648,6 +727,12 @@ export function AtomicModelMutateDrawer({
               <ErrorState
                 description={pricingOptionsQuery.error.message}
                 onRetry={() => void pricingOptionsQuery.refetch()}
+              />
+            )}
+            {destinationPricingQuery.isError && (
+              <ErrorState
+                description={destinationPricingQuery.error.message}
+                onRetry={() => void destinationPricingQuery.refetch()}
               />
             )}
             {/* Basic Information */}
@@ -1405,7 +1490,11 @@ export function AtomicModelMutateDrawer({
           <Button
             form='model-form'
             type='submit'
-            disabled={isSubmitting || (isEditing && !modelSettings)}
+            disabled={
+              isSubmitting ||
+              !pricingVersionsReady ||
+              (isEditing && !modelSettings)
+            }
           >
             {isSubmitting && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {isEditing ? t('Update Model') : t('Save changes')}

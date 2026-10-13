@@ -23,6 +23,9 @@ const (
 )
 
 type ModelPricingMutation struct {
+	// Nil preserves the legacy API contract. Versioned clients must supply a
+	// read-time version for every source/destination model the save changes.
+	ExpectedVersions     map[string]string  `json:"-"`
 	Mode                 string             `json:"mode"`
 	Price                *float64           `json:"price,omitempty"`
 	Ratio                *float64           `json:"ratio,omitempty"`
@@ -413,6 +416,20 @@ func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMut
 			return fmt.Errorf("model name already exists")
 		}
 		previous := modelPricingValues(values, persistedModelName)
+		if pricing.ExpectedVersions != nil {
+			required := map[string]bool{m.ModelName: true}
+			if persistedModelName != "" {
+				required[persistedModelName] = true
+			}
+			if len(pricing.ExpectedVersions) != len(required) {
+				return ErrModelPricingConflict
+			}
+			for name := range required {
+				if pricing.ExpectedVersions[name] != ModelPricingVersion(modelPricingValues(values, name)) {
+					return ErrModelPricingConflict
+				}
+			}
+		}
 
 		now := common.GetTimestamp()
 		if m.Id == 0 {

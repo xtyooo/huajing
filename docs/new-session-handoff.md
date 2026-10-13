@@ -111,7 +111,7 @@ SSH 密钥只从已有安全文件读取且核对目标；本文件和记忆不�
 
 ## 5. 渠道编号与 snumom 范围
 
-当前 `constant/channel.go`：kuai65、sd0717 66、wufan67、安和70、manju75、naonao76、manying77、wanchen78、yaochen79、longxia6 80、snumom81，Dummy82。
+2026-10-11功能基线 `81580dd69` 的编号快照：kuai65、sd0717 66、wufan67、安和70、manju75、naonao76、manying77、wanchen78、yaochen79、longxia6 80、snumom81，当时Dummy82。2026-10-13官方合入后58–81保持，新增TaskPlugin82/VLLM83/SGLang84，Dummy85仅为数量哨兵；当前完整映射见 [官方合入约定](./upstream-main-integration-2026-10-12.md)。
 仓库还有AutoDL H3、Shafu、Diaomao、Zhou SD等已有渠道；不能只保留本窗口重点列表。
 官方新增编号如与二开重叠，须设计兼容或经审核的数据迁移，不能直接重排常量让现有渠道走错适配器。
 
@@ -131,6 +131,7 @@ wanchen只接HN，CB/JL先不接；新增其它协议需要单独确认需求，
 
 2026-10-12用户明确启动真实官方main评估，在完整计划后回复“继续”授权隔离本地实施、合回dev及推送。固定官方目标为 `dd59854050f26f4f67bb3dac5274af5e17013462`，来源 `QuantumNous/new-api`，不跟随浮动main继续滚动。
 详见 [本次合入契约与运行边界](./upstream-main-integration-2026-10-12.md)；最终门禁、完整提交和推送证据以工作区Trellis任务 `official-main-preparation` 的 results/final-verification 及Git为准。任务完成后固定官方SHA必须成为dev祖先，临时sync工作树/分支必须清理；缺少这些证据时不能据本段宣告合入完成。
+后续2026-10-13检查按用户收窄，仅处理三个正常合入交互，见工作区Trellis `post-merge-deep-check` 的 `integration-contracts.md`、`results.md` 与最终校验收据；不据早期广泛调查继续实施历史/故障或资金架构改造。
 本任务不部署、不连接线上数据或Redis、不创建付费生成。历史生产仍按第3节的最后核验日期理解；未来发布需要单独授权、每实例实时预检及一致备份/恢复，不能因为源码已合入就执行code-only升级。
 2026-08的 `integrate/upstream-main-20260811`、`e2213109` 是历史基线；现在不按它开日常开发。
 本次固定输入为94本地独有/328官方独有提交、330二开文件、118重叠、76文本冲突。历史299提交/1659文件只是当时快照，下一次主线同步仍须重新计算。

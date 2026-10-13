@@ -100,6 +100,7 @@ export async function getModelPricingOptions(modelName: string): Promise<{
   success: boolean
   message?: string
   data: { key: string; value: string }[]
+  pricing_version: string
 }> {
   const response = await api.get('/api/models/pricing', {
     params: { model: modelName },
@@ -110,6 +111,7 @@ export async function getModelPricingOptions(modelName: string): Promise<{
 export async function saveModelWithPricing(data: {
   model: Partial<Model>
   old_model_name: string
+  expected_pricing_versions: Record<string, string>
   pricing: {
     mode:
       | 'per-token'

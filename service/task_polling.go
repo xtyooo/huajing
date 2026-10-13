@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -568,7 +569,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	needsDownload := false
-	task.Data = redactVideoResponseBody(responseBody)
+	inlineFile := ""
+	inlineFileDurable := false
+	defer func() {
+		if inlineFile != "" && !inlineFileDurable {
+			_ = os.Remove(inlineFile)
+		}
+	}()
+	task.Data = redactVideoResponseBody(responseBody, task.RequiresNativeVideoCache() && strings.HasPrefix(taskResult.Url, "data:"))
 	if len(taskResult.PluginState) > 0 {
 		task.PrivateData.PluginState = taskResult.PluginState
 	}
@@ -596,8 +604,29 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			task.FinishTime = now
 		}
 		if strings.HasPrefix(taskResult.Url, "data:") {
-			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
+			if task.RequiresNativeVideoCache() {
+				task.MediaStartTime = now
+				mediaURL, filePath, cacheErr := cacheInlineVideoResult(task.TaskID, taskResult.Url)
+				task.MediaFinishTime = time.Now().Unix()
+				if cacheErr != nil {
+					task.MediaStatus = model.MediaStatusFailed
+					task.MediaURL = ""
+					task.FailReason = "media cache failed: " + cacheErr.Error()
+					// Redacted inline bytes cannot be recovered by an HTTP retry.
+					// Keep a visible cache failure without repeatedly downloading
+					// the public proxy marker or refunding successful generation.
+					task.MediaRetryCount = mediaCompensationRetries
+					task.MediaNextRetryAt = 0
+				} else {
+					inlineFile = filePath
+					task.MediaStatus = model.MediaStatusSuccess
+					task.MediaURL = mediaURL
+					task.PrivateData.ResultURL = mediaURL
+					task.FailReason = ""
+					task.MediaNextRetryAt = 0
+				}
+			}
 		} else if taskResult.Url != "" {
 			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
 			task.PrivateData.ResultURL = taskResult.Url
@@ -657,8 +686,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			logger.LogWarn(ctx, common.LogText("Task %s CAS lost or no-op update, skip billing", task.TaskID))
 			shouldFinalizeBilling = false
 			needsDownload = false
-		} else if needsDownload {
-			DownloadManager.WakeUp()
+		} else {
+			inlineFileDurable = inlineFile != ""
+			if needsDownload {
+				DownloadManager.WakeUp()
+			}
 		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
@@ -694,7 +726,7 @@ func finalizeTerminalTask(ctx context.Context, adaptor TaskPollingAdaptor, task 
 	}
 }
 
-func redactVideoResponseBody(body []byte) []byte {
+func redactVideoResponseBody(body []byte, inlineVideo bool) []byte {
 	var m map[string]any
 	if err := common.Unmarshal(body, &m); err != nil {
 		return body
@@ -702,13 +734,22 @@ func redactVideoResponseBody(body []byte) []byte {
 	resp, _ := m["response"].(map[string]any)
 	if resp != nil {
 		delete(resp, "bytesBase64Encoded")
-		if v, ok := resp["video"].(string); ok {
+		if inlineVideo {
+			delete(resp, "video")
+		} else if v, ok := resp["video"].(string); ok {
 			resp["video"] = truncateBase64(v)
 		}
 		if vs, ok := resp["videos"].([]any); ok {
 			for i := range vs {
 				if vm, ok := vs[i].(map[string]any); ok {
 					delete(vm, "bytesBase64Encoded")
+					if inlineVideo {
+						for _, key := range []string{"uri", "url"} {
+							if value, ok := vm[key].(string); ok && strings.HasPrefix(value, "data:") {
+								delete(vm, key)
+							}
+						}
+					}
 				}
 			}
 		}
@@ -857,7 +898,7 @@ func isNonTerminalPollStatus(status model.TaskStatus) bool {
 // upstream body so the WARN line is enough to diagnose a parser gap.
 func unrecognizedPollDetail(reason string, body []byte) string {
 	const maxBodyChars = 512
-	redacted := string(redactVideoResponseBody(body))
+	redacted := string(redactVideoResponseBody(body, false))
 	if len(redacted) > maxBodyChars {
 		redacted = redacted[:maxBodyChars] + "…"
 	}

@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -58,7 +60,7 @@ func GetModelPricingOptionsMeta(c *gin.Context) {
 		options = append(options, &model.Option{Key: key, Value: string(encoded)})
 	}
 	sort.Slice(options, func(i, j int) bool { return options[i].Key < options[j].Key })
-	common.ApiSuccess(c, options)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": options, "pricing_version": snapshot.Entries[0].Version})
 }
 
 // GetAllModelsMeta 获取模型列表（分页）
@@ -238,9 +240,10 @@ func UpdateModelMeta(c *gin.Context) {
 }
 
 type modelPricingMutationRequest struct {
-	Model        model.Model                `json:"model"`
-	OldModelName string                     `json:"old_model_name"`
-	Pricing      model.ModelPricingMutation `json:"pricing"`
+	Model                   model.Model                `json:"model"`
+	OldModelName            string                     `json:"old_model_name"`
+	Pricing                 model.ModelPricingMutation `json:"pricing"`
+	ExpectedPricingVersions json.RawMessage            `json:"expected_pricing_versions,omitempty"`
 }
 
 func SaveModelWithPricingMeta(c *gin.Context) {
@@ -257,7 +260,17 @@ func SaveModelWithPricingMeta(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if len(request.ExpectedPricingVersions) > 0 {
+		if err := common.Unmarshal(request.ExpectedPricingVersions, &request.Pricing.ExpectedVersions); err != nil || len(request.Pricing.ExpectedVersions) == 0 {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+			return
+		}
+	}
 	if err := model.SaveModelWithPricing(&request.Model, request.OldModelName, request.Pricing); err != nil {
+		if errors.Is(err, model.ErrModelPricingConflict) {
+			common.ApiErrorStatus(c, http.StatusConflict, err)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
