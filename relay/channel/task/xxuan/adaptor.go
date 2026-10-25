@@ -183,6 +183,64 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, bod
 		if code := responseErrorCode(data); code != "" {
 			message += " (" + code + ")"
 		}
+		// Decode the optional trace independently: an invalid trace type must not
+		// hide a valid machine error code. Never forward free-text provider errors.
+		var trace struct {
+			RequestID string `json:"request_id"`
+		}
+		if common.Unmarshal(data, &trace) == nil && strings.HasPrefix(trace.RequestID, "req_") && len(trace.RequestID) > 4 && len(trace.RequestID) <= 128 {
+			valid := true
+			for _, ch := range trace.RequestID[4:] {
+				if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '_' || ch == '-') {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				c.Set(common.UpstreamRequestIdKey, trace.RequestID)
+				message += " upstream_request_id=" + trace.RequestID
+			}
+		}
+	}
+	// Summarize validated representations only, never their values. Fixed groups,
+	// labels and the per-group item cap keep output bounded even with DEBUG on.
+	if a.Upscale {
+		if a.assetID != "" {
+			message += " media=source=asset_id"
+		} else {
+			message += " media=source=missing"
+		}
+	} else {
+		message += " media="
+		for i, group := range []string{"images", "videos", "audios"} {
+			if i > 0 {
+				message += " "
+			}
+			items := a.request.assets[group]
+			message += fmt.Sprintf("%s=%d[", group, len(items))
+			const maxSummaryItems = 3
+			for j, item := range items[:min(len(items), maxSummaryItems)] {
+				if j > 0 {
+					message += ","
+				}
+				switch value := item.(type) {
+				case string:
+					if strings.HasPrefix(value, "ast_") {
+						message += "asset_id"
+					} else {
+						message += "url_string"
+					}
+				case map[string]any:
+					message += "url_object"
+				default:
+					message += "unknown"
+				}
+			}
+			if len(items) > maxSummaryItems {
+				message += fmt.Sprintf(",+%d", len(items)-maxSummaryItems)
+			}
+			message += "]"
+		}
 	}
 	resp.Body = io.NopCloser(strings.NewReader(message))
 	resp.ContentLength = int64(len(message))
