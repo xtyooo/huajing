@@ -41,7 +41,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import { IconBadge } from '@/components/ui/icon-badge'
 import {
   Select,
@@ -52,7 +51,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getDeploymentLogs, listDeploymentContainers } from '../../api'
 
@@ -81,10 +79,8 @@ export function ViewLogsDialog({
     isFetching: isFetchingContainers,
   } = useQuery({
     queryKey: ['deployment-containers', deploymentId],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (deploymentId ? listDeploymentContainers(deploymentId) : null)
-      ),
+    queryFn: () =>
+      deploymentId ? listDeploymentContainers(deploymentId) : null,
     enabled: open && deploymentId !== null,
   })
 
@@ -121,16 +117,14 @@ export function ViewLogsDialog({
     isFetching: isFetchingLogs,
   } = useQuery({
     queryKey: ['deployment-logs', deploymentId, containerId, stream],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (deploymentId && containerId
-          ? getDeploymentLogs(deploymentId, {
-              container_id: containerId,
-              stream,
-              limit: 500,
-            })
-          : null)
-      ),
+    queryFn: () =>
+      deploymentId && containerId
+        ? getDeploymentLogs(deploymentId, {
+            container_id: containerId,
+            stream,
+            limit: 500,
+          })
+        : null,
     enabled: open && deploymentId !== null && Boolean(containerId),
     refetchInterval: open && autoRefresh ? 5000 : false,
   })
@@ -265,8 +259,8 @@ export function ViewLogsDialog({
       <div className='mb-3 grid gap-2 sm:grid-cols-2 sm:gap-3'>
         <div className='space-y-1'>
           <div className='text-muted-foreground text-xs'>{t('Container')}</div>
-          <Combobox
-            options={containers.flatMap((c) => {
+          <Select
+            items={containers.flatMap((c) => {
               const id = c?.container_id
               if (typeof id !== 'string' || !id) return []
               const status =
@@ -276,16 +270,43 @@ export function ViewLogsDialog({
               return [
                 {
                   value: id,
-                  label: `${id}${status}`,
+                  label: (
+                    <>
+                      {id}
+                      {status}
+                    </>
+                  ),
                 },
               ]
             })}
             value={containerId}
             onValueChange={(v) => v !== null && setContainerId(v)}
             disabled={isLoadingContainers || containers.length === 0}
-            className='w-full'
-            placeholder={containerPlaceholder}
-          />
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={containerPlaceholder} />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                {containers.map((c) => {
+                  const id = c?.container_id
+                  if (typeof id !== 'string' || !id) {
+                    return null
+                  }
+                  const status =
+                    typeof c?.status === 'string' && c.status
+                      ? ` (${c.status})`
+                      : ''
+                  return (
+                    <SelectItem key={id} value={id}>
+                      {id}
+                      {status}
+                    </SelectItem>
+                  )
+                })}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
         <div className='space-y-1'>
           <div className='text-muted-foreground text-xs'>{t('Stream')}</div>

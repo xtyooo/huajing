@@ -54,7 +54,6 @@ import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { useTheme } from '@/context/theme-provider'
 import {
   type ContentLayout,
-  resolveThemeFont,
   THEME_PRESETS,
   type ThemeFont,
   type ThemePreset,
@@ -306,26 +305,28 @@ function PresetConfig() {
 /**
  * Font options shown in the theme drawer.
  *
- * Each option previews the font it will select, including Auto when the
- * user currently has an explicit font selected.
+ * Each option renders a live "Aa" preview in the font it represents.
+ * `Auto` deliberately leaves `fontFamily` undefined so the preview inherits
+ * the currently active body font — that way the user sees what `Auto` will
+ * actually look like for the active preset (Anthropic → serif glyphs,
+ * everything else → sans glyphs) without us having to duplicate the
+ * preset-default mapping in the UI.
  */
 const FONT_OPTIONS: {
   value: ThemeFont
   label: string
-  // Auto resolves its preview from the active preset.
+  // CSS font-family applied to the "Aa" preview. `undefined` = inherit
+  // from the current theme (used by the `default` option).
   preview?: string
 }[] = [
   { value: 'default', label: 'Auto', preview: undefined },
-  { value: 'sans', label: 'Sans', preview: 'var(--font-public-sans)' },
+  { value: 'sans', label: 'Sans', preview: 'var(--font-sans)' },
   { value: 'serif', label: 'Serif', preview: 'var(--font-serif)' },
 ]
 
 function FontConfig() {
   const { t } = useTranslation()
   const { defaults, customization, setFont } = useThemeCustomization()
-  const autoFont = resolveThemeFont('default', customization.preset)
-  const autoFontFamily =
-    autoFont === 'serif' ? 'var(--font-serif)' : 'sans-serif'
   return (
     <div>
       <SectionTitle
@@ -366,7 +367,13 @@ function FontConfig() {
               <span
                 aria-hidden='true'
                 className='text-foreground absolute inset-0 flex items-center justify-center text-lg leading-none font-medium'
-                style={{ fontFamily: option.preview ?? autoFontFamily }}
+                style={
+                  option.preview
+                    ? { fontFamily: option.preview }
+                    : // `font: inherit` defers to the active theme so the
+                      // "Auto" tile previews what the resolved font will be.
+                      { font: 'inherit', fontSize: '1.125rem' }
+                }
               >
                 Aa
               </span>

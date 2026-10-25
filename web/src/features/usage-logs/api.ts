@@ -16,10 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api, type ApiRequestConfig } from '@/lib/api'
+import { api } from '@/lib/api'
 
-import { buildQueryParams } from './lib/query-params'
-import { parseTaskArtifactsResponse } from './lib/task-artifacts'
+import { buildQueryParams } from './lib/utils'
 import type {
   GetLogsParams,
   GetLogsResponse,
@@ -27,7 +26,6 @@ import type {
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
-  TaskArtifactsResponse,
   UserInfo,
 } from './types'
 
@@ -112,16 +110,3 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
-
-const taskArtifactRequestConfig = {
-  skipBusinessError: true,
-  skipErrorHandler: true,
-} satisfies ApiRequestConfig
-
-export async function getTaskArtifacts(taskId: string) {
-  const response = await api.get<TaskArtifactsResponse>(
-    `/api/task/${encodeURIComponent(taskId)}/artifacts`,
-    taskArtifactRequestConfig
-  )
-  return parseTaskArtifactsResponse(response.data)
-}

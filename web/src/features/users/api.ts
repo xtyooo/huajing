@@ -16,12 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { AxiosRequestConfig } from 'axios'
-
 import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
-import type { CustomOAuthBinding } from '@/lib/oauth'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {
   User,
@@ -33,16 +29,6 @@ import type {
   ManageUserQuotaPayload,
   ApiResponse,
 } from './types'
-
-// A step-up proof is single-use, so the request carrying it must never be
-// replayed by the auth-refresh interceptor; it refreshes first instead.
-function securityProofConfig(proofToken?: string): AxiosRequestConfig {
-  if (!proofToken) return {}
-  return {
-    headers: { 'X-Security-Proof': proofToken },
-    singleUseAuthorization: true,
-  }
-}
 
 // ============================================================================
 // User Management APIs
@@ -104,61 +90,41 @@ export async function getUser(id: number): Promise<ApiResponse<User>> {
 }
 
 /**
- * Create a new user. Creating an administrator requires an
- * `admin.user.create` proof.
+ * Create a new user
  */
 export async function createUser(
-  data: UserFormData,
-  proofToken?: string
+  data: UserFormData
 ): Promise<ApiResponse<User>> {
-  const res = await api.post(
-    '/api/user/',
-    data,
-    securityProofConfig(proofToken)
-  )
+  const res = await api.post('/api/user/', data)
   return res.data
 }
 
 /**
- * Update an existing user. Changing the password or the admin permission
- * matrix requires an `admin.user.update` proof.
+ * Update an existing user
  */
 export async function updateUser(
-  data: UserFormData & { id: number },
-  proofToken?: string
+  data: UserFormData & { id: number }
 ): Promise<ApiResponse<Partial<User>>> {
-  const res = await api.put('/api/user/', data, securityProofConfig(proofToken))
+  const res = await api.put('/api/user/', data)
   return res.data
 }
 
 /**
- * Delete a single user (hard delete); requires an `admin.user.delete` proof
+ * Delete a single user (hard delete)
  */
-export async function deleteUser(
-  id: number,
-  proofToken: string
-): Promise<ApiResponse> {
-  const res = await api.delete(
-    `/api/user/${id}/`,
-    securityProofConfig(proofToken)
-  )
+export async function deleteUser(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/${id}/`)
   return res.data
 }
 
 /**
- * Manage user (promote, demote, enable, disable, delete); requires an
- * `admin.user.manage` proof (`admin.user.delete` for deletion)
+ * Manage user (promote, demote, enable, disable, delete)
  */
 export async function manageUser(
   id: number,
-  action: ManageUserAction,
-  proofToken: string
+  action: ManageUserAction
 ): Promise<ApiResponse<Partial<User>>> {
-  const res = await api.post(
-    '/api/user/manage',
-    { id, action },
-    securityProofConfig(proofToken)
-  )
+  const res = await api.post('/api/user/manage', { id, action })
   return res.data
 }
 
@@ -173,31 +139,18 @@ export async function adjustUserQuota(
 }
 
 /**
- * Reset user's Passkey registration; requires an `admin.user.passkey.reset` proof
+ * Reset user's Passkey registration
  */
-export async function resetUserPasskey(
-  id: number,
-  proofToken: string
-): Promise<ApiResponse> {
-  const res = await api.delete(
-    `/api/user/${id}/reset_passkey`,
-    securityProofConfig(proofToken)
-  )
+export async function resetUserPasskey(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/${id}/reset_passkey`)
   return res.data
 }
 
 /**
- * Reset user's Two-Factor Authentication setup; requires an
- * `admin.user.2fa.disable` proof
+ * Reset user's Two-Factor Authentication setup
  */
-export async function resetUserTwoFA(
-  id: number,
-  proofToken: string
-): Promise<ApiResponse> {
-  const res = await api.delete(
-    `/api/user/${id}/2fa`,
-    securityProofConfig(proofToken)
-  )
+export async function resetUserTwoFA(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/${id}/2fa`)
   return res.data
 }
 
@@ -215,7 +168,6 @@ export async function getGroups(): Promise<ApiResponse<string[]>> {
  */
 export async function getPermissionCatalog(): Promise<PermissionCatalog> {
   const res = await api.get('/api/authz/catalog')
-  requireServerSuccess(res.data)
   return {
     resources: res.data?.data?.resources ?? [],
     roles: res.data?.data?.roles ?? [],
@@ -226,44 +178,43 @@ export async function getPermissionCatalog(): Promise<PermissionCatalog> {
 // Admin Binding Management APIs
 // ============================================================================
 
+export interface OAuthBinding {
+  provider_id: string
+  provider_name: string
+  user_id?: number
+  external_id?: string
+}
+
 /**
  * Get user's custom OAuth bindings (admin)
  */
 export async function getUserOAuthBindings(
   userId: number
-): Promise<ApiResponse<CustomOAuthBinding[]>> {
+): Promise<ApiResponse<OAuthBinding[]>> {
   const res = await api.get(`/api/user/${userId}/oauth/bindings`)
   return res.data
 }
 
 /**
- * Clear a user's built-in binding (admin); requires an
- * `admin.user.binding.clear` proof bound to the binding type
+ * Clear a user's built-in binding (admin)
  */
 export async function adminClearUserBinding(
   userId: number,
-  bindingType: string,
-  proofToken: string
+  bindingType: string
 ): Promise<ApiResponse> {
-  const res = await api.delete(
-    `/api/user/${userId}/bindings/${bindingType}`,
-    securityProofConfig(proofToken)
-  )
+  const res = await api.delete(`/api/user/${userId}/bindings/${bindingType}`)
   return res.data
 }
 
 /**
- * Unbind custom OAuth for a user (admin); requires an
- * `admin.user.binding.clear` proof bound to the provider ID
+ * Unbind custom OAuth for a user (admin)
  */
 export async function adminUnbindCustomOAuth(
   userId: number,
-  providerId: number,
-  proofToken: string
+  providerId: string
 ): Promise<ApiResponse> {
   const res = await api.delete(
-    `/api/user/${userId}/oauth/bindings/${providerId}`,
-    securityProofConfig(proofToken)
+    `/api/user/${userId}/oauth/bindings/${providerId}`
   )
   return res.data
 }

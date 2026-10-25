@@ -24,17 +24,17 @@ func RedisKeyCacheSeconds() int {
 func InitRedisClient() (err error) {
 	if os.Getenv("REDIS_CONN_STRING") == "" {
 		RedisEnabled = false
-		SysLog(LogText("REDIS_CONN_STRING not set, Redis is not enabled"))
+		SysLog("REDIS_CONN_STRING not set, Redis is not enabled")
 		return nil
 	}
 	if os.Getenv("SYNC_FREQUENCY") == "" {
-		SysLog(LogText("SYNC_FREQUENCY not set, use default value 60"))
+		SysLog("SYNC_FREQUENCY not set, use default value 60")
 		SyncFrequency = 60
 	}
-	SysLog(LogText("Redis is enabled"))
+	SysLog("Redis is enabled")
 	opt, err := redis.ParseURL(os.Getenv("REDIS_CONN_STRING"))
 	if err != nil {
-		FatalLog(LogText("failed to parse Redis connection string: %s", err.Error()))
+		FatalLog("failed to parse Redis connection string: " + err.Error())
 	}
 	opt.PoolSize = GetEnvOrDefault("REDIS_POOL_SIZE", 10)
 	RDB = redis.NewClient(opt)
@@ -44,11 +44,11 @@ func InitRedisClient() (err error) {
 
 	_, err = RDB.Ping(ctx).Result()
 	if err != nil {
-		FatalLog(LogText("Redis ping test failed: %s", err.Error()))
+		FatalLog("Redis ping test failed: " + err.Error())
 	}
 	if DebugEnabled {
-		SysLog(LogText("Redis connected to %s", opt.Addr))
-		SysLog(LogText("Redis database: %d", opt.DB))
+		SysLog(fmt.Sprintf("Redis connected to %s", opt.Addr))
+		SysLog(fmt.Sprintf("Redis database: %d", opt.DB))
 	}
 	return err
 }
@@ -56,14 +56,14 @@ func InitRedisClient() (err error) {
 func ParseRedisOption() *redis.Options {
 	opt, err := redis.ParseURL(os.Getenv("REDIS_CONN_STRING"))
 	if err != nil {
-		FatalLog(LogText("failed to parse Redis connection string: %s", err.Error()))
+		FatalLog("failed to parse Redis connection string: " + err.Error())
 	}
 	return opt
 }
 
 func RedisSet(key string, value string, expiration time.Duration) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis SET: key=%s, value=%s, expiration=%v", key, value, expiration))
+		SysLog(fmt.Sprintf("Redis SET: key=%s, value=%s, expiration=%v", key, value, expiration))
 	}
 	ctx := context.Background()
 	return RDB.Set(ctx, key, value, expiration).Err()
@@ -71,7 +71,7 @@ func RedisSet(key string, value string, expiration time.Duration) error {
 
 func RedisGet(key string) (string, error) {
 	if DebugEnabled {
-		SysLog(LogText("Redis GET: key=%s", key))
+		SysLog(fmt.Sprintf("Redis GET: key=%s", key))
 	}
 	ctx := context.Background()
 	val, err := RDB.Get(ctx, key).Result()
@@ -90,7 +90,7 @@ func RedisGet(key string) (string, error) {
 
 func RedisDel(key string) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis DEL: key=%s", key))
+		SysLog(fmt.Sprintf("Redis DEL: key=%s", key))
 	}
 	ctx := context.Background()
 	return RDB.Del(ctx, key).Err()
@@ -98,19 +98,19 @@ func RedisDel(key string) error {
 
 func RedisDelKey(key string) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis DEL Key: key=%s", key))
+		SysLog(fmt.Sprintf("Redis DEL Key: key=%s", key))
 	}
 	ctx := context.Background()
 	return RDB.Del(ctx, key).Err()
 }
 
-func RedisHSetObj(key string, obj any, expiration time.Duration) error {
+func RedisHSetObj(key string, obj interface{}, expiration time.Duration) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis HSET: key=%s, obj=%+v, expiration=%v", key, obj, expiration))
+		SysLog(fmt.Sprintf("Redis HSET: key=%s, obj=%+v, expiration=%v", key, obj, expiration))
 	}
 	ctx := context.Background()
 
-	data := make(map[string]any)
+	data := make(map[string]interface{})
 
 	// 使用反射遍历结构体字段
 	v := reflect.ValueOf(obj).Elem()
@@ -125,7 +125,7 @@ func RedisHSetObj(key string, obj any, expiration time.Duration) error {
 		}
 
 		// 处理指针类型
-		if value.Kind() == reflect.Pointer {
+		if value.Kind() == reflect.Ptr {
 			if value.IsNil() {
 				data[field.Name] = ""
 				continue
@@ -158,9 +158,9 @@ func RedisHSetObj(key string, obj any, expiration time.Duration) error {
 	return nil
 }
 
-func RedisHGetObj(key string, obj any) error {
+func RedisHGetObj(key string, obj interface{}) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis HGETALL: key=%s", key))
+		SysLog(fmt.Sprintf("Redis HGETALL: key=%s", key))
 	}
 	ctx := context.Background()
 
@@ -175,7 +175,7 @@ func RedisHGetObj(key string, obj any) error {
 
 	// Handle both pointer and non-pointer values
 	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Pointer {
+	if val.Kind() != reflect.Ptr {
 		return fmt.Errorf("obj must be a pointer to a struct, got %T", obj)
 	}
 
@@ -192,7 +192,7 @@ func RedisHGetObj(key string, obj any) error {
 			fieldValue := v.Field(i)
 
 			// Handle pointer types
-			if fieldValue.Kind() == reflect.Pointer {
+			if fieldValue.Kind() == reflect.Ptr {
 				if value == "" {
 					continue
 				}
@@ -248,7 +248,7 @@ func RedisHGetObj(key string, obj any) error {
 // RedisIncr Add this function to handle atomic increments
 func RedisIncr(key string, delta int64) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis INCR: key=%s, delta=%d", key, delta))
+		SysLog(fmt.Sprintf("Redis INCR: key=%s, delta=%d", key, delta))
 	}
 	// 检查键的剩余生存时间
 	ttlCmd := RDB.TTL(context.Background(), key)
@@ -281,7 +281,7 @@ func RedisIncr(key string, delta int64) error {
 
 func RedisHIncrBy(key, field string, delta int64) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis HINCRBY: key=%s, field=%s, delta=%d", key, field, delta))
+		SysLog(fmt.Sprintf("Redis HINCRBY: key=%s, field=%s, delta=%d", key, field, delta))
 	}
 	ttlCmd := RDB.TTL(context.Background(), key)
 	ttl, err := ttlCmd.Result()
@@ -306,9 +306,9 @@ func RedisHIncrBy(key, field string, delta int64) error {
 	return nil
 }
 
-func RedisHSetField(key, field string, value any) error {
+func RedisHSetField(key, field string, value interface{}) error {
 	if DebugEnabled {
-		SysLog(LogText("Redis HSET field: key=%s, field=%s, value=%v", key, field, value))
+		SysLog(fmt.Sprintf("Redis HSET field: key=%s, field=%s, value=%v", key, field, value))
 	}
 	ttlCmd := RDB.TTL(context.Background(), key)
 	ttl, err := ttlCmd.Result()

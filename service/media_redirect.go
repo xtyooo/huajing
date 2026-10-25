@@ -20,9 +20,6 @@ func SameOriginMediaClient(base *http.Client) *http.Client {
 			req.Header.Del("Authorization")
 			req.Header.Del("Cookie")
 			req.Header.Del("Proxy-Authorization")
-			req.Header.Del("x-goog-api-key")
-			req.Header.Del("apikey")
-			req.Header.Del("X-Seedance-Key")
 		}
 		if base.CheckRedirect != nil {
 			return base.CheckRedirect(req, via)

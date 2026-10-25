@@ -18,8 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
-import { accountPasswordSchema } from '@/lib/password-policy'
-
 // ============================================================================
 // Form Schemas
 // ============================================================================
@@ -33,7 +31,11 @@ export const registerFormSchema = z
   .object({
     username: z.string().min(1, 'Please enter your username'),
     email: z.string().optional(),
-    password: accountPasswordSchema,
+    password: z
+      .string()
+      .min(1, 'Please enter your password')
+      .min(8, 'Password must be between 8 and 20 characters')
+      .max(20, 'Password must be at most 20 characters long'),
     confirmPassword: z.string().min(1, 'Please confirm your password'),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -73,6 +75,6 @@ export const PASSWORD_RESET_COUNTDOWN = 30 // seconds
 // OAuth Constants
 // ============================================================================
 
-export const OAUTH_POPUP_CALLBACK_MESSAGE = 'oauth:popup:callback'
-export const OAUTH_POPUP_RESULT_MESSAGE = 'oauth:popup:result'
+export const OAUTH_BIND_CALLBACK_MESSAGE = 'oauth:binding:callback'
+export const OAUTH_BIND_RESULT_MESSAGE = 'oauth:binding:result'
 export const TELEGRAM_BIND_RESULT_MESSAGE = 'telegram:binding:result'

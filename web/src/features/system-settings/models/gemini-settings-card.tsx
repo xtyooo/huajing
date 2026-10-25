@@ -339,7 +339,7 @@ export function GeminiSettingsCard({ defaultValues }: GeminiSettingsCardProps) {
                       {t('Supports `-thinking`, `-thinking-')}
                       {'{{budget}}'}
                       {t(
-                        '`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.'
+                        '`, and `-nothinking` suffixes while routing to the correct Gemini variant.'
                       )}
                     </FormDescription>
                   </SettingsSwitchContent>

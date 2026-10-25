@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
 import {
   applyJsonSmartEnter,
@@ -28,42 +29,42 @@ import {
 
 describe('json code editor utils', () => {
   test('treats empty drafts as valid editable JSON drafts', () => {
-    expect(getJsonValidationState('  \n')).toEqual({
+    assert.deepEqual(getJsonValidationState('  \n'), {
       isValid: true,
       messageKey: 'JSON',
     })
   })
 
   test('reports invalid JSON without throwing away the draft', () => {
-    expect(getJsonValidationState('{"model": }')).toEqual({
+    assert.deepEqual(getJsonValidationState('{"model": }'), {
       isValid: false,
       messageKey: 'Invalid JSON',
     })
   })
 
   test('formats valid JSON with stable two-space indentation', () => {
-    expect(formatJsonDraft('{"model":{"ratio":2}}')).toEqual({
+    assert.deepEqual(formatJsonDraft('{"model":{"ratio":2}}'), {
       didFormat: true,
       value: '{\n  "model": {\n    "ratio": 2\n  }\n}',
     })
   })
 
   test('keeps invalid JSON drafts unchanged when formatting is requested', () => {
-    expect(formatJsonDraft('{"model": }')).toEqual({
+    assert.deepEqual(formatJsonDraft('{"model": }'), {
       didFormat: false,
       value: '{"model": }',
     })
   })
 
   test('derives the one-based cursor line and column from text offsets', () => {
-    expect(getCursorLocation('{\n  "model": 1\n}', 5)).toEqual({
+    assert.deepEqual(getCursorLocation('{\n  "model": 1\n}', 5), {
       line: 2,
       column: 4,
     })
   })
 
   test('expands paired JSON brackets with a nested indentation line', () => {
-    expect(applyJsonSmartEnter('{}', 1, 1)).toEqual({
+    assert.deepEqual(applyJsonSmartEnter('{}', 1, 1), {
       value: '{\n  \n}',
       selectionStart: 4,
       selectionEnd: 4,
@@ -89,11 +90,11 @@ describe('json code editor utils', () => {
     source.scrollTop = 80
     synchronizer.sync()
 
-    expect(queuedFrames.length).toBe(1)
+    assert.equal(queuedFrames.length, 1)
 
     queuedFrames[0]()
 
-    expect(contentLayer.style.transform).toBe('translate3d(-24px, -80px, 0)')
-    expect(lineNumberLayer.style.transform).toBe('translate3d(0, -80px, 0)')
+    assert.equal(contentLayer.style.transform, 'translate3d(-24px, -80px, 0)')
+    assert.equal(lineNumberLayer.style.transform, 'translate3d(0, -80px, 0)')
   })
 })

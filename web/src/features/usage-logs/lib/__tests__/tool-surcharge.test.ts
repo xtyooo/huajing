@@ -16,18 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
 import type { LogOtherData } from '../../types'
 import { hasToolSurcharge } from '../format'
 
 describe('tool surcharge detection', () => {
   test('shows the marker for a charged structured tool surcharge', () => {
-    expect(
+    assert.equal(
       hasToolSurcharge({
         tool_surcharges: [{ name: 'lookup_customer', count: 2, price: 5 }],
-      })
-    ).toBe(true)
+      }),
+      true
+    )
   })
 
   const legacyCases: Array<{
@@ -61,7 +63,7 @@ describe('tool surcharge detection', () => {
 
   for (const scenario of legacyCases) {
     test(`keeps the marker visible for legacy ${scenario.name} charges`, () => {
-      expect(hasToolSurcharge(scenario.other)).toBe(true)
+      assert.equal(hasToolSurcharge(scenario.other), true)
     })
   }
 
@@ -91,7 +93,7 @@ describe('tool surcharge detection', () => {
     ]
 
     for (const other of invalidCases) {
-      expect(hasToolSurcharge(other)).toBe(false)
+      assert.equal(hasToolSurcharge(other), false)
     }
   })
 })

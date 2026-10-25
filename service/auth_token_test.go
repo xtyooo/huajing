@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +19,6 @@ func useTestSessionSecret(t *testing.T) {
 }
 
 func TestAccessTokenRoundTripAndPurposeIsolation(t *testing.T) {
-	setupAuthSessionTestDB(t)
 	useTestSessionSecret(t)
 	identity := AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
 
@@ -32,9 +30,7 @@ func TestAccessTokenRoundTripAndPurposeIsolation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, identity, parsed)
 
-	binding, err := BindVerificationOperation(VerificationOperation{Scope: "channel.key.read", Context: []byte(`{"channel_id":123}`)})
-	require.NoError(t, err)
-	proof, _, err := IssueSecurityProof(identity, "2fa", binding)
+	proof, _, err := IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
 	require.NoError(t, err)
 	_, err = ParseAccessToken(proof)
 	assert.ErrorIs(t, err, ErrAuthTokenInvalid)
@@ -61,7 +57,6 @@ func TestAccessTokenRejectsTampering(t *testing.T) {
 }
 
 func TestDashboardAccessTokenClassification(t *testing.T) {
-	setupAuthSessionTestDB(t)
 	useTestSessionSecret(t)
 
 	identity, internal, err := ParseDashboardAccessToken("opaque.key.with-dots")
@@ -92,11 +87,9 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, internal)
 
-	binding, err := BindVerificationOperation(VerificationOperation{Scope: "channel.key.read", Context: []byte(`{"channel_id":123}`)})
-	require.NoError(t, err)
 	proof, _, err := IssueSecurityProof(AuthIdentity{
 		UserID: 42, SessionID: "session-1", UserAuthVersion: 1, SessionVersion: 1,
-	}, "2fa", binding)
+	}, "2fa", []string{"channel.key.read"})
 	require.NoError(t, err)
 	_, internal, err = ParseDashboardAccessToken(proof)
 	assert.True(t, internal)
@@ -124,61 +117,24 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAuthTokenExpired)
 }
 
-func TestSecurityProofBindsIdentityAndOperation(t *testing.T) {
-	setupAuthSessionTestDB(t)
+func TestSecurityProofBindsIdentityMethodAndScope(t *testing.T) {
 	useTestSessionSecret(t)
 	identity := AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
-	operation := VerificationOperation{Scope: "channel.key.read", Context: []byte(`{"channel_id":123}`)}
-	binding, err := BindVerificationOperation(operation)
-	require.NoError(t, err)
-	proof, _, err := IssueSecurityProof(identity, "2fa", binding)
+	proof, _, err := IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
 	require.NoError(t, err)
 
-	claims, err := verifySecurityProof(proof, identity, binding)
+	method, err := VerifySecurityProof(proof, identity, "channel.key.read", []string{"2fa", "passkey"})
 	require.NoError(t, err)
-	assert.Equal(t, "2fa", claims.Method)
+	assert.Equal(t, "2fa", method)
 
-	wrongScope, err := BindVerificationOperation(VerificationOperation{Scope: "passkey.delete"})
-	require.NoError(t, err)
-	_, err = verifySecurityProof(proof, identity, wrongScope)
+	_, err = VerifySecurityProof(proof, identity, "passkey.delete", []string{"2fa"})
 	assert.ErrorIs(t, err, ErrProofScope)
 
-	otherChannel, err := BindVerificationOperation(VerificationOperation{Scope: "channel.key.read", Context: []byte(`{"channel_id":456}`)})
-	require.NoError(t, err)
-	_, err = verifySecurityProof(proof, identity, otherChannel)
-	assert.ErrorIs(t, err, ErrProofContext)
+	_, err = VerifySecurityProof(proof, identity, "channel.key.read", []string{"passkey"})
+	assert.ErrorIs(t, err, ErrProofMethod)
 
 	otherSession := identity
 	otherSession.SessionID = "session-2"
-	_, err = verifySecurityProof(proof, otherSession, binding)
+	_, err = VerifySecurityProof(proof, otherSession, "channel.key.read", []string{"2fa"})
 	assert.True(t, errors.Is(err, ErrAuthTokenInvalid))
-
-	claims, err = parseAuthClaims(proof, securityProofTokenUse, authSigningKey(securityProofTokenUse))
-	require.NoError(t, err)
-	claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(-time.Minute))
-	expired, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(authSigningKey(securityProofTokenUse))
-	require.NoError(t, err)
-	_, err = ConsumeOperationProof(expired, identity, operation)
-	assert.ErrorIs(t, err, ErrAuthTokenExpired)
-}
-
-func TestSecurityProofBindsAccessTokenSession(t *testing.T) {
-	setupAuthSessionTestDB(t)
-	useTestSessionSecret(t)
-	identity := AuthIdentity{UserID: 42, SessionID: model.AccessTokenSessionID(7), UserAuthVersion: 3, SessionVersion: model.AccessTokenSessionVersion}
-	binding, err := BindVerificationOperation(VerificationOperation{Scope: VerificationScopeTwoFADisable})
-	require.NoError(t, err)
-	proof, _, err := IssueSecurityProof(identity, "password", binding)
-	require.NoError(t, err)
-
-	claims, err := verifySecurityProof(proof, identity, binding)
-	require.NoError(t, err)
-	assert.Equal(t, identity.SessionID, claims.SessionID)
-
-	for _, sessionID := range []string{model.AccessTokenSessionID(8), "session-1"} {
-		other := identity
-		other.SessionID = sessionID
-		_, err = verifySecurityProof(proof, other, binding)
-		assert.ErrorIs(t, err, ErrAuthTokenInvalid, sessionID)
-	}
 }

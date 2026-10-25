@@ -64,7 +64,6 @@ export function convertDetectedLanguage(value: string): string {
   const lower = value.trim().replaceAll('_', '-').toLowerCase()
   if (!lower.startsWith('zh')) return value
   if (
-    lower === 'zhtw' ||
     lower === 'zh-tw' ||
     lower === 'zh-hk' ||
     lower === 'zh-mo' ||

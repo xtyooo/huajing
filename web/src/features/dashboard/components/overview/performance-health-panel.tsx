@@ -31,20 +31,35 @@ import {
   getSuccessRateDotClass,
   getSuccessRateTextClass,
 } from '@/features/performance-metrics/lib/format'
-import { requireServerSuccess } from '@/lib/server-error-message'
+import type { PerfModelSummary } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
 const PERFORMANCE_WINDOW_HOURS = 24
 const TOP_MODEL_LIMIT = 6
 
+type WeightedMetric = 'avg_latency_ms' | 'avg_tps' | 'success_rate'
+
+function simpleAverage(
+  rows: PerfModelSummary[],
+  metric: WeightedMetric,
+  isValid: (value: number) => boolean
+): number {
+  let total = 0
+  let count = 0
+  for (const row of rows) {
+    const value = Number(row[metric])
+    if (!isValid(value)) continue
+    total += value
+    count++
+  }
+  return count > 0 ? total / count : Number.NaN
+}
+
 export function PerformanceHealthPanel() {
   const { t } = useTranslation()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
-    queryFn: async () =>
-      requireServerSuccess(
-        await getPerfMetricsSummary(PERFORMANCE_WINDOW_HOURS)
-      ),
+    queryFn: () => getPerfMetricsSummary(PERFORMANCE_WINDOW_HOURS),
     staleTime: 60 * 1000,
     retry: false,
   })
@@ -54,7 +69,23 @@ export function PerformanceHealthPanel() {
     [metricsQuery.data]
   )
 
-  const summary = metricsQuery.data?.data.summary
+  const summary = useMemo(() => {
+    return {
+      avgLatencyMs: Math.round(
+        simpleAverage(
+          models,
+          'avg_latency_ms',
+          (v) => Number.isFinite(v) && v > 0
+        )
+      ),
+      avgTps: simpleAverage(
+        models,
+        'avg_tps',
+        (v) => Number.isFinite(v) && v > 0
+      ),
+      successRate: simpleAverage(models, 'success_rate', Number.isFinite),
+    }
+  }, [models])
 
   const topModels = useMemo(() => models.slice(0, TOP_MODEL_LIMIT), [models])
   const loading = metricsQuery.isLoading
@@ -77,24 +108,22 @@ export function PerformanceHealthPanel() {
           <MetricCell
             icon={HeartPulse}
             label={t('Success rate')}
-            value={formatUptimePct(summary?.success_rate ?? Number.NaN)}
+            value={formatUptimePct(summary.successRate)}
             loading={loading}
-            valueClassName={getSuccessRateTextClass(
-              summary?.success_rate ?? Number.NaN
-            )}
+            valueClassName={getSuccessRateTextClass(summary.successRate)}
             tone='success'
           />
           <MetricCell
             icon={Timer}
             label={t('Average latency')}
-            value={formatLatency(summary?.avg_latency_ms ?? 0)}
+            value={formatLatency(summary.avgLatencyMs)}
             loading={loading}
             tone='warning'
           />
           <MetricCell
             icon={Gauge}
             label={t('Throughput')}
-            value={formatThroughput(summary?.avg_tps ?? 0)}
+            value={formatThroughput(summary.avgTps)}
             loading={loading}
             tone='info'
           />

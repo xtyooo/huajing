@@ -409,7 +409,7 @@ export function WaffoSettingsSection({
       >
         <div className='space-y-3'>
           <div className='grid gap-1.5'>
-            <Label required>{t('Display name')}</Label>
+            <Label>{t('Display name')} *</Label>
             <Input
               value={methodForm.name}
               onChange={(e) =>

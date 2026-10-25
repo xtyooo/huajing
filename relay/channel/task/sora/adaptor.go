@@ -21,7 +21,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -444,12 +443,6 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {
 		return nil, errors.Wrap(err, "set id failed")
-	}
-	if gjson.GetBytes(data, "task_id").Exists() {
-		data, err = sjson.SetBytes(data, "task_id", task.TaskID)
-		if err != nil {
-			return nil, errors.Wrap(err, "set task_id failed")
-		}
 	}
 	return data, nil
 }

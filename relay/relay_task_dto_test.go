@@ -247,7 +247,9 @@ func TestVideoFetchEndpointsExposeOnlyCachedPublicURLAliases(t *testing.T) {
 				}
 				return
 			}
-			assert.NotContains(t, string(body), "stale.mp4")
+			if test.dataPrefix == "" {
+				assert.NotContains(t, string(body), "stale.mp4")
+			}
 			assert.False(t, pathExists(t, body, test.dataPrefix+"video_url"))
 			assert.False(t, pathExists(t, body, test.dataPrefix+"result_url"))
 		})

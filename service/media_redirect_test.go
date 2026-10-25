@@ -27,17 +27,11 @@ func TestMedia307RedirectCredentials(t *testing.T) {
 					want = "Bearer secret"
 				}
 				require.Equal(t, want, r.Header.Get("Authorization"))
-				for _, header := range []string{"Cookie", "Proxy-Authorization", "x-goog-api-key", "apikey", "X-Seedance-Key"} {
-					require.Equal(t, want, r.Header.Get(header), header)
-				}
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("mp4")), Request: r}, nil
 			})
 			req, err := http.NewRequest("GET", "https://provider.example.test/content", nil)
 			require.NoError(t, err)
 			req.Header.Set("Authorization", "Bearer secret")
-			for _, header := range []string{"Cookie", "Proxy-Authorization", "x-goog-api-key", "apikey", "X-Seedance-Key"} {
-				req.Header.Set(header, "Bearer secret")
-			}
 			resp, err := SameOriginMediaClient(base).Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()

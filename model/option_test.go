@@ -143,16 +143,3 @@ func TestUpdateOptionDoesNotChangeMemoryWhenDatabaseWriteFails(t *testing.T) {
 	assert.Equal(t, "180", common.OptionMap[key])
 	common.OptionMapRWMutex.RUnlock()
 }
-
-func TestOptionPrimaryKeyMigrationRejectsConflictingHistoricalPrices(t *testing.T) {
-	db := useOptionTestDB(t)
-	require.NoError(t, db.Migrator().DropTable(&Option{}))
-	require.NoError(t, db.Exec("CREATE TABLE options (`key` text, value text)").Error)
-	require.NoError(t, db.Create(&Option{Key: "ModelPrice", Value: `{"video":0.1}`}).Error)
-	require.NoError(t, db.Create(&Option{Key: "ModelPrice", Value: `{"video":0.2}`}).Error)
-	require.ErrorContains(t, migrateOptionPrimaryKey(db), "conflicting duplicate pricing option")
-	var rows []Option
-	require.NoError(t, db.Find(&rows).Error)
-	assert.Len(t, rows, 2)
-	assert.False(t, db.Migrator().HasTable(optionPrimaryKeyTmpTable), "conflict must stop before any rebuild")
-}

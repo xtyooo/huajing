@@ -135,7 +135,7 @@ func requireContainerID(c *gin.Context) (string, bool) {
 	return containerID, true
 }
 
-func mapIoNetDeployment(d ionet.Deployment) map[string]any {
+func mapIoNetDeployment(d ionet.Deployment) map[string]interface{} {
 	var created int64
 	if d.CreatedAt.IsZero() {
 		created = time.Now().Unix()
@@ -156,7 +156,7 @@ func mapIoNetDeployment(d ionet.Deployment) map[string]any {
 
 	hardwareInfo := fmt.Sprintf("%s %s x%d", d.BrandName, d.HardwareName, d.HardwareQuantity)
 
-	return map[string]any{
+	return map[string]interface{}{
 		"id":                        d.ID,
 		"deployment_name":           d.Name,
 		"container_name":            d.Name,
@@ -176,7 +176,7 @@ func mapIoNetDeployment(d ionet.Deployment) map[string]any {
 		"model_name":                "",
 		"model_version":             "",
 		"instance_count":            d.HardwareQuantity,
-		"resource_config": map[string]any{
+		"resource_config": map[string]interface{}{
 			"cpu":    "",
 			"memory": "",
 			"gpu":    strconv.Itoa(d.HardwareQuantity),
@@ -225,7 +225,7 @@ func GetAllDeployments(c *gin.Context) {
 		return
 	}
 
-	items := make([]map[string]any, 0, len(dl.Deployments))
+	items := make([]map[string]interface{}, 0, len(dl.Deployments))
 	for _, d := range dl.Deployments {
 		items = append(items, mapIoNetDeployment(d))
 	}
@@ -274,7 +274,7 @@ func SearchDeployments(c *gin.Context) {
 		}
 	}
 
-	items := make([]map[string]any, 0, len(filtered))
+	items := make([]map[string]interface{}, 0, len(filtered))
 	for _, d := range filtered {
 		items = append(items, mapIoNetDeployment(d))
 	}
@@ -310,7 +310,7 @@ func GetDeployment(c *gin.Context) {
 		return
 	}
 
-	data := map[string]any{
+	data := map[string]interface{}{
 		"id":              details.ID,
 		"deployment_name": details.ID,
 		"model_name":      "",
@@ -318,7 +318,7 @@ func GetDeployment(c *gin.Context) {
 		"status":          strings.ToLower(details.Status),
 		"instance_count":  details.TotalContainers,
 		"hardware_id":     details.HardwareID,
-		"resource_config": map[string]any{
+		"resource_config": map[string]interface{}{
 			"cpu":    "",
 			"memory": "",
 			"gpu":    strconv.Itoa(details.TotalGPUs),
@@ -668,7 +668,10 @@ func GetDeploymentLogs(c *gin.Context) {
 	var limit int = 100
 	if limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			limit = min(parsedLimit, 1000)
+			limit = parsedLimit
+			if limit > 1000 {
+				limit = 1000
+			}
 		}
 	}
 
@@ -717,19 +720,19 @@ func ListDeploymentContainers(c *gin.Context) {
 		return
 	}
 
-	items := make([]map[string]any, 0)
+	items := make([]map[string]interface{}, 0)
 	if containers != nil {
-		items = make([]map[string]any, 0, len(containers.Workers))
+		items = make([]map[string]interface{}, 0, len(containers.Workers))
 		for _, ctr := range containers.Workers {
-			events := make([]map[string]any, 0, len(ctr.ContainerEvents))
+			events := make([]map[string]interface{}, 0, len(ctr.ContainerEvents))
 			for _, event := range ctr.ContainerEvents {
-				events = append(events, map[string]any{
+				events = append(events, map[string]interface{}{
 					"time":    event.Time.Unix(),
 					"message": event.Message,
 				})
 			}
 
-			items = append(items, map[string]any{
+			items = append(items, map[string]interface{}{
 				"container_id":       ctr.ContainerID,
 				"device_id":          ctr.DeviceID,
 				"status":             strings.ToLower(strings.TrimSpace(ctr.Status)),
@@ -781,9 +784,9 @@ func GetContainerDetails(c *gin.Context) {
 		return
 	}
 
-	events := make([]map[string]any, 0, len(details.ContainerEvents))
+	events := make([]map[string]interface{}, 0, len(details.ContainerEvents))
 	for _, event := range details.ContainerEvents {
-		events = append(events, map[string]any{
+		events = append(events, map[string]interface{}{
 			"time":    event.Time.Unix(),
 			"message": event.Message,
 		})

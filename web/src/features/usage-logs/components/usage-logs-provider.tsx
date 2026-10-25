@@ -19,21 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
+import { useIsAdmin } from '@/hooks/use-admin'
 
 import type { ChannelAffinityInfo } from '../types'
 
 export type LogsViewScope = 'all' | 'self'
-export type LogsViewAccess = 'self' | 'admin' | 'root'
-
-export function resolveLogsViewAccess(
-  role: number,
-  viewScope: LogsViewScope
-): LogsViewAccess {
-  if (viewScope !== 'all' || role < ROLE.ADMIN) return 'self'
-  return role === ROLE.SUPER_ADMIN ? 'root' : 'admin'
-}
 
 interface UsageLogsContextValue {
   selectedUserId: number | null
@@ -102,19 +92,13 @@ export function useUsageLogsContext() {
  * mine" is treated exactly like a regular user for that view.
  */
 export function useLogsViewScope() {
-  const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const canManageScope = useIsAdmin()
   const { viewScope, setViewScope } = useUsageLogsContext()
-  const canManageScope = role >= ROLE.ADMIN
-  const viewAccess = resolveLogsViewAccess(role, viewScope)
-  const isAdminView = viewAccess !== 'self'
-  const isRootView = viewAccess === 'root'
 
   return {
     canManageScope,
     viewScope,
     setViewScope,
-    isAdminView,
-    isRootView,
-    viewAccess,
+    isAdminView: canManageScope && viewScope === 'all',
   }
 }

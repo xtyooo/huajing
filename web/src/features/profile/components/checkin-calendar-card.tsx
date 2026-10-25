@@ -43,8 +43,6 @@ import {
 } from '@/components/ui/tooltip'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import dayjs from '@/lib/dayjs'
-import { handleServerError } from '@/lib/handle-server-error'
-import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { getCheckinStatus, performCheckin } from '../api'
@@ -91,7 +89,7 @@ export function CheckinCalendarCard({
       if (res.success && res.data) {
         return res.data
       }
-      throw createServerError(res, t('Failed to fetch checkin status'))
+      throw new Error(res.message || t('Failed to fetch checkin status'))
     },
     enabled: checkinEnabled,
     staleTime: 30000,
@@ -163,10 +161,10 @@ export function CheckinCalendarCard({
           if (token && shouldTriggerTurnstile(res.message)) {
             setTurnstileWidgetKey((v) => v + 1)
           }
-          handleServerError(res, t('Check-in failed'))
+          toast.error(res.message || t('Check-in failed'))
         }
-      } catch (error) {
-        handleServerError(error, t('Check-in failed'))
+      } catch {
+        toast.error(t('Check-in failed'))
       } finally {
         setCheckinLoading(false)
       }

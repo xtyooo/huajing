@@ -28,9 +28,6 @@ import type {
 export const CHANNEL_TYPE_ADVANCED_CUSTOM = 64
 export const ADVANCED_CUSTOM_MODEL_LIST_PATH = '/v1/models'
 export const ADVANCED_CUSTOM_MODEL_LIST_LABEL = 'OpenAI Models'
-export const ADVANCED_CUSTOM_BALANCE_PATH =
-  '/v1/dashboard/billing/credit_grants'
-export const ADVANCED_CUSTOM_BALANCE_LABEL = 'Balance Query'
 
 export const ADVANCED_CUSTOM_CONVERTER_OPTIONS: Array<{
   value: AdvancedCustomConverter
@@ -46,11 +43,6 @@ export const ADVANCED_CUSTOM_CONVERTER_OPTIONS: Array<{
     value: 'anthropic_messages_to_openai_chat_completions',
     label: 'Anthropic Messages to OpenAI Chat',
     triggerLabel: 'To OpenAI Chat',
-  },
-  {
-    value: 'claude_messages_to_openai_responses',
-    label: 'Anthropic Messages to OpenAI Responses',
-    triggerLabel: 'To OpenAI Responses',
   },
   {
     value: 'openai_chat_completions_to_anthropic_messages',
@@ -76,11 +68,6 @@ export const ADVANCED_CUSTOM_CONVERTER_OPTIONS: Array<{
     value: 'gemini_generate_content_to_openai_chat_completions',
     label: 'Gemini Generate Content to OpenAI Chat',
     triggerLabel: 'To OpenAI Chat',
-  },
-  {
-    value: 'gemini_generate_content_to_openai_responses',
-    label: 'Gemini Generate Content to OpenAI Responses',
-    triggerLabel: 'To OpenAI Responses',
   },
   {
     value: 'openai_chat_completions_to_gemini_generate_content',
@@ -123,7 +110,11 @@ export const ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS: AdvancedCustomIncomingPathOp
     },
     {
       value: '/v1/alpha/search',
-      label: 'Codex Alpha Search',
+      label: 'OpenAI Alpha Search',
+    },
+    {
+      value: ADVANCED_CUSTOM_MODEL_LIST_PATH,
+      label: ADVANCED_CUSTOM_MODEL_LIST_LABEL,
     },
     {
       value: '/v1/embeddings',
@@ -155,7 +146,7 @@ export const ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS: AdvancedCustomIncomingPathOp
     },
     {
       value: '/v1/rerank',
-      label: 'Rerank',
+      label: 'OpenAI Rerank',
     },
     {
       value: '/v1/realtime',
@@ -182,7 +173,6 @@ export const ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS: AdvancedCustomIncomingPathOp
 const ADVANCED_CUSTOM_ROUTE_SUMMARY_LABELS: Record<string, string> = {
   '/v1/chat/completions': 'OpenAI Chat',
   [ADVANCED_CUSTOM_MODEL_LIST_PATH]: ADVANCED_CUSTOM_MODEL_LIST_LABEL,
-  [ADVANCED_CUSTOM_BALANCE_PATH]: ADVANCED_CUSTOM_BALANCE_LABEL,
 }
 
 export type AdvancedCustomValidationError = {
@@ -228,93 +218,122 @@ const geminiQueryAuth = (): AdvancedCustomRouteAuth => ({
   value: '{api_key}',
 })
 
-function createOpenAINativeRoutes(): AdvancedCustomRoute[] {
-  return [
-    '/v1/chat/completions',
-    '/v1/completions',
-    '/v1/responses',
-    '/v1/responses/compact',
-    '/v1/embeddings',
-    '/v1/images/generations',
-    '/v1/images/edits',
-    '/v1/audio/speech',
-    '/v1/audio/transcriptions',
-    '/v1/audio/translations',
-    '/v1/realtime',
-  ].map((path) => ({
-    incoming_path: path,
-    upstream_path: path,
-    converter: 'none',
-    auth: bearerHeaderAuth(),
-  }))
-}
-
-function createClaudeNativeRoutes(): AdvancedCustomRoute[] {
-  return [
-    {
-      incoming_path: '/v1/messages',
-      upstream_path: '/v1/messages',
-      converter: 'none',
-      auth: apiKeyHeaderAuth(),
-    },
-  ]
-}
-
-function createGeminiNativeRoutes(): AdvancedCustomRoute[] {
-  return [
-    '/v1beta/models/{model}:generateContent',
-    '/v1beta/models/{model}:embedContent',
-    '/v1beta/models/{model}:batchEmbedContents',
-  ].map((path) => ({
-    incoming_path: path,
-    upstream_path: path,
-    converter: 'none',
-    auth: geminiQueryAuth(),
-  }))
-}
-
-function createGatewayNativeRoutes(): AdvancedCustomRoute[] {
-  return ['/v1/alpha/search', '/v1/rerank'].map((path) => ({
-    incoming_path: path,
-    upstream_path: path,
-    converter: 'none',
-    auth: bearerHeaderAuth(),
-  }))
-}
-
 export const ADVANCED_CUSTOM_TEMPLATE_OPTIONS: AdvancedCustomTemplateOption[] =
   [
     {
-      value: 'all_protocols',
-      label: 'All routes',
+      value: 'official_openai_chat',
+      label: 'Official OpenAI Chat',
       config: {
         advanced_routes: [
-          ...createOpenAINativeRoutes(),
-          ...createClaudeNativeRoutes(),
-          ...createGeminiNativeRoutes(),
-          ...createGatewayNativeRoutes(),
+          {
+            incoming_path: '/v1/chat/completions',
+            upstream_path: '/v1/chat/completions',
+            converter: 'none',
+            auth: bearerHeaderAuth(),
+          },
         ],
       },
     },
     {
-      value: 'openai_only',
-      label: 'OpenAI only',
+      value: 'official_openai_responses',
+      label: 'Official OpenAI Responses',
       config: {
-        advanced_routes: createOpenAINativeRoutes(),
+        advanced_routes: [
+          {
+            incoming_path: '/v1/responses',
+            upstream_path: '/v1/responses',
+            converter: 'none',
+            auth: bearerHeaderAuth(),
+          },
+        ],
       },
     },
     {
-      value: 'claude_only',
-      label: 'Claude only',
+      value: 'official_openai_embeddings',
+      label: 'Official OpenAI Embeddings',
       config: {
-        advanced_routes: createClaudeNativeRoutes(),
+        advanced_routes: [
+          {
+            incoming_path: '/v1/embeddings',
+            upstream_path: '/v1/embeddings',
+            converter: 'none',
+            auth: bearerHeaderAuth(),
+          },
+        ],
       },
     },
     {
-      value: 'gemini_only',
-      label: 'Gemini only',
+      value: 'official_openai_images',
+      label: 'Official OpenAI Images',
       config: {
-        advanced_routes: createGeminiNativeRoutes(),
+        advanced_routes: [
+          {
+            incoming_path: '/v1/images/generations',
+            upstream_path: '/v1/images/generations',
+            converter: 'none',
+            auth: bearerHeaderAuth(),
+          },
+          {
+            incoming_path: '/v1/images/edits',
+            upstream_path: '/v1/images/edits',
+            converter: 'none',
+            auth: bearerHeaderAuth(),
+          },
+        ],
+      },
+    },
+    {
+      value: 'official_claude_messages',
+      label: 'Official Claude Messages',
+      config: {
+        advanced_routes: [
+          {
+            incoming_path: '/v1/messages',
+            upstream_path: '/v1/messages',
+            converter: 'none',
+            auth: apiKeyHeaderAuth(),
+          },
+        ],
+      },
+    },
+    {
+      value: 'official_gemini_native',
+      label: 'Official Gemini Native',
+      config: {
+        advanced_routes: [
+          {
+            incoming_path: '/v1beta/models/{model}:generateContent',
+            upstream_path: '/v1beta/models/{model}:generateContent',
+            converter: 'none',
+            auth: geminiQueryAuth(),
+          },
+          {
+            incoming_path: '/v1beta/models/{model}:embedContent',
+            upstream_path: '/v1beta/models/{model}:embedContent',
+            converter: 'none',
+            auth: geminiQueryAuth(),
+          },
+          {
+            incoming_path: '/v1beta/models/{model}:batchEmbedContents',
+            upstream_path: '/v1beta/models/{model}:batchEmbedContents',
+            converter: 'none',
+            auth: geminiQueryAuth(),
+          },
+        ],
+      },
+    },
+    {
+      value: 'official_gemini_from_openai_chat',
+      label: 'Official Gemini from OpenAI Chat',
+      config: {
+        advanced_routes: [
+          {
+            incoming_path: '/v1/chat/completions',
+            upstream_path: '/v1beta/models/{model}:generateContent',
+            converter: 'openai_chat_completions_to_gemini_generate_content',
+            auth: geminiQueryAuth(),
+          },
+        ],
       },
     },
   ]
@@ -322,7 +341,7 @@ export const ADVANCED_CUSTOM_TEMPLATE_OPTIONS: AdvancedCustomTemplateOption[] =
 export function cloneAdvancedCustomConfig(
   config: AdvancedCustomConfig
 ): AdvancedCustomConfig {
-  return structuredClone(config)
+  return JSON.parse(JSON.stringify(config)) as AdvancedCustomConfig
 }
 
 export function getAdvancedCustomTemplateConfig(
@@ -333,78 +352,6 @@ export function getAdvancedCustomTemplateConfig(
       (option) => option.value === templateKey
     ) || ADVANCED_CUSTOM_TEMPLATE_OPTIONS[0]
   return cloneAdvancedCustomConfig(template.config)
-}
-
-export function isAdvancedCustomManagementPath(path: string): boolean {
-  return (
-    path === ADVANCED_CUSTOM_MODEL_LIST_PATH ||
-    path === ADVANCED_CUSTOM_BALANCE_PATH
-  )
-}
-
-export function getAdvancedCustomManagementRoute(
-  config: AdvancedCustomConfig,
-  path: string
-): AdvancedCustomRoute | undefined {
-  return normalizeAdvancedCustomConfig(config).advanced_routes?.find(
-    (route) => route.incoming_path?.trim() === path
-  )
-}
-
-export function replaceAdvancedCustomManagementRoute(
-  config: AdvancedCustomConfig,
-  path: string,
-  route: AdvancedCustomRoute | null
-): AdvancedCustomConfig {
-  const normalized = normalizeAdvancedCustomConfig(config)
-  const routes = [...(normalized.advanced_routes || [])]
-  const index = routes.findIndex(
-    (candidate) => candidate.incoming_path?.trim() === path
-  )
-  if (route === null) {
-    if (index >= 0) routes.splice(index, 1)
-  } else {
-    const managementRoute: AdvancedCustomRoute = {
-      incoming_path: path,
-      upstream_path: route.upstream_path || '',
-      converter: 'none',
-      models: [],
-      auth: route.auth,
-    }
-    if (index >= 0) routes[index] = managementRoute
-    else routes.push(managementRoute)
-  }
-  return { advanced_routes: routes }
-}
-
-export function replaceAdvancedCustomForwardingRoutes(
-  config: AdvancedCustomConfig,
-  forwardingRoutes: AdvancedCustomRoute[]
-): AdvancedCustomConfig {
-  const normalized = normalizeAdvancedCustomConfig(config)
-  const routes = normalized.advanced_routes || []
-  const firstForwardingIndex = routes.findIndex(
-    (route) =>
-      !isAdvancedCustomManagementPath(route.incoming_path?.trim() || '')
-  )
-  const managementRoutes = routes.filter((route) =>
-    isAdvancedCustomManagementPath(route.incoming_path?.trim() || '')
-  )
-  if (firstForwardingIndex < 0) {
-    return { advanced_routes: [...managementRoutes, ...forwardingRoutes] }
-  }
-
-  const before = routes
-    .slice(0, firstForwardingIndex)
-    .filter((route) =>
-      isAdvancedCustomManagementPath(route.incoming_path?.trim() || '')
-    )
-  const after = routes
-    .slice(firstForwardingIndex)
-    .filter((route) =>
-      isAdvancedCustomManagementPath(route.incoming_path?.trim() || '')
-    )
-  return { advanced_routes: [...before, ...forwardingRoutes, ...after] }
 }
 
 export function createAdvancedCustomRoute(): AdvancedCustomRoute {
@@ -418,17 +365,6 @@ export function createAdvancedCustomRoute(): AdvancedCustomRoute {
 export function createAdvancedCustomConfig(): AdvancedCustomConfig {
   return {
     advanced_routes: [createAdvancedCustomRoute()],
-  }
-}
-
-export function createAdvancedCustomManagementRoute(
-  path: string
-): AdvancedCustomRoute {
-  return {
-    incoming_path: path,
-    upstream_path: path,
-    converter: 'none',
-    models: [],
   }
 }
 
@@ -460,11 +396,7 @@ export function getAdvancedCustomConverterDefaults(
   ) {
     return { upstream_path: openAIChatPath, auth: bearerHeaderAuth() }
   }
-  if (
-    converter === 'openai_chat_completions_to_openai_responses' ||
-    converter === 'claude_messages_to_openai_responses' ||
-    converter === 'gemini_generate_content_to_openai_responses'
-  ) {
+  if (converter === 'openai_chat_completions_to_openai_responses') {
     return { upstream_path: openAIResponsesPath, auth: bearerHeaderAuth() }
   }
   if (converter === 'openai_chat_completions_to_anthropic_messages') {
@@ -522,12 +454,6 @@ export function isAdvancedCustomIncomingPathAllowed(
   converter: AdvancedCustomConverter
 ): boolean {
   return isConverterPathAllowed(incomingPath, converter)
-}
-
-export function isAdvancedCustomPassThroughAllowed(
-  converter: AdvancedCustomConverter
-): boolean {
-  return converter === 'none'
 }
 
 export function getAdvancedCustomConverterOptions(
@@ -625,7 +551,6 @@ export function validateAdvancedCustomConfig(
     { catchAllIndex: number | null; models: Map<string, number> }
   >()
   let modelListRouteIndex: number | null = null
-  let balanceRouteIndex: number | null = null
   for (let index = 0; index < routes.length; index += 1) {
     const route = routes[index]
     const incomingPath = route.incoming_path?.trim() || ''
@@ -645,42 +570,30 @@ export function validateAdvancedCustomConfig(
         message: 'Incoming path must not include query',
       }
     }
-    if (isAdvancedCustomManagementPath(incomingPath)) {
-      const isModelListRoute = incomingPath === ADVANCED_CUSTOM_MODEL_LIST_PATH
-      const existingIndex = isModelListRoute
-        ? modelListRouteIndex
-        : balanceRouteIndex
-      const routeLabel = isModelListRoute ? 'OpenAI Models' : 'Balance Query'
-      if (existingIndex !== null) {
+    if (incomingPath === ADVANCED_CUSTOM_MODEL_LIST_PATH) {
+      if (modelListRouteIndex !== null) {
         return {
           routeIndex: index,
-          message: `Only one ${routeLabel} route is allowed`,
+          message: 'Only one OpenAI Models route is allowed',
         }
       }
-      if (isModelListRoute) modelListRouteIndex = index
-      else balanceRouteIndex = index
+      modelListRouteIndex = index
       if (routeModels.length > 0) {
         return {
           routeIndex: index,
-          message: `${routeLabel} route does not support client model rules`,
+          message: 'OpenAI Models route does not support client model rules',
         }
       }
       if (converter !== 'none') {
         return {
           routeIndex: index,
-          message: `${routeLabel} route must use native forwarding`,
+          message: 'OpenAI Models route must use native forwarding',
         }
       }
       if (upstreamPath.includes('{model}')) {
         return {
           routeIndex: index,
-          message: `${routeLabel} upstream path must not contain {model}`,
-        }
-      }
-      if (route.pass_through_body_enabled) {
-        return {
-          routeIndex: index,
-          message: `${routeLabel} route does not support pass-through`,
+          message: 'OpenAI Models upstream path must not contain {model}',
         }
       }
     }
@@ -710,15 +623,6 @@ export function validateAdvancedCustomConfig(
       return {
         routeIndex: index,
         message: 'Converter does not match incoming path',
-      }
-    }
-    if (
-      route.pass_through_body_enabled &&
-      !isAdvancedCustomPassThroughAllowed(converter)
-    ) {
-      return {
-        routeIndex: index,
-        message: 'Pass-through requires native forwarding',
       }
     }
 
@@ -816,9 +720,6 @@ function normalizeAdvancedCustomRoute(
   const models = normalizeAdvancedCustomRouteModels(route.models)
   if (models.length > 0) {
     nextRoute.models = models
-  }
-  if (route.pass_through_body_enabled === true) {
-    nextRoute.pass_through_body_enabled = true
   }
   if (route.auth) {
     nextRoute.auth = {
@@ -939,10 +840,7 @@ function isConverterPathAllowed(
 ): boolean {
   if (converter === 'none') return true
   if (incomingPath === '/v1/alpha/search') return false
-  if (
-    converter === 'anthropic_messages_to_openai_chat_completions' ||
-    converter === 'claude_messages_to_openai_responses'
-  ) {
+  if (converter === 'anthropic_messages_to_openai_chat_completions') {
     return incomingPath === '/v1/messages'
   }
   if (

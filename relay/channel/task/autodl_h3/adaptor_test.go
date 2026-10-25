@@ -466,8 +466,7 @@ func TestAdaptorMetadataConversionAndUnvalidatedGuards(t *testing.T) {
 		Properties: model.Properties{
 			OriginModelName: TextWorkflowID,
 		},
-		MediaURL:    "https://huajing.example.test/media/cached.mp4",
-		MediaStatus: model.MediaStatusSuccess,
+		MediaURL: "https://huajing.example.test/media/cached.mp4",
 		PrivateData: model.TaskPrivateData{
 			ResultURL: "https://cdn.example.test/short-lived.mp4",
 		},

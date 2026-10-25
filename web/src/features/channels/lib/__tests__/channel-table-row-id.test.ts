@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import { describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { Channel } from '../../types'
 import { getChannelTableRowId, type TagRow } from '../channel-utils'
@@ -34,8 +35,12 @@ describe('channel table row identity', () => {
     const beforeUpdate = [first, updated, third].map(getChannelTableRowId)
     const afterUpdate = [updated, first, third].map(getChannelTableRowId)
 
-    expect(beforeUpdate).toEqual(['channel:101', 'channel:202', 'channel:303'])
-    expect(afterUpdate).toEqual(['channel:202', 'channel:101', 'channel:303'])
+    assert.deepEqual(beforeUpdate, [
+      'channel:101',
+      'channel:202',
+      'channel:303',
+    ])
+    assert.deepEqual(afterUpdate, ['channel:202', 'channel:101', 'channel:303'])
   })
 
   test('uses separate namespaces for tag and channel rows', () => {
@@ -45,7 +50,7 @@ describe('channel table row identity', () => {
       children: [channel(202)],
     } as TagRow
 
-    expect(getChannelTableRowId(tagRow)).toBe('tag:202')
-    expect(getChannelTableRowId(channel(202))).toBe('channel:202')
+    assert.equal(getChannelTableRowId(tagRow), 'tag:202')
+    assert.equal(getChannelTableRowId(channel(202)), 'channel:202')
   })
 })

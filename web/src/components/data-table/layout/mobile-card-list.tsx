@@ -39,7 +39,6 @@ For commercial licensing, please contact support@quantumnous.com
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Empty,
   EmptyDescription,
@@ -55,7 +54,6 @@ import { CardRowContent } from './card-row-content'
 
 interface MobileCardListProps<TData> {
   table: Table<TData>
-  enableRowSelection?: boolean
   isLoading?: boolean
   emptyTitle?: string
   emptyDescription?: string
@@ -118,7 +116,6 @@ function FallbackListSkeleton() {
 export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
   const {
     table,
-    enableRowSelection = false,
     isLoading = false,
     emptyTitle,
     emptyDescription,
@@ -161,18 +158,6 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
 
   return (
     <div className='divide-y overflow-hidden rounded-lg border'>
-      {enableRowSelection && (
-        <label className='flex items-center gap-2 px-3 py-2 text-xs'>
-          <Checkbox
-            checked={table.getIsAllPageRowsSelected()}
-            indeterminate={table.getIsSomePageRowsSelected()}
-            onCheckedChange={(value) =>
-              table.toggleAllPageRowsSelected(Boolean(value))
-            }
-          />
-          {t('Select all')}
-        </label>
-      )}
       {rows.map((row) => {
         const key = getRowKey ? getRowKey(row) : row.id
         return (
@@ -183,23 +168,7 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
               getRowClassName?.(row)
             )}
           >
-            <div className='flex min-w-0 items-start gap-2'>
-              {enableRowSelection && (
-                <Checkbox
-                  className='mt-0.5'
-                  checked={row.getIsSelected()}
-                  onCheckedChange={(value) =>
-                    row.toggleSelected(Boolean(value))
-                  }
-                  aria-label={t('Select row {{number}}', {
-                    number: row.index + 1,
-                  })}
-                />
-              )}
-              <div className='min-w-0 flex-1'>
-                <CardRowContent row={row} compact={hasCompactMeta} />
-              </div>
-            </div>
+            <CardRowContent row={row} compact={hasCompactMeta} />
           </div>
         )
       })}

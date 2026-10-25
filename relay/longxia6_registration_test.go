@@ -18,7 +18,7 @@ func TestLongxia6RegistrationAndPublicCacheState(t *testing.T) {
 	require.Equal(t, constant.APITypeOpenAI, api)
 	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(kind, "admin-model"))
 	platform := constant.TaskPlatform(strconv.Itoa(kind))
-	require.IsType(t, &longxia6.TaskAdaptor{}, getNativeTaskAdaptor(platform))
+	require.IsType(t, &longxia6.TaskAdaptor{}, GetTaskAdaptor(platform))
 	for _, tc := range []struct {
 		media    int
 		status   string

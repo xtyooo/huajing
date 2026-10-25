@@ -1,7 +1,6 @@
 package helper
 
 import (
-	"maps"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -15,7 +14,9 @@ func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.Re
 	if info != nil && info.BillingRequestInput != nil {
 		input := cloneRequestInput(*info.BillingRequestInput)
 		merged := cloneStringMap(info.RequestHeaders)
-		maps.Copy(merged, input.Headers)
+		for k, v := range input.Headers {
+			merged[k] = v
+		}
 		input.Headers = merged
 		return input, nil
 	}
@@ -30,31 +31,6 @@ func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.Re
 		return billingexpr.RequestInput{}, err
 	}
 	input.Body = bodyBytes
-	return input, nil
-}
-
-// ResolveImageBillingRequestInput freezes only the validated scalar image
-// parameters needed by pricing. Image files, prompts and base64 payloads are
-// deliberately excluded, including for multipart edits.
-func ResolveImageBillingRequestInput(c *gin.Context, info *relaycommon.RelayInfo, input billingexpr.RequestInput) (billingexpr.RequestInput, error) {
-	request, ok := info.Request.(*dto.ImageRequest)
-	if !ok {
-		return input, nil
-	}
-	count, err := request.ImageCount(false)
-	if err != nil {
-		return input, err
-	}
-	body := map[string]any{"model": request.Model, "n": count, "size": request.Size, "quality": request.Quality}
-	if request.BillingParameters != nil {
-		body["parameters"] = request.BillingParameters
-	}
-	encoded, err := common.Marshal(body)
-	if err != nil {
-		return input, err
-	}
-	input.Body = encoded
-	input.ImageCount = &count
 	return input, nil
 }
 
@@ -88,10 +64,6 @@ func readIncomingBillingExprBody(c *gin.Context) ([]byte, error) {
 func cloneRequestInput(src billingexpr.RequestInput) billingexpr.RequestInput {
 	input := billingexpr.RequestInput{
 		Headers: cloneStringMap(src.Headers),
-	}
-	if src.ImageCount != nil {
-		count := *src.ImageCount
-		input.ImageCount = &count
 	}
 	if len(src.Body) > 0 {
 		input.Body = append([]byte(nil), src.Body...)

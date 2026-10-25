@@ -19,13 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import i18next from 'i18next'
 import { useEffect } from 'react'
+import { toast } from 'sonner'
 
 import { wechatLoginByCode } from '@/features/auth/api'
 import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle, isAuthBundle } from '@/lib/api'
-import { handleServerError } from '@/lib/handle-server-error'
-import { AuthOperationError } from '@/lib/secure-verification'
-import { createServerError } from '@/lib/server-error-message'
+import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 function OAuthComponent() {
   const navigate = useNavigate()
@@ -49,14 +48,18 @@ function OAuthComponent() {
             navigate({ href: target, replace: true })
             return
           }
-          throw createServerError(res, i18next.t('OAuth failed'))
+          if (getServerErrorMessageKey(res)) {
+            navigate({ to: '/sign-in', replace: true })
+            return
+          }
         }
-        handleServerError(new AuthOperationError(i18next.t('OAuth failed')))
       } catch (error: unknown) {
-        handleServerError(
-          AuthOperationError.from(error, i18next.t('OAuth failed'))
-        )
+        if (getServerErrorMessageKey(error)) {
+          navigate({ to: '/sign-in', replace: true })
+          return
+        }
       }
+      toast.error(i18next.t('OAuth failed'))
       navigate({ to: '/sign-in', replace: true })
     })()
   }, [navigate, search])

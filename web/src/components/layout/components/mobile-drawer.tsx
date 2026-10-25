@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { X, User, Wallet, LogOut, ShieldCheck } from 'lucide-react'
+import { X, User, Wallet, LogOut } from 'lucide-react'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
@@ -26,7 +26,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import useDialogState from '@/hooks/use-dialog'
-import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
 import type { AuthUser } from '@/stores/auth-store'
 
@@ -82,7 +81,6 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
   const { t } = useTranslation()
   const [signOutOpen, setSignOutOpen] = useDialogState()
   const { displayName, initials, roleLabel } = useUserDisplay(user)
-  const isSecurityVisible = useIsSidebarModuleVisible('/security')
 
   if (!user) return null
 
@@ -123,17 +121,6 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
           <User className='size-4' />
           {t('Profile')}
         </Link>
-
-        {isSecurityVisible && (
-          <Link
-            to='/security'
-            onClick={onNavigate}
-            className='text-primary/60 hover:text-primary/80 border-border flex items-center gap-2.5 border-b p-2.5 transition-colors'
-          >
-            <ShieldCheck className='size-4' />
-            {t('Security & Access')}
-          </Link>
-        )}
 
         <Link
           to='/wallet'
@@ -274,9 +261,9 @@ export function MobileDrawer({
                   </div>
                 ) : (
                   <AnimatePresence>
-                    {mobileLinksList.map((link) => (
+                    {mobileLinksList.map((link, index) => (
                       <motion.div
-                        key={link.href}
+                        key={`${link.href}-${index}`}
                         className='border-border border-b p-2.5 last:border-b-0'
                         variants={MOBILE_DRAWER_ANIMATION.menuItem as Variants}
                       >

@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
@@ -133,16 +132,14 @@ func TestSnumomResolutionBillingSubmissionAndAccounting(t *testing.T) {
 		assert.Equal(t, charge, info.Billing.GetPreConsumedQuota())
 		assert.Empty(t, info.PriceData.OtherRatios())
 		assert.Equal(t, http.StatusOK, recorder.Code)
-		require.Empty(t, recorder.Body.String(), "native parsing is buffered until durable insert")
-		response := result.ClientResponse.(*relaychannel.LegacyTaskClientResponse)
-		assert.Contains(t, string(response.Body), "task_public_billing")
-		assert.NotContains(t, string(response.Body), "private-provider-task")
+		assert.Contains(t, recorder.Body.String(), "task_public_billing")
+		assert.NotContains(t, recorder.Body.String(), "private-provider-task")
 		assert.Equal(t, "private-provider-task", result.UpstreamTaskID)
 		assert.Equal(t, publicModel, info.OriginModelName)
 		assert.Equal(t, upstreamModel, info.UpstreamModelName)
 		require.NoError(t, info.Billing.Settle(result.Quota))
 		assert.False(t, info.Billing.NeedsRefund())
-		service.LogTaskConsumption(c, info, model.InitTask(result.Platform, info))
+		service.LogTaskConsumption(c, info)
 		var chargedUser model.User
 		var chargedToken model.Token
 		var log model.Log

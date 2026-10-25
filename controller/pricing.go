@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"maps"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -40,7 +38,9 @@ func GetPricing(c *gin.Context) {
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
-	maps.Copy(groupRatio, ratio_setting.GetGroupRatioCopy())
+	for s, f := range ratio_setting.GetGroupRatioCopy() {
+		groupRatio[s] = f
+	}
 	var group string
 	if exists {
 		user, err := model.GetUserCache(userId.(int))
@@ -80,8 +80,14 @@ func ResetModelRatio(c *gin.Context) {
 	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
 	err := model.UpdateOption("ModelRatio", defaultStr)
 	if err != nil {
-		common.ApiError(c, err)
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
 		return
 	}
-	common.ApiSuccessT(c, "Model ratios reset", nil)
+	c.JSON(200, gin.H{
+		"success": true,
+		"message": "重置模型倍率成功",
+	})
 }

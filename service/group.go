@@ -18,13 +18,13 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 		if b {
 			// 处理特殊可用分组
 			for specialGroup, desc := range specialSettings {
-				if after, ok := strings.CutPrefix(specialGroup, "-:"); ok {
+				if strings.HasPrefix(specialGroup, "-:") {
 					// 移除分组
-					groupToRemove := after
+					groupToRemove := strings.TrimPrefix(specialGroup, "-:")
 					delete(groupsCopy, groupToRemove)
-				} else if after, ok := strings.CutPrefix(specialGroup, "+:"); ok {
+				} else if strings.HasPrefix(specialGroup, "+:") {
 					// 添加分组
-					groupToAdd := after
+					groupToAdd := strings.TrimPrefix(specialGroup, "+:")
 					groupsCopy[groupToAdd] = desc
 				} else {
 					// 直接添加分组
@@ -32,10 +32,9 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 				}
 			}
 		}
-		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup。
-		// 描述是英文源文本，由 web 控制台翻译；管理员配置的描述原样显示。
+		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup
 		if _, ok := groupsCopy[userGroup]; !ok {
-			groupsCopy[userGroup] = "User group"
+			groupsCopy[userGroup] = "用户分组"
 		}
 	}
 	return groupsCopy

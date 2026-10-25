@@ -19,29 +19,21 @@ func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {
 		return nil, fmt.Errorf("codex channel does not support multi-key model discovery")
 	}
 
-	setting := channel.GetSetting()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	// The GitHub release lookup is not an upstream request; it always verifies
-	// certificates, whatever the channel's TLS setting says.
-	releaseClient, err := GetHttpClientWithProxy(setting.Proxy)
+	client, err := NewProxyHttpClient(channel.GetSetting().Proxy)
 	if err != nil {
 		return nil, err
 	}
-	clientVersion, err := GetLatestCodexClientVersion(ctx, releaseClient)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	clientVersion, err := GetLatestCodexClientVersion(ctx, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Codex client version: %w", err)
 	}
 
-	client, err := GetHttpClientWithProxySettings(setting.Proxy, setting)
-	if err != nil {
-		return nil, err
-	}
-
 	baseURL := channel.GetBaseURL()
 	if baseURL == "" {
-		baseURL = constant.GetChannelBaseURL(constant.ChannelTypeCodex)
+		baseURL = constant.ChannelBaseURLs[constant.ChannelTypeCodex]
 	}
 	return fetchCodexChannelModels(ctx, channel, baseURL, client, clientVersion)
 }

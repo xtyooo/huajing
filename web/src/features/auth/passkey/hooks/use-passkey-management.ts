@@ -16,16 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import i18next from 'i18next'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import {
   buildRegistrationResult,
   createCredential,
-  isPasskeySupported,
+  isPasskeySupported as detectPasskeySupport,
   prepareCredentialCreationOptions,
 } from '@/lib/passkey'
-import { AuthOperationError } from '@/lib/secure-verification'
-import { getServerMessage } from '@/lib/server-error-message'
 
 import {
   beginPasskeyRegistration,
@@ -35,156 +35,168 @@ import {
 } from '../api'
 import type { PasskeyStatus } from '../types'
 
-export function usePasskeyManagement() {
+interface UsePasskeyManagementOptions {
+  onStatusChange?: (status: PasskeyStatus | null) => void
+}
+
+export function usePasskeyManagement(
+  options: UsePasskeyManagementOptions = {}
+) {
+  const { onStatusChange } = options
+
   const [status, setStatus] = useState<PasskeyStatus | null>(null)
-  const [statusError, setStatusError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [supported, setSupported] = useState(false)
-  const operation = useRef<AbortController | null>(null)
-  const mounted = useRef(true)
 
   const fetchStatus = useCallback(async () => {
-    setLoading(true)
     try {
-      const response = await getPasskeyStatus()
-      if (!response.success || !response.data) {
-        throw new AuthOperationError(
-          getServerMessage(response) || 'Failed to load Passkey status'
-        )
+      setLoading(true)
+      const res = await getPasskeyStatus()
+      if (res.success) {
+        setStatus(res.data ?? null)
+        onStatusChange?.(res.data ?? null)
+      } else {
+        setStatus(null)
+        toast.error(res.message || i18next.t('Failed to load Passkey status'))
       }
-      if (!mounted.current) return
-      setStatus(response.data)
-      setStatusError(null)
     } catch (error) {
-      if (mounted.current) {
-        setStatusError(AuthOperationError.from(error).message)
-      }
+      // eslint-disable-next-line no-console
+      console.error('[Passkey] Failed to fetch status', error)
+      toast.error(i18next.t('Failed to load Passkey status'))
+      setStatus(null)
     } finally {
-      if (mounted.current) setLoading(false)
+      setLoading(false)
     }
-  }, [])
+  }, [onStatusChange])
 
   useEffect(() => {
-    mounted.current = true
-    void fetchStatus()
-    void isPasskeySupported().then((value) => {
-      if (mounted.current) setSupported(value)
-    })
-    return () => {
-      mounted.current = false
-      operation.current?.abort()
-    }
+    fetchStatus()
   }, [fetchStatus])
 
+  useEffect(() => {
+    detectPasskeySupport()
+      .then(setSupported)
+      .catch(() => setSupported(false))
+  }, [])
+
   const register = useCallback(
-    async (proofToken: string) => {
-      if (!supported || !navigator.credentials) {
-        throw new AuthOperationError('This device does not support Passkey')
+    async (proofToken?: string) => {
+      if (!supported) {
+        toast.error(i18next.t('This device does not support Passkey'))
+        return false
       }
-      if (operation.current) {
-        throw new AuthOperationError(
-          'A security operation is already in progress.'
-        )
+      if (!navigator?.credentials) {
+        toast.error(i18next.t('Passkey is not supported in this environment'))
+        return false
       }
-      const controller = new AbortController()
-      operation.current = controller
+
       setRegistering(true)
       try {
-        const begin = await beginPasskeyRegistration(
-          proofToken,
-          controller.signal
+        const beginResponse = await beginPasskeyRegistration(proofToken)
+        if (!beginResponse.success) {
+          toast.error(
+            beginResponse.message ||
+              i18next.t('Failed to start Passkey registration')
+          )
+          return false
+        }
+
+        const publicKey = prepareCredentialCreationOptions(
+          beginResponse.data?.options ?? beginResponse.data
         )
-        if (!begin.flow_token) {
-          throw new AuthOperationError(
-            'Registration flow expired. Please try again.'
-          )
+        const flowToken = beginResponse.data?.flow_token
+        if (!flowToken) {
+          toast.error(i18next.t('Registration flow expired. Please try again.'))
+          return false
         }
+
         const credential = (await createCredential(
-          prepareCredentialCreationOptions(begin.options ?? begin),
-          controller.signal
+          publicKey
         )) as PublicKeyCredential | null
-        controller.signal.throwIfAborted()
         if (!credential) {
-          throw new AuthOperationError(
-            'Passkey registration was cancelled',
-            'AUTH_CANCELLED'
-          )
+          toast.error(i18next.t('Passkey registration was cancelled'))
+          return false
         }
+
         const attestation = buildRegistrationResult(credential)
         if (!attestation) {
-          throw new AuthOperationError('Invalid Passkey registration response')
+          toast.error(i18next.t('Invalid Passkey registration response'))
+          return false
         }
-        await finishPasskeyRegistration(
-          begin.flow_token,
+
+        const finishResponse = await finishPasskeyRegistration(
+          flowToken,
           attestation,
-          controller.signal
+          proofToken
         )
-        controller.signal.throwIfAborted()
-        await fetchStatus()
-      } catch (error) {
-        if (mounted.current && !controller.signal.aborted) await fetchStatus()
-        if (
-          controller.signal.aborted ||
-          (error instanceof DOMException && error.name === 'NotAllowedError')
-        ) {
-          throw new AuthOperationError(
-            'Passkey registration was cancelled',
-            'AUTH_CANCELLED',
-            { cause: error }
+        if (!finishResponse.success) {
+          toast.error(
+            finishResponse.message || i18next.t('Failed to register Passkey')
           )
+          return false
         }
-        throw AuthOperationError.from(error, 'Failed to register Passkey')
+
+        toast.success(i18next.t('Passkey registered successfully'))
+        await fetchStatus()
+        return true
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === 'NotAllowedError') {
+          toast.info(i18next.t('Passkey registration was cancelled'))
+          return false
+        }
+        // eslint-disable-next-line no-console
+        console.error('[Passkey] Registration error', error)
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : i18next.t('Failed to register Passkey')
+        )
+        return false
       } finally {
-        if (operation.current === controller) operation.current = null
-        if (mounted.current) setRegistering(false)
+        setRegistering(false)
       }
     },
-    [fetchStatus, supported]
+    [supported, fetchStatus]
   )
 
   const remove = useCallback(
-    async (proofToken: string) => {
-      if (operation.current) {
-        throw new AuthOperationError(
-          'A security operation is already in progress.'
-        )
-      }
-      const controller = new AbortController()
-      operation.current = controller
+    async (proofToken?: string) => {
       setRemoving(true)
       try {
-        await deletePasskey(proofToken, controller.signal)
-        controller.signal.throwIfAborted()
-        await fetchStatus()
-      } catch (error) {
-        if (mounted.current && !controller.signal.aborted) await fetchStatus()
-        if (controller.signal.aborted) {
-          throw new AuthOperationError(
-            'Operation cancelled',
-            'AUTH_CANCELLED',
-            { cause: error }
-          )
+        const res = await deletePasskey(proofToken)
+        if (!res.success) {
+          toast.error(res.message || i18next.t('Failed to remove Passkey'))
+          return false
         }
-        throw AuthOperationError.from(error, 'Failed to remove Passkey')
+
+        toast.success(i18next.t('Passkey removed successfully'))
+        await fetchStatus()
+        return true
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[Passkey] Removal error', error)
+        toast.error(i18next.t('Failed to remove Passkey'))
+        return false
       } finally {
-        if (operation.current === controller) operation.current = null
-        if (mounted.current) setRemoving(false)
+        setRemoving(false)
       }
     },
     [fetchStatus]
   )
 
+  const enabled = useMemo(() => Boolean(status?.enabled), [status])
+  const lastUsed = useMemo(() => status?.last_used_at ?? null, [status])
+
   return {
     status,
-    statusError,
     loading,
     registering,
     removing,
     supported,
-    enabled: Boolean(status?.enabled),
-    lastUsed: status?.last_used_at ?? null,
+    enabled,
+    lastUsed,
     fetchStatus,
     register,
     remove,

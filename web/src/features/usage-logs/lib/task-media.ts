@@ -31,15 +31,10 @@ const CACHED_MEDIA_DOWNLOAD_ACTIONS = new Set<string>([
 
 // getDownloadableCachedMediaUrl 只为已成功缓存的图片或视频任务返回可下载地址，避免继续依赖会过期的上游链接。
 export function getDownloadableCachedMediaUrl(
-  log: Pick<
-    TaskLog,
-    'status' | 'action' | 'media_url' | 'media_status' | 'platform'
-  >
+  log: Pick<TaskLog, 'status' | 'action' | 'media_url'>
 ): string {
   if (
     log.status !== TASK_STATUS.SUCCESS ||
-    (log.media_status !== 3 &&
-      !(log.platform === '65' && log.media_status === 0)) ||
     !CACHED_MEDIA_DOWNLOAD_ACTIONS.has(log.action)
   ) {
     return ''

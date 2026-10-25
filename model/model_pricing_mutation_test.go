@@ -13,7 +13,7 @@ import (
 func useModelPricingMutationTestDB(t *testing.T) {
 	t.Helper()
 	testDB := useOptionTestDB(t)
-	require.NoError(t, testDB.AutoMigrate(&Model{}, &Ability{}, &Channel{}, &Vendor{}))
+	require.NoError(t, testDB.AutoMigrate(&Model{}))
 	common.OptionMapRWMutex.Lock()
 	previousOptions := common.OptionMap
 	common.OptionMap = make(map[string]string)
@@ -239,11 +239,11 @@ func TestPricingOptionKeyClassification(t *testing.T) {
 func TestUpdateOptionPricingWaitsForPersistenceWriter(t *testing.T) {
 	useModelPricingMutationTestDB(t)
 
-	modelPricingMutationMu.Lock()
+	pricingPersistenceMutex.Lock()
 	locked := true
 	t.Cleanup(func() {
 		if locked {
-			modelPricingMutationMu.Unlock()
+			pricingPersistenceMutex.Unlock()
 		}
 	})
 
@@ -259,14 +259,14 @@ func TestUpdateOptionPricingWaitsForPersistenceWriter(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	modelPricingMutationMu.Unlock()
+	pricingPersistenceMutex.Unlock()
 	locked = false
 	require.NoError(t, <-done)
 }
 
 func TestPricingPersistenceDoesNotBlockRuntimeReaders(t *testing.T) {
-	modelPricingMutationMu.Lock()
-	defer modelPricingMutationMu.Unlock()
+	pricingPersistenceMutex.Lock()
+	defer pricingPersistenceMutex.Unlock()
 
 	done := make(chan struct{})
 	go func() {
@@ -355,52 +355,4 @@ func TestUpdateOptionRejectsIncompleteEnabledImageSizePricing(t *testing.T) {
 		Where(commonKeyCol+" = ?", ImageSizePriceKey("broken-image-model")).
 		Count(&count).Error)
 	assert.Zero(t, count)
-}
-
-func TestCombinedModelSaveInvalidatesVersionedDynamicPricingDraft(t *testing.T) {
-	useModelPricingMutationTestDB(t)
-	m := &Model{ModelName: "versioned-custom-image", Status: 1}
-	require.NoError(t, SaveModelWithPricing(m, "", ModelPricingMutation{Mode: ModelPricingModeImageSize, ImageSizePrices: map[string]float64{"1k": 0.01, "2k": 0.02, "4k": 0.04}}))
-	before, err := GetModelPricingSnapshot([]string{m.ModelName})
-	require.NoError(t, err)
-	require.Len(t, before.Entries, 1)
-	draft := before.Entries[0]
-	assert.Contains(t, draft.Configured, "image_size_price_setting")
-	assert.Contains(t, before.Options, ImageSizePriceKey(m.ModelName))
-	require.NoError(t, SaveModelWithPricing(m, m.ModelName, ModelPricingMutation{Mode: ModelPricingModeImageSize, ImageSizePrices: map[string]float64{"1k": 0.02, "2k": 0.03, "4k": 0.05}}))
-	err = UpdateModelPricing([]ModelPricingChange{{ModelName: m.ModelName, ExpectedVersion: draft.Version, Pricing: draft.Configured}})
-	require.ErrorIs(t, err, ErrModelPricingConflict)
-	price, _, err := GetImageSizePrice(m.ModelName, "2k")
-	require.NoError(t, err)
-	assert.Equal(t, 0.03, price)
-	fresh, err := GetModelPricingSnapshot([]string{m.ModelName})
-	require.NoError(t, err)
-	fresh.Entries[0].Configured["billing_setting.skip_seconds"] = true
-	require.NoError(t, UpdateModelPricing([]ModelPricingChange{{ModelName: m.ModelName, ExpectedVersion: fresh.Entries[0].Version, Pricing: fresh.Entries[0].Configured}}))
-	latest, err := GetModelPricingSnapshot([]string{m.ModelName})
-	require.NoError(t, err)
-	assert.Equal(t, true, latest.Entries[0].Configured["billing_setting.skip_seconds"])
-	assert.NotEqual(t, fresh.Entries[0].Version, latest.Entries[0].Version)
-	price, _, err = GetImageSizePrice(m.ModelName, "2k")
-	require.NoError(t, err)
-	assert.Equal(t, 0.03, price)
-}
-
-func TestVersionedPricingFailureKeepsDynamicRuntimeAndDatabase(t *testing.T) {
-	useModelPricingMutationTestDB(t)
-	m := &Model{ModelName: "atomic-version-image", Status: 1}
-	require.NoError(t, SaveModelWithPricing(m, "", ModelPricingMutation{Mode: ModelPricingModeImageSize, ImageSizePrices: map[string]float64{"1k": 0.01, "2k": 0.02, "4k": 0.04}}))
-	snapshot, err := GetModelPricingSnapshot([]string{m.ModelName})
-	require.NoError(t, err)
-	entry := snapshot.Entries[0]
-	entry.Configured["image_size_price_setting"] = map[string]any{"enabled": true, "setting": map[string]float64{"1k": 0.02, "2k": 0.03, "4k": 0.05}}
-	require.NoError(t, DB.Exec(`CREATE TRIGGER reject_dynamic_update BEFORE UPDATE ON options WHEN OLD.key='image_size_price_setting.atomic-version-image' BEGIN SELECT RAISE(ABORT,'fixture option failure'); END`).Error)
-	err = UpdateModelPricing([]ModelPricingChange{{ModelName: m.ModelName, ExpectedVersion: entry.Version, Pricing: entry.Configured}})
-	require.Error(t, err)
-	after, err := GetModelPricingSnapshot([]string{m.ModelName})
-	require.NoError(t, err)
-	assert.Equal(t, entry.Version, after.Entries[0].Version)
-	price, _, err := GetImageSizePrice(m.ModelName, "2k")
-	require.NoError(t, err)
-	assert.Equal(t, 0.02, price)
 }

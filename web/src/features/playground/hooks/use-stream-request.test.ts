@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
 import type { ChatCompletionRequest } from '../types'
 import { createStreamRequestController } from './use-stream-request'
@@ -102,12 +103,12 @@ describe('latest-wins stream request coordination', () => {
     const second = controller.send(payload, noopCallbacks)
     firstHeaders.resolve({ Authorization: 'Bearer stale' })
     await first
-    expect(sources.length).toBe(0)
+    assert.equal(sources.length, 0)
 
     secondHeaders.resolve({ Authorization: 'Bearer current' })
     await second
-    expect(sources.length).toBe(1)
-    expect(sources[0]?.streamed).toBe(true)
+    assert.equal(sources.length, 1)
+    assert.equal(sources[0]?.streamed, true)
   })
 
   test('stop cancels a request that is still waiting for headers', async () => {
@@ -127,7 +128,7 @@ describe('latest-wins stream request coordination', () => {
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
 
-    expect(sourceCount).toBe(0)
+    assert.equal(sourceCount, 0)
   })
 
   test('dispose cancels a pending header request without a state update', async () => {
@@ -148,8 +149,8 @@ describe('latest-wins stream request coordination', () => {
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
 
-    expect(sourceCount).toBe(0)
-    expect(streamingStates).toEqual([false])
+    assert.equal(sourceCount, 0)
+    assert.deepEqual(streamingStates, [false])
   })
 
   test('closes the previous source and ignores all of its later events', async () => {
@@ -181,7 +182,7 @@ describe('latest-wins stream request coordination', () => {
 
     await controller.send(payload, callbacks)
     const second = controller.send(payload, callbacks)
-    expect(sources[0]?.closed).toBe(true)
+    assert.equal(sources[0]?.closed, true)
     sources[0]?.emit(
       'message',
       JSON.stringify({ choices: [{ delta: { content: 'stale' } }] })
@@ -194,6 +195,6 @@ describe('latest-wins stream request coordination', () => {
       JSON.stringify({ choices: [{ delta: { content: 'current' } }] })
     )
 
-    expect(updates).toEqual(['current'])
+    assert.deepEqual(updates, ['current'])
   })
 })

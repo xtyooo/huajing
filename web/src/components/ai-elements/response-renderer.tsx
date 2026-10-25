@@ -20,7 +20,6 @@ import type { ReactNode } from 'react'
 import type { FootnoteNode, ParsedNode } from 'stream-markdown-parser'
 
 import { getNodeKey } from './response-content'
-import type { FadeRun } from './response-fade'
 import {
   hasParsedChildren,
   isBlockquoteNode,
@@ -53,68 +52,40 @@ import {
   renderTextNode,
 } from './response-renderer-inline'
 import { renderTable } from './response-renderer-table'
-import type { BlockRendererOptions, RenderChildren } from './response-types'
 
-function createRenderChildren(fadeRun?: FadeRun): RenderChildren {
-  return (nodes) => renderChildren(nodes, fadeRun)
+export function renderChildren(nodes: ParsedNode[]): ReactNode {
+  return nodes.map((node, index) => renderNode(node, getNodeKey(node, index)))
 }
 
-export function renderChildren(
-  nodes: ParsedNode[],
-  fadeRun?: FadeRun
-): ReactNode {
-  const options: BlockRendererOptions = {
-    fadeRun,
-    renderChildren: createRenderChildren(fadeRun),
-  }
-  return nodes.map((node, index) =>
-    renderNode(node, getNodeKey(node, index), options)
-  )
+export function renderFootnotes(footnotes: FootnoteNode[]): ReactNode {
+  return renderFootnotesBlock(footnotes, { renderChildren })
 }
 
-export function renderFootnotes(
-  footnotes: FootnoteNode[],
-  fadeRun?: FadeRun
-): ReactNode {
-  return renderFootnotesBlock(footnotes, {
-    fadeRun,
-    renderChildren: createRenderChildren(fadeRun),
-  })
-}
-
-/** Settled (non-animated) renderChildren for skipped subtrees */
-const settledRenderChildren = createRenderChildren()
-
-function renderNode(
-  node: ParsedNode,
-  key: string,
-  options: BlockRendererOptions
-): ReactNode {
+function renderNode(node: ParsedNode, key: string): ReactNode {
   if (isTextNode(node)) {
-    return renderTextNode(node, options.fadeRun)
+    return renderTextNode(node)
   }
 
   if (isHeadingNode(node)) {
-    return renderHeading(node, key, options)
+    return renderHeading(node, key, { renderChildren })
   }
 
   if (node.type === 'paragraph' && hasParsedChildren(node)) {
     return (
       <p className='my-3 leading-7' key={key}>
-        {options.renderChildren(node.children)}
+        {renderChildren(node.children)}
       </p>
     )
   }
 
   if (node.type === 'inline' && hasParsedChildren(node)) {
-    return <span key={key}>{options.renderChildren(node.children)}</span>
+    return <span key={key}>{renderChildren(node.children)}</span>
   }
 
   if (isListNode(node)) {
-    return renderList(node, key, options)
+    return renderList(node, key, { renderChildren })
   }
 
-  // Skip list: code / math / html / image — no fade wrapping, offset not advanced
   if (isCodeBlockNode(node)) {
     return renderCodeBlock(node, key)
   }
@@ -131,7 +102,7 @@ function renderNode(
   }
 
   if (isLinkNode(node)) {
-    return renderLink(node, key, options.renderChildren)
+    return renderLink(node, key, renderChildren)
   }
 
   if (isImageNode(node)) {
@@ -139,47 +110,47 @@ function renderNode(
   }
 
   if (isBlockquoteNode(node)) {
-    return renderBlockquote(node, key, options)
+    return renderBlockquote(node, key, { renderChildren })
   }
 
   if (isTableNode(node)) {
-    return renderTable(node, key, options)
+    return renderTable(node, key, { renderChildren })
   }
 
   if (isDefinitionListNode(node)) {
-    return renderDefinitionList(node, key, options)
+    return renderDefinitionList(node, key, { renderChildren })
   }
 
   if (node.type === 'strong' && hasParsedChildren(node)) {
     return (
       <strong className='text-foreground font-semibold' key={key}>
-        {options.renderChildren(node.children)}
+        {renderChildren(node.children)}
       </strong>
     )
   }
 
   if (node.type === 'emphasis' && hasParsedChildren(node)) {
-    return <em key={key}>{options.renderChildren(node.children)}</em>
+    return <em key={key}>{renderChildren(node.children)}</em>
   }
 
   if (node.type === 'strikethrough' && hasParsedChildren(node)) {
-    return <del key={key}>{options.renderChildren(node.children)}</del>
+    return <del key={key}>{renderChildren(node.children)}</del>
   }
 
   if (node.type === 'highlight' && hasParsedChildren(node)) {
-    return <mark key={key}>{options.renderChildren(node.children)}</mark>
+    return <mark key={key}>{renderChildren(node.children)}</mark>
   }
 
   if (node.type === 'insert' && hasParsedChildren(node)) {
-    return <ins key={key}>{options.renderChildren(node.children)}</ins>
+    return <ins key={key}>{renderChildren(node.children)}</ins>
   }
 
   if (node.type === 'subscript' && hasParsedChildren(node)) {
-    return <sub key={key}>{options.renderChildren(node.children)}</sub>
+    return <sub key={key}>{renderChildren(node.children)}</sub>
   }
 
   if (node.type === 'superscript' && hasParsedChildren(node)) {
-    return <sup key={key}>{options.renderChildren(node.children)}</sup>
+    return <sup key={key}>{renderChildren(node.children)}</sup>
   }
 
   if (
@@ -233,9 +204,7 @@ function renderNode(
   }
 
   if (isHtmlBlockNode(node) && node.tag === 'details') {
-    return renderDetails(node, key, {
-      renderChildren: settledRenderChildren,
-    })
+    return renderDetails(node, key, { renderChildren })
   }
 
   if (node.type === 'html_block' && 'content' in node) {
@@ -247,7 +216,7 @@ function renderNode(
   }
 
   if (hasParsedChildren(node)) {
-    return <span key={key}>{options.renderChildren(node.children)}</span>
+    return <span key={key}>{renderChildren(node.children)}</span>
   }
 
   if ('content' in node && typeof node.content === 'string') {

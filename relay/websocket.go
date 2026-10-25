@@ -2,10 +2,7 @@ package relay
 
 import (
 	"fmt"
-	"sync"
-	"time"
 
-	"github.com/QuantumNous/new-api/pkg/wsmanager"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -36,18 +33,6 @@ func WssHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.
 	if resp != nil {
 		info.TargetWs = resp.(*websocket.Conn)
 		defer info.TargetWs.Close()
-		var closeOnce sync.Once
-		unregister := wsmanager.Register(info.ChannelId, wsmanager.KindRealtime, func(reason string) {
-			closeOnce.Do(func() {
-				deadline := time.Now().Add(time.Second)
-				closeMessage := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason)
-				_ = info.ClientWs.WriteControl(websocket.CloseMessage, closeMessage, deadline)
-				_ = info.TargetWs.WriteControl(websocket.CloseMessage, closeMessage, deadline)
-				_ = info.ClientWs.Close()
-				_ = info.TargetWs.Close()
-			})
-		})
-		defer unregister()
 	}
 
 	usage, newAPIError := adaptor.DoResponse(c, nil, info)
@@ -56,6 +41,6 @@ func WssHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
-	service.PostWssConsumeQuota(c, info, info.UpstreamModelName, usage.(*dto.RealtimeUsage), nil)
+	service.PostWssConsumeQuota(c, info, info.UpstreamModelName, usage.(*dto.RealtimeUsage), "")
 	return nil
 }

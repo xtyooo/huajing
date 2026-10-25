@@ -48,8 +48,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Separator } from '@/components/ui/separator'
-import { handleServerError } from '@/lib/handle-server-error'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getDeployment, listDeploymentContainers } from '../../api'
 
@@ -71,10 +69,7 @@ export function ViewDetailsDialog({
     isFetching: isFetchingDetails,
   } = useQuery({
     queryKey: ['deployment-details', deploymentId],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (deploymentId ? getDeployment(deploymentId) : null)
-      ),
+    queryFn: () => (deploymentId ? getDeployment(deploymentId) : null),
     enabled: open && deploymentId !== null,
   })
 
@@ -85,10 +80,8 @@ export function ViewDetailsDialog({
     isFetching: isFetchingContainers,
   } = useQuery({
     queryKey: ['deployment-details-containers', deploymentId],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (deploymentId ? listDeploymentContainers(deploymentId) : null)
-      ),
+    queryFn: () =>
+      deploymentId ? listDeploymentContainers(deploymentId) : null,
     enabled: open && deploymentId !== null,
   })
 
@@ -123,8 +116,8 @@ export function ViewDetailsDialog({
     try {
       await navigator.clipboard.writeText(String(deploymentId))
       toast.success(t('Copied'))
-    } catch (error) {
-      handleServerError(error, t('Copy failed'))
+    } catch {
+      toast.error(t('Copy failed'))
     }
   }
 
@@ -150,7 +143,7 @@ export function ViewDetailsDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('Deployment details')}
-      contentClassName='max-h-(--dialog-available-height) overflow-y-auto max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-3xl'
+      contentClassName='max-h-[calc(100dvh-2rem)] overflow-hidden max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-3xl'
       contentHeight='auto'
       bodyClassName='space-y-4'
       footer={

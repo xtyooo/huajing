@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"math/rand"
 	"time"
 
@@ -54,7 +55,7 @@ func HasCheckedInToday(userId int) (bool, error) {
 func UserCheckin(userId int) (*Checkin, error) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
-		return nil, common.NewMessage("Check-in feature is not enabled")
+		return nil, errors.New("签到功能未启用")
 	}
 
 	// 检查今天是否已签到
@@ -63,7 +64,7 @@ func UserCheckin(userId int) (*Checkin, error) {
 		return nil, err
 	}
 	if hasChecked {
-		return nil, common.NewMessage("Already checked in today")
+		return nil, errors.New("今日已签到")
 	}
 
 	// 计算随机额度奖励
@@ -96,13 +97,13 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 		// 步骤1: 创建签到记录
 		// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
 		if err := tx.Create(checkin).Error; err != nil {
-			return common.NewMessage("Check-in failed, please try again later")
+			return errors.New("签到失败，请稍后重试")
 		}
 
 		// 步骤2: 在事务中增加用户额度
 		if err := tx.Model(&User{}).Where("id = ?", userId).
 			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
-			return common.NewMessage("Check-in failed: quota update error")
+			return errors.New("签到失败：更新额度出错")
 		}
 
 		return nil
@@ -125,7 +126,7 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 	// 步骤1: 创建签到记录
 	// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
 	if err := DB.Create(checkin).Error; err != nil {
-		return nil, common.NewMessage("Check-in failed, please try again later")
+		return nil, errors.New("签到失败，请稍后重试")
 	}
 
 	// 步骤2: 增加用户额度
@@ -133,14 +134,14 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 	if err := IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
 		DB.Delete(checkin)
-		return nil, common.NewMessage("Check-in failed: quota update error")
+		return nil, errors.New("签到失败：更新额度出错")
 	}
 
 	return checkin, nil
 }
 
 // GetUserCheckinStats 获取用户签到统计信息
-func GetUserCheckinStats(userId int, month string) (map[string]any, error) {
+func GetUserCheckinStats(userId int, month string) (map[string]interface{}, error) {
 	// 获取指定月份的所有签到记录
 	startDate := month + "-01"
 	endDate := month + "-31"
@@ -168,7 +169,7 @@ func GetUserCheckinStats(userId int, month string) (map[string]any, error) {
 	DB.Model(&Checkin{}).Where("user_id = ?", userId).Count(&totalCheckins)
 	DB.Model(&Checkin{}).Where("user_id = ?", userId).Select("COALESCE(SUM(quota_awarded), 0)").Scan(&totalQuota)
 
-	return map[string]any{
+	return map[string]interface{}{
 		"total_quota":      totalQuota,      // 所有时间累计获得的额度
 		"total_checkins":   totalCheckins,   // 所有时间累计签到次数
 		"checkin_count":    len(records),    // 本月签到次数

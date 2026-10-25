@@ -31,8 +31,6 @@ import {
   type ModelRow,
 } from './model-pricing-snapshots'
 
-export const TASK_PRICING_MODE_FILTER = 'tiered_expr_task'
-
 const filterBySelectedValues = (
   rowValue: unknown,
   filterValue: unknown
@@ -45,7 +43,6 @@ type BuildModelRatioColumnsOptions = {
   onDelete: (name: string) => void
   onEdit: (model: ModelRow) => void
   deleteDisabled?: boolean
-  taskModelNames?: Set<string>
   t: (key: string) => string
 }
 
@@ -53,7 +50,6 @@ export function buildModelRatioColumns({
   onDelete,
   onEdit,
   deleteDisabled,
-  taskModelNames,
   t,
 }: BuildModelRatioColumnsOptions): ColumnDef<ModelRow>[] {
   return [
@@ -85,55 +81,27 @@ export function buildModelRatioColumns({
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Model name')} />
       ),
-      cell: ({ row }) => {
-        const isTaskModel = Boolean(taskModelNames?.has(row.original.name))
-        const hasConfiguredTaskPricing =
-          row.original.billingMode === 'tiered_expr' &&
-          Boolean(row.original.billingExpr)
-        const showTaskPricingBadge = isTaskModel && hasConfiguredTaskPricing
-        const showTieredBadge =
-          row.original.billingMode === 'tiered_expr' && !isTaskModel
-        const showUnconfiguredTaskBadge =
-          isTaskModel && !hasConfiguredTaskPricing
-
-        return (
-          <div className='flex min-w-0 items-center gap-2 font-medium'>
-            <span className='min-w-0 truncate'>{row.getValue('name')}</span>
-            {showTieredBadge ? (
-              <StatusBadge
-                label={t('Tiered')}
-                variant='info'
-                copyable={false}
-                className='shrink-0'
-              />
-            ) : null}
-            {showTaskPricingBadge ? (
-              <StatusBadge
-                label={t('Task pricing')}
-                variant='info'
-                copyable={false}
-                className='shrink-0'
-              />
-            ) : null}
-            {row.original.hasConflict && (
-              <StatusBadge
-                label={t('Conflict')}
-                variant='danger'
-                copyable={false}
-                className='shrink-0'
-              />
-            )}
-            {showUnconfiguredTaskBadge ? (
-              <StatusBadge
-                label={t('Task pricing not configured')}
-                variant='warning'
-                copyable={false}
-                className='shrink-0'
-              />
-            ) : null}
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <div className='flex min-w-0 items-center gap-2 font-medium'>
+          <span className='min-w-0 truncate'>{row.getValue('name')}</span>
+          {row.original.billingMode === 'tiered_expr' && (
+            <StatusBadge
+              label={t('Tiered')}
+              variant='info'
+              copyable={false}
+              className='shrink-0'
+            />
+          )}
+          {row.original.hasConflict && (
+            <StatusBadge
+              label={t('Conflict')}
+              variant='danger'
+              copyable={false}
+              className='shrink-0'
+            />
+          )}
+        </div>
+      ),
       enableHiding: false,
     },
     {
@@ -150,20 +118,8 @@ export function buildModelRatioColumns({
           className='-ml-1.5 px-0'
         />
       ),
-      filterFn: (row, id, value) => {
-        if (filterBySelectedValues(row.getValue(id), value)) return true
-        if (
-          !Array.isArray(value) ||
-          !value.includes(TASK_PRICING_MODE_FILTER)
-        ) {
-          return false
-        }
-        return (
-          Boolean(taskModelNames?.has(row.original.name)) &&
-          row.original.billingMode === 'tiered_expr' &&
-          Boolean(row.original.billingExpr)
-        )
-      },
+      filterFn: (row, id, value) =>
+        filterBySelectedValues(row.getValue(id), value),
       meta: { label: t('Mode') },
     },
     {

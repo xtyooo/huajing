@@ -86,7 +86,6 @@ import type {
 } from '@/features/dashboard/types'
 import { formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
-import { requireServerSuccess } from '@/lib/server-error-message'
 import { computeTimeRange } from '@/lib/time'
 import { useChartTheme } from '@/lib/use-chart-theme'
 import { cn } from '@/lib/utils'
@@ -337,8 +336,7 @@ export function FlowCharts(props: FlowChartsProps) {
     isLoading,
   } = useQuery({
     queryKey: ['dashboard', 'flow', flowQueryParams, flowRole],
-    queryFn: async () =>
-      requireServerSuccess(await getFlowQuotaDates(flowQueryParams, isAdmin)),
+    queryFn: () => getFlowQuotaDates(flowQueryParams, isAdmin),
     select: (res) =>
       requireSuccessfulFlowRows(res, t('Please try again later.')),
     staleTime: 60_000,

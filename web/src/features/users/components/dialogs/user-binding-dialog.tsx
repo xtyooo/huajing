@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
 import {
   Mail,
   Globe,
@@ -30,9 +29,9 @@ import {
 } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { SiGithub, SiDiscord } from 'react-icons/si'
 import { toast } from 'sonner'
 
-import { IconGithub, IconDiscord } from '@/assets/brand-icons'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
@@ -45,20 +44,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { handleServerError } from '@/lib/handle-server-error'
-import { indexCustomOAuthBindings, type CustomOAuthBinding } from '@/lib/oauth'
-import { AuthOperationError } from '@/lib/secure-verification'
-import { requireServerSuccess } from '@/lib/server-error-message'
-import { statusQueryOptions } from '@/lib/status-query'
+import { api } from '@/lib/api'
 
 import {
   getUser,
   getUserOAuthBindings,
   adminClearUserBinding,
   adminUnbindCustomOAuth,
+  type OAuthBinding,
 } from '../../api'
 import type { User } from '../../types'
-import { useUsers } from '../users-provider'
 
 interface Props {
   open: boolean
@@ -73,7 +68,7 @@ interface BindingItem {
   icon: React.ReactNode
   value: string
   type: 'builtin' | 'custom'
-  providerId?: number
+  providerId?: string
   isBound: boolean
   isEnabled: boolean
 }
@@ -86,7 +81,7 @@ interface StatusInfo {
   telegram_oauth?: boolean
   linuxdo_oauth?: boolean
   custom_oauth_providers?: Array<{
-    id: number
+    id: string
     name: string
     icon?: string
   }>
@@ -107,42 +102,42 @@ const BUILTIN_BINDINGS: ReadonlyArray<{
     statusKey: null,
   },
   {
-    key: 'github',
+    key: 'github_id',
     field: 'github_id',
     label: 'GitHub',
-    icon: <IconGithub className='h-4 w-4' />,
+    icon: <SiGithub className='h-4 w-4' />,
     statusKey: 'github_oauth',
   },
   {
-    key: 'discord',
+    key: 'discord_id',
     field: 'discord_id',
     label: 'Discord',
-    icon: <IconDiscord className='h-4 w-4' />,
+    icon: <SiDiscord className='h-4 w-4' />,
     statusKey: 'discord_oauth',
   },
   {
-    key: 'wechat',
+    key: 'wechat_id',
     field: 'wechat_id',
     label: 'WeChat',
     icon: <MessageCircle className='h-4 w-4' />,
     statusKey: 'wechat_login',
   },
   {
-    key: 'oidc',
+    key: 'oidc_id',
     field: 'oidc_id',
     label: 'OIDC',
     icon: <Globe className='h-4 w-4' />,
     statusKey: 'oidc_enabled',
   },
   {
-    key: 'telegram',
+    key: 'telegram_id',
     field: 'telegram_id',
     label: 'Telegram',
     icon: <Send className='h-4 w-4' />,
     statusKey: 'telegram_oauth',
   },
   {
-    key: 'linuxdo',
+    key: 'linux_do_id',
     field: 'linux_do_id',
     label: 'LinuxDO',
     icon: <Globe className='h-4 w-4' />,
@@ -166,38 +161,43 @@ function CustomProviderIcon(props: { iconUrl?: string }) {
 
 export function UserBindingDialog(props: Props) {
   const { t } = useTranslation()
-  const { requestVerification, verificationActive } = useUsers()
   const [user, setUser] = useState<User | null>(null)
-  const [oauthBindings, setOauthBindings] = useState<CustomOAuthBinding[]>([])
+  const [oauthBindings, setOauthBindings] = useState<OAuthBinding[]>([])
+  const [statusInfo, setStatusInfo] = useState<StatusInfo>({})
   const [loading, setLoading] = useState(false)
   const [showBoundOnly, setShowBoundOnly] = useState(true)
   const [unbindTarget, setUnbindTarget] = useState<BindingItem | null>(null)
   const [unbinding, setUnbinding] = useState(false)
-  const { data: statusInfo, isLoading: statusLoading } = useQuery({
-    ...statusQueryOptions,
-    enabled: props.open && !!props.userId,
-  })
 
   const fetchData = useCallback(async () => {
     if (!props.userId) return
     setLoading(true)
     try {
-      const [userRes, oauthRes] = await Promise.all([
+      const [userRes, oauthRes, statusRes] = await Promise.all([
         getUser(props.userId),
         getUserOAuthBindings(props.userId).catch(() => ({
           success: false,
           data: [],
         })),
+        api
+          .get('/api/status')
+          .then((r) => r.data)
+          .catch(() => ({
+            success: false,
+            data: {},
+          })),
       ])
-      requireServerSuccess(userRes)
       if (userRes.success && userRes.data) {
         setUser(userRes.data)
       }
       if (oauthRes.success && oauthRes.data) {
-        setOauthBindings(oauthRes.data)
+        setOauthBindings(oauthRes.data as OAuthBinding[])
       }
-    } catch (error) {
-      handleServerError(error, t('Failed to load'))
+      if (statusRes.success && statusRes.data) {
+        setStatusInfo(statusRes.data as StatusInfo)
+      }
+    } catch {
+      toast.error(t('Failed to load'))
     } finally {
       setLoading(false)
     }
@@ -210,12 +210,12 @@ export function UserBindingDialog(props: Props) {
     } else {
       setUser(null)
       setOauthBindings([])
+      setStatusInfo({})
     }
   }, [props.open, props.userId, fetchData])
 
   const allBindings = useMemo<BindingItem[]>(() => {
     const items: BindingItem[] = []
-    const status = statusInfo as StatusInfo | undefined
 
     for (const field of BUILTIN_BINDINGS) {
       const value = user
@@ -223,7 +223,7 @@ export function UserBindingDialog(props: Props) {
         : ''
       const isBound = !!value
       const isEnabled =
-        field.statusKey == null ? true : Boolean(status?.[field.statusKey])
+        field.statusKey == null ? true : Boolean(statusInfo[field.statusKey])
 
       items.push({
         key: field.key,
@@ -236,35 +236,37 @@ export function UserBindingDialog(props: Props) {
       })
     }
 
-    const oauthBindingMap = indexCustomOAuthBindings(oauthBindings)
+    const oauthBindingMap = new Map(
+      oauthBindings.map((b) => [String(b.provider_id), b])
+    )
 
-    const customProviders = status?.custom_oauth_providers || []
-    const seenProviderIds = new Set<number>()
+    const customProviders = statusInfo.custom_oauth_providers || []
+    const seenProviderIds = new Set<string>()
 
     for (const provider of customProviders) {
-      seenProviderIds.add(provider.id)
-      const binding = oauthBindingMap.get(provider.id)
+      seenProviderIds.add(String(provider.id))
+      const binding = oauthBindingMap.get(String(provider.id))
       items.push({
         key: `oauth_${provider.id}`,
-        label: provider.name || String(provider.id),
+        label: provider.name || provider.id,
         icon: <CustomProviderIcon iconUrl={provider.icon} />,
-        value: binding?.provider_user_id || '',
+        value: binding?.external_id || '',
         type: 'custom',
-        providerId: provider.id,
+        providerId: String(provider.id),
         isBound: !!binding,
         isEnabled: true,
       })
     }
 
     for (const binding of oauthBindings) {
-      if (!seenProviderIds.has(binding.provider_id)) {
+      if (!seenProviderIds.has(String(binding.provider_id))) {
         items.push({
           key: `oauth_${binding.provider_id}`,
-          label: binding.provider_name || String(binding.provider_id),
+          label: binding.provider_name || binding.provider_id,
           icon: <Link2 className='h-4 w-4' />,
-          value: binding.provider_user_id || '-',
+          value: binding.external_id || '-',
           type: 'custom',
-          providerId: binding.provider_id,
+          providerId: String(binding.provider_id),
           isBound: true,
           isEnabled: false,
         })
@@ -284,37 +286,13 @@ export function UserBindingDialog(props: Props) {
     if (!unbindTarget || !props.userId) return
     setUnbinding(true)
     try {
-      const userId = props.userId
-      const verification = {
-        scope: 'admin.user.binding.clear',
-        title: t('Verify to unbind account'),
-        description: t(
-          'Confirm your identity before unbinding {{provider}} from this user.',
-          { provider: unbindTarget.label }
-        ),
-      } as const
       let res
       if (unbindTarget.type === 'builtin') {
-        const proof = await requestVerification({
-          ...verification,
-          context: { user_id: userId, binding_type: unbindTarget.key },
-        })
-        if (!proof) return
-        res = await adminClearUserBinding(
-          userId,
-          unbindTarget.key,
-          proof.proof_token
-        )
+        res = await adminClearUserBinding(props.userId, unbindTarget.key)
       } else if (unbindTarget.providerId) {
-        const proof = await requestVerification({
-          ...verification,
-          context: { user_id: userId, provider_id: unbindTarget.providerId },
-        })
-        if (!proof) return
         res = await adminUnbindCustomOAuth(
-          userId,
-          unbindTarget.providerId,
-          proof.proof_token
+          props.userId,
+          unbindTarget.providerId
         )
       }
       if (res?.success) {
@@ -324,10 +302,10 @@ export function UserBindingDialog(props: Props) {
         await fetchData()
         props.onUnbindSuccess?.()
       } else {
-        handleServerError(res, t('Unbind failed'))
+        toast.error(res?.message || t('Unbind failed'))
       }
-    } catch (error) {
-      handleServerError(AuthOperationError.from(error), t('Unbind failed'))
+    } catch {
+      toast.error(t('Unbind failed'))
     } finally {
       setUnbinding(false)
       setUnbindTarget(null)
@@ -352,7 +330,7 @@ export function UserBindingDialog(props: Props) {
         contentHeight='auto'
         bodyClassName='space-y-4'
       >
-        {loading || statusLoading ? (
+        {loading ? (
           <div className='flex items-center justify-center py-8'>
             <Loader2 className='text-muted-foreground h-6 w-6 animate-spin' />
           </div>
@@ -457,7 +435,7 @@ export function UserBindingDialog(props: Props) {
       </Dialog>
 
       <ConfirmDialog
-        open={!!unbindTarget && !verificationActive}
+        open={!!unbindTarget}
         onOpenChange={(open) => !open && setUnbindTarget(null)}
         title={t('Confirm Unbind')}
         desc={t(

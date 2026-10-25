@@ -1,17 +1,12 @@
 package model
 
 import (
-	"fmt"
-	"maps"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/media_cleanup_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -58,11 +53,6 @@ func InitOptionMap() {
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
-	common.OptionMap["TaskPluginEnabled"] = strconv.FormatBool(constant.TaskPluginEnabled)
-	jsplugin.DefaultRegistry.SetEnabled(constant.TaskPluginEnabled)
-	common.OptionMap[setting.TaskPluginMarketplaceSourcesKey] = setting.TaskPluginMarketplaceSources2JsonString()
-	common.OptionMap[setting.TaskPluginDisabledFactoryKeysKey] = "[]"
-	jsplugin.DefaultRegistry.SetDisabledFactoryKeys(nil)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
@@ -84,7 +74,6 @@ func InitOptionMap() {
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
 	common.OptionMap["ServerAddress"] = ""
-	common.OptionMap["TaskPublicAddress"] = system_setting.TaskPublicAddress
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
 	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
@@ -191,71 +180,59 @@ func InitOptionMap() {
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
-	maps.Copy(common.OptionMap, modelConfigs)
+	for k, v := range modelConfigs {
+		common.OptionMap[k] = v
+	}
 
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
 
 func loadOptionsFromDatabase() {
-	requestPolicyOptionMutex.Lock()
-	defer requestPolicyOptionMutex.Unlock()
-	defer func() {
-		if err := refreshRequestPolicySnapshot(); err != nil {
-			common.SysError(common.LogText("invalid request policy: %s", err.Error()))
-		}
-	}()
-	passkeyOptionMutex.Lock()
-	defer passkeyOptionMutex.Unlock()
-	modelPricingMutationMu.Lock()
-	defer modelPricingMutationMu.Unlock()
-	pricingConfigMutex.Lock()
-	defer pricingConfigMutex.Unlock()
+	pricingPersistenceMutex.Lock()
+	defer pricingPersistenceMutex.Unlock()
+
 	options, err := AllOption()
 	if err != nil {
-		common.SysError(err.Error())
+		common.SysLog("failed to load options from database: " + err.Error())
 		return
 	}
-	passkeyOptions := make(map[string]string)
+	pricingOptions := make([]*Option, 0)
 	for _, option := range options {
 		if isPricingOptionKey(option.Key) {
-			if err := validatePricingOptionValue(option.Key, option.Value); err != nil {
-				common.SysError(err.Error())
-				continue
-			}
-		}
-		if IsPasskeyDomainOption(option.Key) {
-			passkeyOptions[option.Key] = option.Value
+			pricingOptions = append(pricingOptions, option)
 			continue
 		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
-			common.SysLog(common.LogText("failed to update option map: %s", err.Error()))
+			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
-	applyPasskeyDomainOptions(passkeyOptions)
+
+	pricingConfigMutex.Lock()
+	defer pricingConfigMutex.Unlock()
+	for _, option := range pricingOptions {
+		if err := validatePricingOptionValue(option.Key, option.Value); err != nil {
+			common.SysLog("ignored invalid pricing option from database: " + err.Error())
+			continue
+		}
+		if err := updateOptionMap(option.Key, option.Value); err != nil {
+			common.SysLog("failed to update pricing option map: " + err.Error())
+		}
+	}
 }
 
 func SyncOptions(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
-		common.SysLog(common.LogText("syncing options from database"))
+		common.SysLog("syncing options from database")
 		loadOptionsFromDatabase()
 	}
 }
 
 func validateOptionValue(key string, value string) error {
-	if key == legacyAccessTokenRetireAtKey {
-		return errLegacyRetireAtReadOnly
-	}
-	if err := operation_setting.ValidateQuotaOption(key, value); err != nil {
-		return err
-	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
-	}
-	if key == operation_setting.ChannelTestConcurrencyOptionKey {
-		return operation_setting.ValidateChannelTestConcurrency(value)
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
@@ -264,16 +241,7 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
-	if IsRequestPolicyOption(key) {
-		return UpdateRequestPolicyOptions(map[string]string{key: value})
-	}
-	if IsPasskeyDomainOption(key) {
-		_, err := UpdatePasskeyDomainOptions(map[string]string{key: value}, false, "")
-		return err
-	}
-	if IsModelPricingOption(key) {
-		return UpdateModelPricingOptions(map[string]string{key: value})
-	}
+	// 先执行官方通用校验，再对定价配置执行二开的结构与数值校验。
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
@@ -282,8 +250,8 @@ func UpdateOption(key string, value string) error {
 		if err := validatePricingOptionValue(key, value); err != nil {
 			return err
 		}
-		modelPricingMutationMu.Lock()
-		defer modelPricingMutationMu.Unlock()
+		pricingPersistenceMutex.Lock()
+		defer pricingPersistenceMutex.Unlock()
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		option := Option{Key: key}
@@ -312,24 +280,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
-	for key := range values {
-		if IsPasskeyDomainOption(key) {
-			_, err := UpdatePasskeyDomainOptions(values, false, "")
-			return err
-		}
-	}
-	modelPricingCount := 0
-	for key := range values {
-		if IsModelPricingOption(key) {
-			modelPricingCount++
-		}
-	}
-	if modelPricingCount > 0 {
-		if modelPricingCount != len(values) {
-			return fmt.Errorf("model pricing options must be saved separately from unrelated settings")
-		}
-		return UpdateModelPricingOptions(values)
-	}
+	// 批量更新必须先完成全部校验，避免部分配置写入后才发现非法值。
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
@@ -344,33 +295,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 				}
 			}
 		}
+		pricingPersistenceMutex.Lock()
+		defer pricingPersistenceMutex.Unlock()
 	}
-	var policySnapshot *RequestPolicySnapshot
-	for key := range values {
-		if IsRequestPolicyOption(key) {
-			requestPolicyOptionMutex.Lock()
-			defer requestPolicyOptionMutex.Unlock()
-			options := maps.Clone(CurrentRequestPolicy().Options)
-			for key, value := range values {
-				if IsRequestPolicyOption(key) {
-					options[key] = value
-				}
-			}
-			var err error
-			policySnapshot, err = BuildRequestPolicy(options)
-			if err != nil {
-				return err
-			}
-			break
-		}
-	}
-
-	// Match the option loader: request policy precedes the pricing writer.
-	if isPricingUpdate {
-		modelPricingMutationMu.Lock()
-		defer modelPricingMutationMu.Unlock()
-	}
-
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
 			option := Option{Key: k}
@@ -417,14 +344,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 			return err
 		}
 	}
-	if policySnapshot != nil {
-		requestPolicySnapshot.Store(policySnapshot)
-	}
 	return nil
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey {
+	if key == retiredThemeOptionKey {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
@@ -436,15 +360,6 @@ func updateOptionMap(key string, value string) (err error) {
 		common.OptionMap = make(map[string]string)
 	}
 	common.OptionMap[key] = value
-	if kind, name, dynamic := dynamicPricingOption(key); dynamic {
-		var entry struct {
-			Enabled bool `json:"enabled"`
-		}
-		if err := common.UnmarshalJsonStr(value, &entry); err != nil {
-			return err
-		}
-		billing_setting.SetNativeDynamicPricing(kind, name, entry.Enabled)
-	}
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {
@@ -512,9 +427,6 @@ func updateOptionMap(key string, value string) (err error) {
 			common.DrawingEnabled = boolValue
 		case "TaskEnabled":
 			common.TaskEnabled = boolValue
-		case "TaskPluginEnabled":
-			constant.TaskPluginEnabled = boolValue
-			jsplugin.DefaultRegistry.SetEnabled(boolValue)
 		case "DataExportEnabled":
 			common.DataExportEnabled = boolValue
 		case "DefaultCollapseSidebar":
@@ -557,9 +469,6 @@ func updateOptionMap(key string, value string) (err error) {
 			ratio_setting.SetExposeRatioEnabled(boolValue)
 		}
 	}
-	if key == setting.TaskPluginDisabledFactoryKeysKey {
-		jsplugin.DefaultRegistry.SetDisabledFactoryKeys(setting.ParseTaskPluginDisabledFactoryKeys(value))
-	}
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
@@ -576,8 +485,6 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPToken = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
-	case "TaskPublicAddress":
-		system_setting.TaskPublicAddress = value
 	case "WorkerUrl":
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":

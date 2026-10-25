@@ -1,7 +1,5 @@
 package authz
 
-import "slices"
-
 // ActionDefinition describes a single action exposed by a resource. DefaultRoles
 // lists the role keys that receive this action as part of their baseline grants.
 type ActionDefinition struct {
@@ -69,7 +67,12 @@ func PermissionsForRole(roleKey string) []Permission {
 }
 
 func actionHasRole(action ActionDefinition, roleKey string) bool {
-	return slices.Contains(action.DefaultRoles, roleKey)
+	for _, r := range action.DefaultRoles {
+		if r == roleKey {
+			return true
+		}
+	}
+	return false
 }
 
 func isKnownResource(resource string) bool {

@@ -16,5 +16,5 @@ func TestDiaomaoChannelRegistration(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, constant.APITypeOpenAI, apiType)
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(constant.ChannelTypeDiaomao, diaomao.ModelList[0]))
-	assert.IsType(t, &diaomao.TaskAdaptor{}, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao))))
+	assert.IsType(t, &diaomao.TaskAdaptor{}, GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDiaomao))))
 }

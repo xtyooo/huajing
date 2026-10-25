@@ -1,16 +1,13 @@
 package oaichat
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/convdiag"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/samber/lo"
 )
 
@@ -76,7 +73,7 @@ func convertChatResponseFormatToResponsesText(reqFormat *dto.ResponseFormat) jso
 	return textRaw
 }
 
-func ChatCompletionsRequestToResponsesRequest(ctx context.Context, req *dto.GeneralOpenAIRequest) (*dto.OpenAIResponsesRequest, error) {
+func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*dto.OpenAIResponsesRequest, error) {
 	if req == nil {
 		return nil, errors.New("request is nil")
 	}
@@ -237,20 +234,10 @@ func ChatCompletionsRequestToResponsesRequest(ctx context.Context, req *dto.Gene
 					"input_audio": part.InputAudio,
 				})
 			case dto.ContentTypeFile:
-				// Responses carries the file fields on the input_file part itself.
-				inputFile := map[string]any{"type": "input_file"}
-				if file := part.GetFile(); file != nil {
-					if file.FileName != "" {
-						inputFile["filename"] = file.FileName
-					}
-					if file.FileData != "" {
-						inputFile["file_data"] = file.FileData
-					}
-					if file.FileId != "" {
-						inputFile["file_id"] = file.FileId
-					}
-				}
-				contentParts = append(contentParts, inputFile)
+				contentParts = append(contentParts, map[string]any{
+					"type": "input_file",
+					"file": part.File,
+				})
 			case dto.ContentTypeVideoUrl:
 				contentParts = append(contentParts, map[string]any{
 					"type":      "input_video",
@@ -371,8 +358,9 @@ func ChatCompletionsRequestToResponsesRequest(ctx context.Context, req *dto.Gene
 	textRaw := convertChatResponseFormatToResponsesText(req.ResponseFormat)
 
 	maxOutputTokens := lo.FromPtrOr(req.MaxTokens, uint(0))
-	if req.MaxCompletionTokens != nil {
-		maxOutputTokens = *req.MaxCompletionTokens
+	maxCompletionTokens := lo.FromPtrOr(req.MaxCompletionTokens, uint(0))
+	if maxCompletionTokens > maxOutputTokens {
+		maxOutputTokens = maxCompletionTokens
 	}
 	// OpenAI Responses API rejects max_output_tokens < 16 when explicitly provided.
 	//if maxOutputTokens > 0 && maxOutputTokens < 16 {
@@ -392,14 +380,6 @@ func ChatCompletionsRequestToResponsesRequest(ctx context.Context, req *dto.Gene
 		presencePenaltyRaw, _ = kitutil.Marshal(req.PresencePenalty)
 	}
 
-	var promptCacheKeyRaw json.RawMessage
-	if req.PromptCacheKey != "" {
-		promptCacheKeyRaw, err = kitutil.Marshal(req.PromptCacheKey)
-		if err != nil {
-			return nil, fmt.Errorf("marshal prompt_cache_key: %w", err)
-		}
-	}
-
 	out := &dto.OpenAIResponsesRequest{
 		Model:             req.Model,
 		Input:             inputRaw,
@@ -416,7 +396,6 @@ func ChatCompletionsRequestToResponsesRequest(ctx context.Context, req *dto.Gene
 		ParallelToolCalls: parallelToolCallsRaw,
 		Store:             req.Store,
 		Metadata:          req.Metadata,
-		PromptCacheKey:    promptCacheKeyRaw,
 		EnableThinking:    req.EnableThinking,
 		ThinkingBudget:    req.ThinkingBudget,
 	}
@@ -424,13 +403,11 @@ func ChatCompletionsRequestToResponsesRequest(ctx context.Context, req *dto.Gene
 		out.MaxOutputTokens = lo.ToPtr(maxOutputTokens)
 	}
 
-	reasoningIntent, diagnostics, err := reasoning.FromOpenAIChat(req)
-	if err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
-	convdiag.Add(ctx, diagnostics...)
-	if err := reasoning.ApplyToOpenAIResponses(out, reasoningIntent); err != nil {
-		return nil, reasoning.AsClientError(err)
+	if req.ReasoningEffort != "" {
+		out.Reasoning = &dto.Reasoning{
+			Effort:  req.ReasoningEffort,
+			Summary: "detailed",
+		}
 	}
 
 	return out, nil

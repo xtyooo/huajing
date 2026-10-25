@@ -38,7 +38,7 @@ interface CompactDateTimeRangePickerProps {
 }
 
 function toInputValue(date?: Date): string {
-  return date ? dayjs(date).format('YYYY-MM-DDTHH:mm:ss') : ''
+  return date ? dayjs(date).format('YYYY-MM-DDTHH:mm') : ''
 }
 
 function fromInputValue(value: string): Date | undefined {
@@ -60,18 +60,14 @@ export function CompactDateTimeRangePicker({
 
   const label = useMemo(() => {
     if (!start && !end) return t('Date Range')
-    const startText = start ? dayjs(start).format('YYYY-MM-DD HH:mm:ss') : '-'
-    const endText = end ? dayjs(end).format('YYYY-MM-DD HH:mm:ss') : '-'
+    // The popover's <input type="datetime-local"> only supports minute
+    // precision, so seconds are always 00 (manual pick) or 59 (preset
+    // end-of-day). Hide them in the trigger label to keep the button
+    // width compact while still showing the meaningful timestamp.
+    const startText = start ? dayjs(start).format('YYYY-MM-DD HH:mm') : '-'
+    const endText = end ? dayjs(end).format('YYYY-MM-DD HH:mm') : '-'
     return `${startText} ~ ${endText}`
   }, [end, start, t])
-
-  const mobileLabel = useMemo(() => {
-    if (!start || !end) return label
-    if (dayjs(start).isSame(end, 'day')) {
-      return `${dayjs(start).format('MM/DD HH:mm:ss')}–${dayjs(end).format('HH:mm:ss')}`
-    }
-    return label
-  }, [start, end, label])
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
@@ -127,7 +123,6 @@ export function CompactDateTimeRangePicker({
           <Button
             type='button'
             variant='outline'
-            aria-label={label}
             className={cn(
               'w-full justify-start gap-2 px-2.5 text-sm leading-5 font-normal tabular-nums',
               !start && !end && 'text-muted-foreground',
@@ -137,10 +132,7 @@ export function CompactDateTimeRangePicker({
         }
       >
         <CalendarDays className='text-muted-foreground size-4 shrink-0' />
-        <span className='hidden truncate sm:block'>{label}</span>
-        <span className='min-w-0 [overflow-wrap:anywhere] whitespace-normal sm:hidden'>
-          {mobileLabel}
-        </span>
+        <span className='truncate'>{label}</span>
       </PopoverTrigger>
       <PopoverContent
         align='start'
@@ -154,9 +146,7 @@ export function CompactDateTimeRangePicker({
               </div>
               <Input
                 type='datetime-local'
-                step={1}
                 value={draftStart}
-                aria-label={t('Start Time')}
                 onChange={(e) => setDraftStart(e.target.value)}
                 className='h-8 text-sm leading-5 tabular-nums'
               />
@@ -170,9 +160,7 @@ export function CompactDateTimeRangePicker({
               </div>
               <Input
                 type='datetime-local'
-                step={1}
                 value={draftEnd}
-                aria-label={t('End Time')}
                 onChange={(e) => setDraftEnd(e.target.value)}
                 className='h-8 text-sm leading-5 tabular-nums'
               />
@@ -223,7 +211,7 @@ export function CompactDateTimeRangePicker({
               className='h-7 flex-1 px-2 text-xs'
               onClick={() => applyPreset('month')}
             >
-              {t('Current month')}
+              {t('This month')}
             </Button>
           </div>
 

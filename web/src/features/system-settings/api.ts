@@ -24,12 +24,9 @@ import type {
   LogCleanupTask,
   SystemOptionsResponse,
   SystemTaskListResponse,
-  SystemTaskFilters,
   SystemTaskResponse,
   UpdateOptionRequest,
   UpdateOptionResponse,
-  UpdatePasskeyDomainsRequest,
-  UpdatePasskeyDomainsResponse,
   UpstreamChannelsResponse,
   UpstreamRatiosResponse,
 } from './types'
@@ -41,20 +38,6 @@ export async function getSystemOptions() {
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
   const res = await api.put<UpdateOptionResponse>('/api/option/', request)
-  return res.data
-}
-
-export async function updatePasskeyDomains(
-  request: UpdatePasskeyDomainsRequest
-) {
-  const res = await api.put<UpdatePasskeyDomainsResponse>(
-    '/api/option/passkey/domains',
-    request,
-    {
-      validateStatus: (status) =>
-        (status >= 200 && status < 300) || status === 409,
-    }
-  )
   return res.data
 }
 
@@ -94,12 +77,9 @@ export async function getSystemTask(taskId: string) {
   return res.data
 }
 
-export async function listSystemTasks(
-  limit = 20,
-  filters: SystemTaskFilters = {}
-) {
+export async function listSystemTasks(limit = 20) {
   const res = await api.get<SystemTaskListResponse>('/api/system-task/list', {
-    params: { limit, ...filters },
+    params: { limit },
   })
   return res.data
 }

@@ -23,12 +23,10 @@ import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
-import { Input } from '@/components/ui/input'
+import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getUserModels } from '@/lib/api'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 const APP_CONFIGS = {
   claude: {
@@ -75,7 +73,7 @@ function buildCCSwitchURL(
   apiKey: string
 ): string {
   const serverAddress = getServerAddress()
-  const endpoint = app === 'codex' ? `${serverAddress}/v1` : serverAddress
+  const endpoint = app === 'codex' ? serverAddress + '/v1' : serverAddress
   const params = new URLSearchParams()
   params.set('resource', 'provider')
   params.set('app', app)
@@ -104,7 +102,7 @@ export function CCSwitchDialog(props: Props) {
 
   const { data: modelsData } = useQuery({
     queryKey: ['user-models-ccswitch'],
-    queryFn: async () => requireServerSuccess(await getUserModels()),
+    queryFn: getUserModels,
     enabled: props.open,
     staleTime: 5 * 60 * 1000,
   })
@@ -154,7 +152,9 @@ export function CCSwitchDialog(props: Props) {
       title={t('Import to CC Switch')}
       contentClassName='sm:max-w-md'
       contentHeight='auto'
-      bodyClassName='space-y-4'
+      bodyClassName={
+        currentConfig.modelFields.length === 1 ? 'space-y-4 pb-52' : 'space-y-4'
+      }
       footer={
         <>
           <Button variant='outline' onClick={() => props.onOpenChange(false)}>
@@ -189,27 +189,30 @@ export function CCSwitchDialog(props: Props) {
         </div>
 
         <div className='space-y-2'>
-          <Label htmlFor='cc-switch-name'>{t('Name')}</Label>
-          <Input
-            id='cc-switch-name'
+          <Label>{t('Name')}</Label>
+          <ComboboxInput
+            options={[]}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onValueChange={setName}
             placeholder={currentConfig.defaultName}
+            emptyText=''
+            allowCustomValue={true}
           />
         </div>
 
         {currentConfig.modelFields.map((field) => (
           <div key={field.key} className='space-y-2'>
-            <Label htmlFor={`cc-switch-${field.key}`} required={field.required}>
+            <Label>
               {t(field.labelKey)}
+              {field.required && (
+                <span className='text-destructive ml-0.5'>*</span>
+              )}
             </Label>
-            <Combobox
-              id={`cc-switch-${field.key}`}
-              aria-label={t(field.labelKey)}
+            <ComboboxInput
               options={modelOptions}
               value={models[field.key] || ''}
               onValueChange={(v) =>
-                setModels((prev) => ({ ...prev, [field.key]: v ?? '' }))
+                setModels((prev) => ({ ...prev, [field.key]: v }))
               }
               placeholder={t('Select or enter model name')}
               emptyText={t('No models found')}

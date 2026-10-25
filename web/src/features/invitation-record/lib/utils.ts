@@ -53,13 +53,22 @@ function buildTimeRangeParams(searchParams: Record<string, unknown>): {
   start_timestamp?: number
   end_timestamp?: number
 } {
-  const convert = (value: unknown) =>
-    typeof value === 'number' && Number.isFinite(value)
-      ? timestampToSeconds(value)
-      : undefined
+  const hasTimeParams = searchParams.startTime ?? searchParams.endTime
+  const defaultTimeRange = !hasTimeParams ? getDefaultTimeRange() : null
+
+  const convertTimestamp = (timestamp: number) => timestampToSeconds(timestamp)
+
+  const getTimestamp = (paramTime?: unknown, defaultTime?: Date) => {
+    const time = (paramTime as number) || defaultTime?.getTime()
+    return time ? convertTimestamp(time) : undefined
+  }
+
   return {
-    start_timestamp: convert(searchParams.startTime),
-    end_timestamp: convert(searchParams.endTime),
+    start_timestamp: getTimestamp(
+      searchParams.startTime,
+      defaultTimeRange?.start
+    ),
+    end_timestamp: getTimestamp(searchParams.endTime, defaultTimeRange?.end),
   }
 }
 
@@ -133,9 +142,21 @@ export async function fetchInvitationRecords(
 ): Promise<GetInvitationRecordsResponse> {
   const { isAdmin, page, pageSize, searchParams } = config
 
-  const baseParams = buildApiParams({ isAdmin, page, pageSize, searchParams })
+  const baseParams = buildBaseParams({
+    page,
+    pageSize,
+    searchParams,
+  })
+
+  const paramsWithFilter = {
+    ...baseParams,
+  }
 
   return isAdmin
-    ? getAllInvitationRecords(baseParams)
-    : getUserInvitationRecords(baseParams)
+    ? await getAllInvitationRecords(
+        paramsWithFilter as GetInvitationRecordsParams
+      )
+    : await getUserInvitationRecords(
+        paramsWithFilter as GetInvitationRecordsParams
+      )
 }

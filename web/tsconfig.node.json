@@ -20,9 +20,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": [
-    "rsbuild.config.ts",
-    "vitest.config.ts",
-    "scripts/oxlint/__tests__/*.test.ts"
-  ]
+  "include": ["rsbuild.config.ts"]
 }

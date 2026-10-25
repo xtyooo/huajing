@@ -16,31 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/**
+ * Tells apart the two OAuth callbacks that land on the same `/oauth/:provider`
+ * route: an account **bind**, which runs inside a popup we opened, and a plain
+ * **login** redirect, which runs in the user's own tab.
+ *
+ * `window.opener` alone cannot make that call. Any tab opened from an external
+ * link (`target="_blank"`, Slack, mail clients, another site) carries a live
+ * opener, and that opener survives the cross-origin round trip to the identity
+ * provider. Such a login callback used to be misread as a bind, so it posted a
+ * handshake to a window that speaks no such protocol and sat on the binding
+ * screen until the deadline elapsed.
+ *
+ * The popup we open for a bind is same-origin (`about:blank`) before it is sent
+ * to the provider, so we stamp its own sessionStorage. That stamp rides along
+ * through the provider round trip and is scoped to the popup alone, which makes
+ * it positive proof of a bind flow.
+ */
 
-const OAUTH_POPUP_FLOW_KEY_PREFIX = 'oauth_popup_flow:'
-
-export function rememberOAuthLoginRedirect(
-  state: string,
-  redirect?: string
-): void {
-  if (!redirect) return
-  try {
-    window.sessionStorage.setItem(`oauth_login_redirect:${state}`, redirect)
-  } catch {
-    // Login can still complete using the default destination.
-  }
-}
-
-export function consumeOAuthLoginRedirect(state: string): string | null {
-  try {
-    const key = `oauth_login_redirect:${state}`
-    const redirect = window.sessionStorage.getItem(key)
-    window.sessionStorage.removeItem(key)
-    return redirect
-  } catch {
-    return null
-  }
-}
+const OAUTH_BIND_FLOW_KEY_PREFIX = 'oauth_bind_flow:'
 
 /** Minimal shape of `sessionStorage`, kept structural so tests can fake it. */
 export interface OAuthModeStorage {
@@ -63,7 +57,7 @@ export interface OAuthCallbackModeContext {
   storage: OAuthModeStorage | null | undefined
 }
 
-export type OAuthCallbackMode = 'login' | 'bind' | 'verify'
+export type OAuthCallbackMode = 'login' | 'bind'
 
 /**
  * Access `sessionStorage` without letting browser privacy settings crash the
@@ -80,22 +74,20 @@ export function getOAuthSessionStorage(
 }
 
 /**
- * Stamp a freshly opened, still same-origin popup as an OAuth popup flow.
+ * Stamp a freshly opened, still same-origin popup as an OAuth bind flow.
  * Call this before navigating the popup to the provider.
  */
-export function markOAuthPopup(
+export function markOAuthBindPopup(
   storage: OAuthModeStorage | null | undefined,
   provider: string,
-  state: string,
-  intent: 'bind' | 'verify'
+  state: string
 ): boolean {
   if (!storage || !provider || !state) return false
 
   try {
-    const key = `${OAUTH_POPUP_FLOW_KEY_PREFIX}${provider}`
-    const marker = JSON.stringify({ state, intent })
-    storage.setItem(key, marker)
-    return storage.getItem(key) === marker
+    const key = `${OAUTH_BIND_FLOW_KEY_PREFIX}${provider}`
+    storage.setItem(key, state)
+    return storage.getItem(key) === state
   } catch {
     return false
   }
@@ -116,24 +108,12 @@ export function resolveOAuthCallbackMode(
 ): OAuthCallbackMode {
   if (!opener || opener.closed || !storage || !state) return 'login'
 
+  let markedState: string | null = null
   try {
-    const value = storage.getItem(`${OAUTH_POPUP_FLOW_KEY_PREFIX}${provider}`)
-    if (!value) return 'login'
-    const marker: unknown = JSON.parse(value)
-    if (
-      !marker ||
-      typeof marker !== 'object' ||
-      !('state' in marker) ||
-      !('intent' in marker)
-    ) {
-      return 'login'
-    }
-    if (marker.state !== state) return 'login'
-    if (marker.intent === 'bind' || marker.intent === 'verify') {
-      return marker.intent
-    }
+    markedState = storage.getItem(`${OAUTH_BIND_FLOW_KEY_PREFIX}${provider}`)
   } catch {
     return 'login'
   }
-  return 'login'
+
+  return markedState === state ? 'bind' : 'login'
 }

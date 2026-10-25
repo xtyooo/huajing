@@ -186,7 +186,7 @@ func buildAwsRequestBody(c *gin.Context, info *relaycommon.RelayInfo, awsClaudeR
 		if err != nil {
 			return nil, errors.Wrap(err, "get request body bytes fail")
 		}
-		var data map[string]any
+		var data map[string]interface{}
 		if err := common.Unmarshal(body, &data); err != nil {
 			return nil, errors.Wrap(err, "pass-through unmarshal request body fail")
 		}
@@ -299,10 +299,10 @@ streamLoop:
 					return respErr, nil
 				}
 			case *bedrockruntimeTypes.UnknownUnionMember:
-				fmt.Println(common.LogText("unknown tag: %v", v.Tag))
+				fmt.Println("unknown tag:", v.Tag)
 				return types.NewError(errors.New("unknown response type"), types.ErrorCodeInvalidRequest), nil
 			default:
-				fmt.Println(common.LogText("union is nil or unknown type"))
+				fmt.Println("union is nil or unknown type")
 				return types.NewError(errors.New("nil or unknown response type"), types.ErrorCodeInvalidRequest), nil
 			}
 		}

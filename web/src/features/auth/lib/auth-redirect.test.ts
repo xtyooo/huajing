@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
 import type { AuthUser } from '@/stores/auth-store'
 
@@ -26,15 +27,17 @@ const origin = 'https://dashboard.example.com'
 
 describe('authentication redirect validation', () => {
   test('preserves safe internal paths, search parameters, and fragments', () => {
-    expect(sanitizeAuthRedirect('/console?tab=usage#recent', origin)).toBe(
+    assert.equal(
+      sanitizeAuthRedirect('/console?tab=usage#recent', origin),
       '/console?tab=usage#recent'
     )
-    expect(
+    assert.equal(
       sanitizeAuthRedirect(
         'https://dashboard.example.com/dashboard?tab=quota#daily',
         origin
-      )
-    ).toBe('/dashboard?tab=quota#daily')
+      ),
+      '/dashboard?tab=quota#daily'
+    )
   })
 
   test('rejects external and ambiguously parsed redirect targets', () => {
@@ -50,13 +53,13 @@ describe('authentication redirect validation', () => {
     ]
 
     for (const target of unsafeTargets) {
-      expect(sanitizeAuthRedirect(target, origin)).toBe(null)
+      assert.equal(sanitizeAuthRedirect(target, origin), null)
     }
   })
 
   test('rejects invalid or non-HTTP application origins', () => {
-    expect(sanitizeAuthRedirect('/dashboard', 'not-an-origin')).toBe(null)
-    expect(sanitizeAuthRedirect('/dashboard', 'file:///tmp/app')).toBe(null)
+    assert.equal(sanitizeAuthRedirect('/dashboard', 'not-an-origin'), null)
+    assert.equal(sanitizeAuthRedirect('/dashboard', 'file:///tmp/app'), null)
   })
 })
 
@@ -64,27 +67,31 @@ describe('saved authentication language', () => {
   const user: AuthUser = { id: 1, username: 'user', role: 1 }
 
   test('prefers the explicit user language', () => {
-    expect(
+    assert.equal(
       getSavedLanguage({
         ...user,
         language: 'ja',
         setting: { language: 'fr' },
-      })
-    ).toBe('ja')
+      }),
+      'ja'
+    )
   })
 
   test('reads object and JSON string settings', () => {
-    expect(getSavedLanguage({ ...user, setting: { language: 'fr' } })).toBe(
+    assert.equal(
+      getSavedLanguage({ ...user, setting: { language: 'fr' } }),
       'fr'
     )
-    expect(getSavedLanguage({ ...user, setting: '{"language":"ru"}' })).toBe(
+    assert.equal(
+      getSavedLanguage({ ...user, setting: '{"language":"ru"}' }),
       'ru'
     )
   })
 
   test('ignores malformed and non-string setting languages', () => {
-    expect(getSavedLanguage({ ...user, setting: '{' })).toBe(undefined)
-    expect(getSavedLanguage({ ...user, setting: { language: 123 } })).toBe(
+    assert.equal(getSavedLanguage({ ...user, setting: '{' }), undefined)
+    assert.equal(
+      getSavedLanguage({ ...user, setting: { language: 123 } }),
       undefined
     )
   })

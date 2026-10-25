@@ -16,15 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
-
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
 import { StatusBadge, type StatusBadgeProps } from './status-badge'
 
 type ProviderBadgeProps = Omit<StatusBadgeProps, 'children' | 'label'> & {
-  iconNode?: ReactNode
   iconKey?: string | null
   iconSize?: number
   label: string
@@ -35,13 +32,12 @@ type ProviderBadgeProps = Omit<StatusBadgeProps, 'children' | 'label'> & {
 export function ProviderBadge({
   className,
   iconKey,
-  iconNode,
   iconSize = 14,
   label,
   colorText = true,
   ...badgeProps
 }: ProviderBadgeProps) {
-  const icon = iconNode ?? (iconKey ? getLobeIcon(iconKey, iconSize) : null)
+  const icon = iconKey ? getLobeIcon(iconKey, iconSize) : null
 
   return (
     <div

@@ -22,12 +22,7 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-function Label({
-  className,
-  children,
-  required = false,
-  ...props
-}: React.ComponentProps<'label'> & { required?: boolean }) {
+function Label({ className, ...props }: React.ComponentProps<'label'>) {
   return (
     <label
       data-slot='label'
@@ -36,18 +31,7 @@ function Label({
         className
       )}
       {...props}
-    >
-      {required ? (
-        <span>
-          {children}{' '}
-          <span data-slot='required-indicator' className='text-destructive'>
-            *
-          </span>
-        </span>
-      ) : (
-        children
-      )}
-    </label>
+    />
   )
 }
 

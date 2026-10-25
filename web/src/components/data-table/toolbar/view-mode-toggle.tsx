@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { Grid2X2, Table2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -81,17 +80,19 @@ export function DataTableViewModeToggle(props: DataTableViewModeToggleProps) {
           <Tooltip key={segment.value}>
             <TooltipTrigger
               render={
-                <Button
+                <button
                   type='button'
-                  variant={isActive ? 'default' : 'ghost'}
-                  size='icon-sm'
                   onClick={() => props.onChange(segment.value)}
-                  aria-label={segment.tooltip}
                   aria-pressed={isActive}
-                  className='h-full w-7'
+                  className={cn(
+                    'inline-flex h-full w-7 items-center justify-center rounded-md text-xs font-medium transition-all',
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
                 >
                   <Icon className='size-3.5' />
-                </Button>
+                </button>
               }
             />
             <TooltipContent side='bottom' className='text-xs'>

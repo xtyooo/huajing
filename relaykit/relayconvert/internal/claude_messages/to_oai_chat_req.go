@@ -1,16 +1,12 @@
 package claudemessages
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/convdiag"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
-	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 const (
@@ -20,13 +16,13 @@ const (
 )
 
 type openRouterRequestReasoning struct {
-	Enabled   *bool  `json:"enabled,omitempty"`
+	Enabled   bool   `json:"enabled"`
 	Effort    string `json:"effort,omitempty"`
 	MaxTokens int    `json:"max_tokens,omitempty"`
 	Exclude   bool   `json:"exclude,omitempty"`
 }
 
-func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.ClaudeRequest, info convmeta.Meta) (*dto.GeneralOpenAIRequest, error) {
+func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info convmeta.Meta) (*dto.GeneralOpenAIRequest, error) {
 	openAIRequest := dto.GeneralOpenAIRequest{
 		Model:       claudeRequest.Model,
 		Temperature: claudeRequest.Temperature,
@@ -43,10 +39,6 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 	if claudeRequest.Stream != nil {
 		openAIRequest.Stream = kitutil.GetPointer(*claudeRequest.Stream)
 	}
-	reasoningIntent, effectiveEffort, err := claudeRequestReasoningIntent(ctx, &claudeRequest, info)
-	if err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
 
 	isOpenRouter := convmeta.OptionsOf(info).OpenRouterDialect
 	if isOpenRouter {
@@ -54,21 +46,17 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 			effortBytes, _ := kitutil.Marshal(effort)
 			openAIRequest.Verbosity = effortBytes
 		}
-		if !reasoningIntent.IsEmpty() {
+		if claudeRequest.Thinking != nil {
 			var reasoningConfig openRouterRequestReasoning
-			disabled := reasoningIntent.Mode == reasoning.ModeDisabled || reasoningIntent.Effort == reasoning.EffortNone
-			enabled := !disabled
-			reasoningConfig.Enabled = &enabled
-			if enabled && reasoningIntent.BudgetTokens != nil && reasoningIntent.Mode != reasoning.ModeAdaptive {
+			if claudeRequest.Thinking.Type == "enabled" {
 				reasoningConfig = openRouterRequestReasoning{
-					Enabled:   &enabled,
-					MaxTokens: *reasoningIntent.BudgetTokens,
+					Enabled:   true,
+					MaxTokens: claudeRequest.Thinking.GetBudgetTokens(),
 				}
-			} else if enabled {
-				reasoningConfig.Effort = string(reasoning.EffectiveEffort(reasoningIntent))
-			}
-			if reasoningIntent.IncludeThoughts != nil {
-				reasoningConfig.Exclude = !*reasoningIntent.IncludeThoughts
+			} else if claudeRequest.Thinking.Type == "adaptive" {
+				reasoningConfig = openRouterRequestReasoning{
+					Enabled: true,
+				}
 			}
 			reasoningJSON, err := kitutil.Marshal(reasoningConfig)
 			if err != nil {
@@ -76,23 +64,12 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 			}
 			openAIRequest.Reasoning = reasoningJSON
 		}
-	} else {
-		if err := reasoning.ApplyToOpenAIChat(&openAIRequest, reasoningIntent); err != nil {
-			return nil, reasoning.AsClientError(err)
+	} else if info != nil {
+		thinkingSuffix := "-thinking"
+		if strings.HasSuffix(info.GetOriginModelName(), thinkingSuffix) &&
+			!strings.HasSuffix(openAIRequest.Model, thinkingSuffix) {
+			openAIRequest.Model = openAIRequest.Model + thinkingSuffix
 		}
-		if info != nil {
-			// Keep the outgoing -thinking suffix so a cascaded downstream
-			// new-api can recover reasoning intent from the model name. This
-			// is an emission-side policy, not converter-side suffix parsing.
-			thinkingSuffix := "-thinking"
-			if strings.HasSuffix(info.GetOriginModelName(), thinkingSuffix) &&
-				!strings.HasSuffix(openAIRequest.Model, thinkingSuffix) {
-				openAIRequest.Model = openAIRequest.Model + thinkingSuffix
-			}
-		}
-	}
-	if info != nil && effectiveEffort != "" {
-		info.SetReasoningEffort(string(effectiveEffort))
 	}
 
 	if len(claudeRequest.StopSequences) == 1 {
@@ -143,26 +120,20 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 					}
 					openAIMessage.SetMediaContent(systemMediaMessages)
 				} else {
-					var systemStr strings.Builder
+					systemStr := ""
 					for _, system := range systems {
 						if system.Text != nil {
-							systemStr.WriteString(*system.Text)
+							systemStr += *system.Text
 						}
 					}
-					openAIMessage.SetStringContent(systemStr.String())
+					openAIMessage.SetStringContent(systemStr)
 				}
 				openAIMessages = append(openAIMessages, openAIMessage)
 			}
 		}
 	}
 
-	type unnamedToolResult struct {
-		index int
-		id    string
-	}
-	toolNames := make(map[string]string)
-	var unnamedToolResults []unnamedToolResult
-	for messageIndex, claudeMessage := range claudeRequest.Messages {
+	for _, claudeMessage := range claudeRequest.Messages {
 		openAIMessage := dto.Message{
 			Role: claudeMessage.Role,
 		}
@@ -176,10 +147,7 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 			var toolCalls []dto.ToolCallRequest
 			mediaMessages := make([]dto.MediaContent, 0, len(content))
 
-			for blockIndex, mediaMsg := range content {
-				if _, exists := toolNames[mediaMsg.Id]; !exists {
-					toolNames[mediaMsg.Id] = mediaMsg.Name
-				}
+			for _, mediaMsg := range content {
 				switch mediaMsg.Type {
 				case "text", "input_text":
 					message := dto.MediaContent{
@@ -189,50 +157,12 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 					}
 					mediaMessages = append(mediaMessages, message)
 				case "image":
-					url := claudeImageSourceURL(mediaMsg.Source)
-					if url == "" {
-						sourceType := ""
-						if mediaMsg.Source != nil {
-							sourceType = mediaMsg.Source.Type
-						}
-						convdiag.Add(ctx, types.ConversionDiagnostic{
-							Code:     "unsupported_media_source",
-							Path:     fmt.Sprintf("messages[%d].content[%d].source", messageIndex, blockIndex),
-							Message:  fmt.Sprintf("OpenAI Chat Completions cannot reference a Claude image with source type %q; the image was omitted", sourceType),
-							Severity: types.ConversionDiagnosticError,
-						})
-						continue
-					}
-					mediaMessages = append(mediaMessages, dto.MediaContent{
+					imageData := fmt.Sprintf("data:%s;base64,%s", mediaMsg.Source.MediaType, mediaMsg.Source.Data)
+					mediaMessage := dto.MediaContent{
 						Type:     "image_url",
-						ImageUrl: &dto.MessageImageUrl{Url: url},
-					})
-				case "document":
-					if mediaMsg.Source != nil && mediaMsg.Source.Type == "text" {
-						// A plain-text document keeps its content as a Chat text part.
-						mediaMessages = append(mediaMessages, dto.MediaContent{Type: "text", Text: kitutil.Interface2String(mediaMsg.Source.Data)})
-						continue
+						ImageUrl: &dto.MessageImageUrl{Url: imageData},
 					}
-					if mediaMsg.Source == nil || mediaMsg.Source.Type != "base64" || mediaMsg.Source.MediaType != "application/pdf" {
-						sourceType, mediaType := "", ""
-						if mediaMsg.Source != nil {
-							sourceType, mediaType = mediaMsg.Source.Type, mediaMsg.Source.MediaType
-						}
-						convdiag.Add(ctx, types.ConversionDiagnostic{
-							Code:     "unsupported_media_source",
-							Path:     fmt.Sprintf("messages[%d].content[%d].source", messageIndex, blockIndex),
-							Message:  fmt.Sprintf("OpenAI Chat Completions carries only base64 PDF and plain-text documents, not a %q source of type %q; the document was omitted", sourceType, mediaType),
-							Severity: types.ConversionDiagnosticError,
-						})
-						continue
-					}
-					mediaMessages = append(mediaMessages, dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "document.pdf",
-							FileData: "data:application/pdf;base64," + kitutil.Interface2String(mediaMsg.Source.Data),
-						},
-					})
+					mediaMessages = append(mediaMessages, mediaMessage)
 				case "tool_use":
 					toolCall := dto.ToolCallRequest{
 						ID:   mediaMsg.Id,
@@ -246,7 +176,7 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 				case "tool_result":
 					toolName := mediaMsg.Name
 					if toolName == "" {
-						unnamedToolResults = append(unnamedToolResults, unnamedToolResult{index: len(openAIMessages), id: mediaMsg.ToolUseId})
+						toolName = claudeRequest.SearchToolNameByToolCallId(mediaMsg.ToolUseId)
 					}
 					oaiToolMessage := dto.Message{
 						Role:       "tool",
@@ -256,12 +186,9 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 					if mediaMsg.IsStringContent() {
 						oaiToolMessage.SetStringContent(mediaMsg.GetStringContent())
 					} else {
-						content, media := claudeToolResultToChat(mediaMsg.ParseMediaContent())
-						oaiToolMessage.SetStringContent(content)
-						// A Chat tool message only carries text. Images from the tool result
-						// join the user message this Claude message becomes, which lands right
-						// after the tool batch and keeps the tool messages contiguous.
-						mediaMessages = append(mediaMessages, media...)
+						mediaContents := mediaMsg.ParseMediaContent()
+						encodedJSON, _ := kitutil.Marshal(mediaContents)
+						oaiToolMessage.SetStringContent(string(encodedJSON))
 					}
 					openAIMessages = append(openAIMessages, oaiToolMessage)
 				}
@@ -270,7 +197,7 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 			if len(toolCalls) > 0 {
 				openAIMessage.SetToolCalls(toolCalls)
 			}
-			if len(mediaMessages) > 0 {
+			if len(mediaMessages) > 0 && len(toolCalls) == 0 {
 				openAIMessage.SetMediaContent(mediaMessages)
 			}
 		}
@@ -278,67 +205,12 @@ func ClaudeMessagesRequestToOpenAIChat(ctx context.Context, claudeRequest dto.Cl
 			openAIMessages = append(openAIMessages, openAIMessage)
 		}
 	}
-	for _, result := range unnamedToolResults {
-		*openAIMessages[result.index].Name = toolNames[result.id]
-	}
 
 	openAIRequest.Messages = openAIMessages
 	return &openAIRequest, nil
 }
 
-// claudeToolResultToChat maps a structured tool_result content array onto Chat Completions,
-// where a tool message may only carry text. Text blocks stay on the tool message and image
-// blocks come back in Chat shape for the caller to place on the following user message;
-// stringifying them instead would hand base64 image data to the upstream text tokenizer.
-// Arrays holding any other block type keep the historical stringified form so nothing is lost.
-func claudeToolResultToChat(blocks []dto.ClaudeMediaMessage) (string, []dto.MediaContent) {
-	texts := make([]string, 0, len(blocks))
-	media := make([]dto.MediaContent, 0, len(blocks))
-	for _, block := range blocks {
-		switch {
-		case block.Type == "text" || block.Type == "input_text":
-			if text := block.GetText(); text != "" {
-				texts = append(texts, text)
-			}
-		case block.Type == "image":
-			url := claudeImageSourceURL(block.Source)
-			if url == "" {
-				return requestToJSONString(blocks), nil
-			}
-			media = append(media, dto.MediaContent{Type: "image_url", ImageUrl: &dto.MessageImageUrl{Url: url}})
-		default:
-			return requestToJSONString(blocks), nil
-		}
-	}
-	switch {
-	case len(texts) == 0 && len(media) == 0:
-		return requestToJSONString(blocks), nil
-	case len(texts) == 0:
-		// Upstreams reject empty tool content; the images ride on the following user message.
-		return "[image]", media
-	default:
-		return strings.Join(texts, "\n"), media
-	}
-}
-
-// claudeImageSourceURL is the Chat image_url for a Claude image source: a data
-// URL for base64 data or the URL of a url source. Other sources, such as Files
-// API references, have no Chat equivalent and yield "".
-func claudeImageSourceURL(source *dto.ClaudeMessageSource) string {
-	if source == nil || source.Type == "file" {
-		return ""
-	}
-	if source.Url != "" {
-		return source.Url
-	}
-	data := kitutil.Interface2String(source.Data)
-	if data == "" {
-		return ""
-	}
-	return fmt.Sprintf("data:%s;base64,%s", source.MediaType, data)
-}
-
-func requestToJSONString(v any) string {
+func requestToJSONString(v interface{}) string {
 	b, err := kitutil.Marshal(v)
 	if err != nil {
 		return "{}"

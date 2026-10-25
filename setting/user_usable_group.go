@@ -2,17 +2,14 @@ package setting
 
 import (
 	"encoding/json"
-	"maps"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 )
 
-// The default descriptions are English source keys that the web console
-// translates; descriptions an administrator saves are shown as written.
 var userUsableGroups = map[string]string{
-	"default": "Default group",
-	"vip":     "VIP group",
+	"default": "默认分组",
+	"vip":     "vip分组",
 }
 var userUsableGroupsMutex sync.RWMutex
 
@@ -21,7 +18,9 @@ func GetUserUsableGroupsCopy() map[string]string {
 	defer userUsableGroupsMutex.RUnlock()
 
 	copyUserUsableGroups := make(map[string]string)
-	maps.Copy(copyUserUsableGroups, userUsableGroups)
+	for k, v := range userUsableGroups {
+		copyUserUsableGroups[k] = v
+	}
 	return copyUserUsableGroups
 }
 
@@ -31,7 +30,7 @@ func UserUsableGroups2JSONString() string {
 
 	jsonBytes, err := json.Marshal(userUsableGroups)
 	if err != nil {
-		common.SysLog(common.LogText("error marshalling user groups: %s", err.Error()))
+		common.SysLog("error marshalling user groups: " + err.Error())
 	}
 	return string(jsonBytes)
 }

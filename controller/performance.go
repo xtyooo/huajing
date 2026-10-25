@@ -151,21 +151,30 @@ func ClearDiskCache(c *gin.Context) {
 		return
 	}
 
-	common.ApiSuccessT(c, "Inactive disk cache cleared", nil)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "不活跃的磁盘缓存已清理",
+	})
 }
 
 // ResetPerformanceStats 重置性能统计
 func ResetPerformanceStats(c *gin.Context) {
 	common.ResetDiskCacheStats()
 
-	common.ApiSuccessT(c, "Statistics reset", nil)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "统计信息已重置",
+	})
 }
 
 // ForceGC 强制执行 GC
 func ForceGC(c *gin.Context) {
 	runtime.GC()
 
-	common.ApiSuccessT(c, "GC executed", nil)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "GC 已执行",
+	})
 }
 
 // LogFileInfo 日志文件信息
@@ -330,11 +339,11 @@ func CleanupLogFiles(c *gin.Context) {
 	}
 
 	if len(failedFiles) > 0 {
-		msg := common.NewMessage("Some files could not be deleted ({{failed}}/{{total}})", map[string]any{
-			"failed": len(failedFiles),
-			"total":  len(toDelete),
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("部分文件删除失败（%d/%d）", len(failedFiles), len(toDelete)),
+			"data":    result,
 		})
-		common.ApiErrorStatus(c, http.StatusOK, msg, gin.H{"data": result})
 		return
 	}
 

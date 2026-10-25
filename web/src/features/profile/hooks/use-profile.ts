@@ -20,8 +20,6 @@ import i18next from 'i18next'
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 
-import { handleServerError } from '@/lib/handle-server-error'
-
 import { getUserProfile, updateUserProfile, updateUserSettings } from '../api'
 import type {
   UserProfile,
@@ -48,12 +46,12 @@ export function useProfile() {
 
       if (response.success && response.data) {
         setProfile(response.data)
-      } else if (!silent) {
-        handleServerError(response, i18next.t('Failed to load profile'))
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to fetch profile:', error)
       if (!silent) {
-        handleServerError(error, i18next.t('Failed to load profile'))
+        toast.error(i18next.t('Failed to load profile'))
       }
     } finally {
       if (!silent) {
@@ -80,10 +78,12 @@ export function useProfile() {
           return true
         }
 
-        handleServerError(response, i18next.t('Failed to update profile'))
+        toast.error(response.message || i18next.t('Failed to update profile'))
         return false
       } catch (error) {
-        handleServerError(error, i18next.t('Failed to update profile'))
+        // eslint-disable-next-line no-console
+        console.error('Failed to update profile:', error)
+        toast.error(i18next.t('Failed to update profile'))
         return false
       } finally {
         setUpdating(false)
@@ -105,10 +105,12 @@ export function useProfile() {
           return true
         }
 
-        handleServerError(response, i18next.t('Failed to update settings'))
+        toast.error(response.message || i18next.t('Failed to update settings'))
         return false
       } catch (error) {
-        handleServerError(error, i18next.t('Failed to update settings'))
+        // eslint-disable-next-line no-console
+        console.error('Failed to update settings:', error)
+        toast.error(i18next.t('Failed to update settings'))
         return false
       } finally {
         setUpdating(false)

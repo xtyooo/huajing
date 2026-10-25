@@ -79,7 +79,7 @@ export function useInvitationRecordsColumns(
     columns.push({
       accessorKey: 'inviter_name',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title='邀请人' />
+        <DataTableColumnHeader column={column} title={'邀请人'} />
       ),
       cell: ({ row }) => {
         const username = row.getValue('inviter_name') as string
@@ -109,7 +109,7 @@ export function useInvitationRecordsColumns(
   columns.push({
     accessorKey: 'invitee_name',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='被邀请人' />
+      <DataTableColumnHeader column={column} title={'被邀请人'} />
     ),
     cell: ({ row }) => {
       const username = row.getValue('invitee_name') as string
@@ -138,7 +138,7 @@ export function useInvitationRecordsColumns(
   columns.push({
     accessorKey: 'created_at',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='邀请时间' />
+      <DataTableColumnHeader column={column} title={'邀请时间'} />
     ),
     cell: ({ row }) => {
       const ts = row.getValue('created_at') as number | undefined
@@ -162,7 +162,7 @@ export function useInvitationRecordsColumns(
   columns.push({
     accessorKey: 'recharge_total',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='总充值金额' />
+      <DataTableColumnHeader column={column} title={'总充值金额'} />
     ),
     cell: ({ row }) => {
       const ts = row.getValue('recharge_total') as number | undefined
@@ -182,7 +182,7 @@ export function useInvitationRecordsColumns(
   columns.push({
     accessorKey: 'rebate_total',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='总返点金额' />
+      <DataTableColumnHeader column={column} title={'总返点金额'} />
     ),
     cell: ({ row }) => {
       const ts = row.getValue('rebate_total') as number | undefined

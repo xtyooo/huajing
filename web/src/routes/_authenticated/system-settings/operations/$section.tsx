@@ -30,9 +30,8 @@ export const Route = createFileRoute(
   beforeLoad: ({ params }) => {
     if (params.section === 'monitoring') {
       throw redirect({
-        to: '/system-settings/request-policies/$section',
-        params: { section: 'health' },
-        replace: true,
+        to: '/system-settings/models/$section',
+        params: { section: 'routing-reliability' },
       })
     }
 

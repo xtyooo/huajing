@@ -33,12 +33,7 @@ export interface BoundChannel {
 /**
  * Model entity from API
  */
-export type ModelSquareState = 'visible' | 'unavailable' | 'hidden' | 'partial'
-
 export interface Model {
-  square_state?: ModelSquareState
-  has_metadata?: boolean
-  configured_channel_count?: number
   id: number
   model_name: string
   description?: string
@@ -46,7 +41,6 @@ export interface Model {
   tags?: string
   vendor_id?: number
   endpoints?: string
-  supported_endpoints?: string[]
   status: number
   sync_official: number
   created_time: number
@@ -64,8 +58,6 @@ export interface Model {
  * Vendor entity from API
  */
 export interface Vendor {
-  model_count?: number
-  version?: string
   id: number
   name: string
   description?: string
@@ -94,8 +86,6 @@ export interface PrefillGroup {
  * Get models list parameters
  */
 export interface GetModelsParams {
-  square_state?: ModelSquareState
-  include_channel_models?: boolean
   p?: number
   page_size?: number
   vendor?: string // vendor ID to filter by
@@ -107,8 +97,6 @@ export interface GetModelsParams {
  * Search models parameters
  */
 export interface SearchModelsParams {
-  square_state?: ModelSquareState
-  include_channel_models?: boolean
   keyword?: string
   vendor?: string // vendor ID to filter by
   status?: string // filter by status
@@ -167,77 +155,51 @@ export interface GetVendorResponse {
 /**
  * Sync diff data
  */
-export type MetadataSyncField =
-  | 'description'
-  | 'icon'
-  | 'tags'
-  | 'vendor'
-  | 'endpoints'
-  | 'name_rule'
-  | 'status'
-export type MetadataSyncValues = {
-  description: string
-  icon: string
-  tags: string
-  vendor: string
-  endpoints: string
-  name_rule: number
-  status: number
-}
-export type MetadataSyncCandidate = {
-  model_name: string
-  kind:
-    | 'create'
-    | 'update'
-    | 'unchanged'
-    | 'blocked'
-    | 'missing_upstream'
-    | 'missing_vendor'
-  scope: 'site' | 'catalog'
-  record_version: string
-  fields: Array<{
-    field: MetadataSyncField
-    local: string | number
-    upstream: string | number
+export interface SyncDiffData {
+  missing?: Array<{
+    model_name: string
+    vendor?: string
+    [key: string]: unknown
   }>
-  upstream?: MetadataSyncValues
-  vendor_to_create?: string
+  conflicts?: Array<{
+    model_name: string
+    local?: Partial<Model>
+    upstream?: Partial<Model>
+    fields?: Array<{
+      field: string
+      local?: unknown
+      upstream?: unknown
+    }>
+    [key: string]: unknown
+  }>
 }
-export type MetadataSyncSource = {
-  locale: SyncLocale
-  models_url: string
-  vendors_url: string
-  version: string
-}
-export type MetadataSyncPreview = {
-  source: MetadataSyncSource
-  candidates: MetadataSyncCandidate[]
-}
-export type MetadataSyncSelection = {
+
+export interface SyncOverwritePayload {
   model_name: string
-  record_version: string
-  create: boolean
-  fields: MetadataSyncField[]
+  fields: string[]
 }
-export type MetadataSyncRequest = {
-  locale: SyncLocale
-  source_version: string
-  selections: MetadataSyncSelection[]
-}
-export type MetadataSyncResult = {
-  created_models: string[]
-  updated_models: MetadataSyncSelection[]
-  created_vendors: string[]
-}
+
+/**
+ * Sync upstream response
+ */
 export interface SyncUpstreamResponse {
   success: boolean
   message?: string
-  data?: MetadataSyncResult
+  data?: {
+    created_models?: number
+    updated_models?: number
+    created_vendors?: number
+    skipped_models?: string[]
+  }
 }
+
+/**
+ * Preview upstream diff response
+ */
 export interface PreviewUpstreamDiffResponse {
   success: boolean
   message?: string
-  data?: MetadataSyncPreview
+  data?: SyncDiffData
 }
 
 /**
@@ -285,17 +247,10 @@ export type ModelFormValues = z.infer<typeof modelFormSchema>
  */
 export const vendorFormSchema = z.object({
   id: z.number().optional(),
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Vendor name is required')
-    .max(128, 'Vendor name and icon must not exceed 128 characters.'),
+  name: z.string().min(1, 'Vendor name is required'),
   description: z.string().default(''),
-  icon: z
-    .string()
-    .max(128, 'Vendor name and icon must not exceed 128 characters.')
-    .default(''),
-  version: z.string().optional(),
+  icon: z.string().default(''),
+  status: z.number().default(1),
 })
 
 export type VendorFormValues = z.infer<typeof vendorFormSchema>
@@ -335,12 +290,12 @@ export type QuotaType = 0 | 1 // usage-based, per-call
 /**
  * Sync locale
  */
-export type SyncLocale = 'zh' | 'zh-CN' | 'en' | 'ja'
+export type SyncLocale = 'zh' | 'en' | 'ja'
 
 /**
  * Sync upstream source
  */
-export type SyncSource = 'official'
+export type SyncSource = 'official' | 'config'
 
 // ============================================================================
 // Model Deployments Types
@@ -349,7 +304,7 @@ export type SyncSource = 'official'
 /**
  * Model tab type
  */
-export type ModelTabCategory = 'metadata' | 'vendors' | 'deployments'
+export type ModelTabCategory = 'metadata' | 'deployments'
 
 /**
  * Deployment entity from API

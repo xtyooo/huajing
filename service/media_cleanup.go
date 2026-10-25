@@ -21,7 +21,7 @@ var (
 	cleanMediaByTaskIDs = model.CleanMediaByTaskIDs
 )
 
-var mediaFileNameRegex = regexp.MustCompile(`^(\d{14})_(task_\w+)(?:\.[A-Za-z0-9]{16})?\.\w+$`)
+var mediaFileNameRegex = regexp.MustCompile(`^(\d{14})_(task_\w+)\.\w+$`)
 
 type MediaCleanupResult struct {
 	DeletedCount int   `json:"deleted_count"`

@@ -24,14 +24,14 @@ type anheEnvelopePollingAdaptor struct {
 
 func (a *anheEnvelopePollingAdaptor) Init(_ *relaycommon.RelayInfo) {}
 
-func (a *anheEnvelopePollingAdaptor) FetchTask(_ string, _ string, _ *model.Task, _ string) (*http.Response, error) {
+func (a *anheEnvelopePollingAdaptor) FetchTask(_ string, _ string, _ map[string]any, _ string) (*http.Response, error) {
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Body:       io.NopCloser(bytes.NewReader(a.responseBody)),
 	}, nil
 }
 
-func (a *anheEnvelopePollingAdaptor) ParseTaskResult(_ *model.Task, _ *http.Response, _ []byte) (*relaycommon.TaskInfo, error) {
+func (a *anheEnvelopePollingAdaptor) ParseTaskResult(_ []byte) (*relaycommon.TaskInfo, error) {
 	a.parseCalled = true
 	return &relaycommon.TaskInfo{
 		Status:   model.TaskStatusSuccess,

@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { QueryClient } from '@tanstack/react-query'
-
-import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
+import { getStatus } from '@/lib/api'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
@@ -144,12 +142,26 @@ export function parseHeaderNavModulesFromStatus(
   return parseHeaderNavModules(status?.HeaderNavModules)
 }
 
-/**
- * Resolve one module's access flags from an already-loaded status payload.
- *
- * Falls back to the module's default when status is missing or does not carry
- * a `HeaderNavModules` entry for it.
- */
+function getCachedStatus(): Record<string, unknown> | null {
+  try {
+    if (typeof window === 'undefined') return null
+    const raw = window.localStorage.getItem('status')
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+function cacheStatus(status: Record<string, unknown> | null): void {
+  try {
+    if (typeof window !== 'undefined' && status) {
+      window.localStorage.setItem('status', JSON.stringify(status))
+    }
+  } catch {
+    /* empty */
+  }
+}
+
 export function getModuleAccessFromStatus(
   status: Record<string, unknown> | null,
   module: HeaderNavModule
@@ -157,53 +169,27 @@ export function getModuleAccessFromStatus(
   return parseHeaderNavModulesFromStatus(status)[module] ?? DEFAULTS[module]
 }
 
-/**
- * Read module access synchronously from the persisted status snapshot.
- *
- * For render paths that cannot await, such as deciding whether to show a nav
- * item. Never issues a request; use {@link getModuleAccessForGuard} when the
- * caller can await.
- */
 export function getModuleAccess(module: HeaderNavModule): ModuleAccess {
-  return getModuleAccessFromStatus(readCachedStatus(), module)
+  return getModuleAccessFromStatus(getCachedStatus(), module)
 }
 
-/**
- * Resolve module access for a router `beforeLoad` guard.
- *
- * Reads through the shared `['status']` cache, so a guard on a fresh page load
- * reuses the request already started during boot instead of issuing its own.
- *
- * Fresh entries resolve immediately. Stale or invalidated entries await a
- * shared refresh before deciding navigation; a background refresh cannot undo
- * a redirect already made by a guard. The backend still authorizes requests.
- *
- * On failure this fails closed, reporting the module as disabled and
- * auth-required.
- */
-export async function getModuleAccessForGuard(
-  queryClient: QueryClient,
+export async function getFreshModuleAccess(
   module: HeaderNavModule
 ): Promise<ModuleAccess> {
   try {
-    const status = await queryClient.fetchQuery(statusQueryOptions)
+    const status = (await getStatus()) as Record<string, unknown> | null
+    cacheStatus(status)
     return getModuleAccessFromStatus(status, module)
   } catch {
     return { enabled: false, requireAuth: true }
   }
 }
 
-/**
- * Whether an admin sidebar entry is enabled by `SidebarModulesAdmin`.
- *
- * Fails open: an absent, blank, or unparsable configuration keeps every module
- * visible, so a status read that has not landed yet cannot blank the sidebar.
- */
 export function isSidebarModuleEnabled(
   section: string,
   module: string
 ): boolean {
-  const status = readCachedStatus()
+  const status = getCachedStatus()
   if (!status) return true
 
   const raw = status.SidebarModulesAdmin

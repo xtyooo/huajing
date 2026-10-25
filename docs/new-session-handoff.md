@@ -1,6 +1,8 @@
 # 新对话接手：画境 / New API 二开
 
-整理日期：2026-10-12，2026-10-13补充真实官方主线实施记录，用户时区 Asia/Shanghai。此文件是接手索引，不是启动部署的授权。
+> 2026-10-25 当前状态：用户暂停双实例发布，要求先插入新功能上线。本次官方合并 `136cecf35` 和配套修复 `572f94adde` 已从 dev 的有效代码撤回；业务代码恢复至合入前 `dfa50e971`（与功能基线 `81580dd69` 的差异仅为文档）。完整候选保存在远端标签 `archive/official-main-reviewed-20261025`，未部署、未迁移线上数据库。后续先在撤回后的 dev 开发新功能；恢复官方合入需重新明确启动，并撤销本次 revert、处理新功能交互和重新验证，不能只 merge 原官方 SHA。旧新版 web/dist 已移出工作树，下一次构建必须重新生成匹配当前源码的前端。以下内容保留历史上下文，以本段和实际 Git 状态为准。
+
+整理日期：2026-10-12，用户时区 Asia/Shanghai。此文件是接手索引，不是启动部署或合并的授权。
 
 ## 1. 先读这些文件
 
@@ -24,10 +26,10 @@
 | origin | `https://github.com/xtyooo/huajing.git` |
 | 当前配置的官方 upstream | `https://github.com/QuantumNous/new-api.git` |
 | 本轮文档整理前的功能基线 | `81580dd69327fb19d759a92348828d0c1c9d7249` |
-| 上次生产功能提交 | `fix: support snumom resolution per-second billing` |
+| 最新功能提交 | `fix: support snumom resolution per-second billing` |
 
-上述功能基线是2026-10-11历史生产。2026-10-12接手文档HEAD为 `dfa50e9716df5141194c62fc4a8103daaf577b3e`；后续明确授权的官方合入另见第6节及Git，不会部署新程序。
-新窗口须重新执行 Git 状态检查，不能把旧功能/文档HEAD当作永远最新的dev，也不能把未发布的官方合入当生产版本。
+本轮会产生高于上述功能基线的**文档提交**，但不会部署新程序。
+新窗口须重新执行 Git 状态检查，不能把 `81580dd69` 当作永远不变的 dev HEAD，也不能把后来文档 HEAD 当作生产版本。
 
 ```powershell
 $project = 'D:\Code\ai_workspace\兼职\newapi二开'
@@ -111,7 +113,7 @@ SSH 密钥只从已有安全文件读取且核对目标；本文件和记忆不�
 
 ## 5. 渠道编号与 snumom 范围
 
-2026-10-11功能基线 `81580dd69` 的编号快照：kuai65、sd0717 66、wufan67、安和70、manju75、naonao76、manying77、wanchen78、yaochen79、longxia6 80、snumom81，当时Dummy82。2026-10-13官方合入后58–81保持，新增TaskPlugin82/VLLM83/SGLang84，Dummy85仅为数量哨兵；当前完整映射见 [官方合入约定](./upstream-main-integration-2026-10-12.md)。
+当前 `constant/channel.go`：kuai65、sd0717 66、wufan67、安和70、manju75、naonao76、manying77、wanchen78、yaochen79、longxia6 80、snumom81，Dummy82。
 仓库还有AutoDL H3、Shafu、Diaomao、Zhou SD等已有渠道；不能只保留本窗口重点列表。
 官方新增编号如与二开重叠，须设计兼容或经审核的数据迁移，不能直接重排常量让现有渠道走错适配器。
 
@@ -127,17 +129,14 @@ snumom当前推荐21个名称（**不是白名单**）：
 Grok音视频/尾帧等不可表达输入仍明确报错；Dreamina首尾帧只作参考排序，不承诺严格插帧。
 wanchen只接HN，CB/JL先不接；新增其它协议需要单独确认需求，不能沿用早期草案扩大范围。
 
-## 6. 官方“真实主线”实施与发布边界
+## 6. 官方“真实主线”后续任务
 
-2026-10-12用户明确启动真实官方main评估，在完整计划后回复“继续”授权隔离本地实施、合回dev及推送。固定官方目标为 `dd59854050f26f4f67bb3dac5274af5e17013462`，来源 `QuantumNous/new-api`，不跟随浮动main继续滚动。
-详见 [本次合入契约与运行边界](./upstream-main-integration-2026-10-12.md)；最终门禁、完整提交和推送证据以工作区Trellis任务 `official-main-preparation` 的 results/final-verification 及Git为准。任务完成后固定官方SHA必须成为dev祖先，临时sync工作树/分支必须清理；缺少这些证据时不能据本段宣告合入完成。
-后续2026-10-13检查按用户收窄，仅处理三个正常合入交互，见工作区Trellis `post-merge-deep-check` 的 `integration-contracts.md`、`results.md` 与最终校验收据；不据早期广泛调查继续实施历史/故障或资金架构改造。
-本任务不部署、不连接线上数据或Redis、不创建付费生成。历史生产仍按第3节的最后核验日期理解；未来发布需要单独授权、每实例实时预检及一致备份/恢复，不能因为源码已合入就执行code-only升级。
+**尚未完成，当前仍暂停。** 用户此前明确把官方同步与snumom分开，并要求先完成后者。2026-10-12只是为新窗口准备资料，不是恢复合入授权。
 2026-08的 `integrate/upstream-main-20260811`、`e2213109` 是历史基线；现在不按它开日常开发。
-本次固定输入为94本地独有/328官方独有提交、330二开文件、118重叠、76文本冲突。历史299提交/1659文件只是当时快照，下一次主线同步仍须重新计算。
+历史报告的299个提交/1659个文件只是当时快照，新任务必须重新计算。
 旧 `.trellis/tasks/10-11-snumom-upstream-sync/prd.md` 仍为TBD规划占位，不是已审过可直接实施的方案。
 
-后续官方升级仍遵循：
+新窗口收到明确合入请求后：
 
 1. 读交接/踩坑/政策，查Git工作树/当前dev/暂停与其它任务边界，不误接Canvas任务。
 2. 核对upstream确为QuantumNous/new-api官方地址，fresh fetch main并记录完整SHA、获取时间和merge-base；保存旧dev/生产tag基线。
@@ -175,4 +174,4 @@ go vet -p 2 ./...
 
 ## 8. 可复制到新窗口的启动说明
 
-> 继续这个New API二开项目。先读规范工作树里的 new-session-handoff、development-pitfalls、conversation-history、AGENTS与渠道长期约定，再核对当前dev/origin/dev和official-main-preparation最终证据。2026-10-12官方目标固定dd598540，本地源码合入与部署状态分别判断；不要重新执行旧TBD任务或把历史生产81580dd69当永远最新dev。未另行授权时不部署、不改线上数据、不创建付费生成；保留管理员模型/价格配置、缓存99→100、Key隔离和双实例隔离。新一轮升级须重新固定官方SHA和完整验证。
+> 继续这个New API二开项目。请先读取规范工作树里的 docs/new-session-handoff.md、docs/development-pitfalls.md、docs/conversation-history-2026-10-12.md、AGENTS.md与渠道长期约定。正式任务是评估并准备合入QuantumNous/new-api的真实官方main：先刷新并固定官方SHA、核对双方差异和全部二开保留项，给出迁移/回归/回滚方案。暂不部署、不改线上数据、不创建付费生成任务。保留公开标准协议、管理员模型/价格配置、缓存99→100、Key隔离和双实例隔离。不要把81580dd69当永远最新dev，也不要把历史分支、缓存的官方ref或旧TBD任务当作已批准方案。

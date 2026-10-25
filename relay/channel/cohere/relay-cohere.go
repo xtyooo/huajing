@@ -106,7 +106,7 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			dataChan <- data
 		}
 		if err := scanner.Err(); err != nil {
-			common.SysLog(common.LogText("error reading stream: %s", err.Error()))
+			common.SysLog("error reading stream: " + err.Error())
 		}
 		stopChan <- true
 	}()
@@ -123,7 +123,7 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			var cohereResp CohereResponse
 			err := json.Unmarshal([]byte(data), &cohereResp)
 			if err != nil {
-				common.SysLog(common.LogText("error unmarshalling stream response: %s", err.Error()))
+				common.SysLog("error unmarshalling stream response: " + err.Error())
 				return true
 			}
 			var openaiResp dto.ChatCompletionsStreamResponse
@@ -158,7 +158,7 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			}
 			jsonStr, err := json.Marshal(openaiResp)
 			if err != nil {
-				common.SysLog(common.LogText("error marshalling stream response: %s", err.Error()))
+				common.SysLog("error marshalling stream response: " + err.Error())
 				return true
 			}
 			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonStr)})

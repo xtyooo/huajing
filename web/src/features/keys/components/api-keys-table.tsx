@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { flexRender, type Table as TanstackTable } from '@tanstack/react-table'
+import type { Table as TanstackTable } from '@tanstack/react-table'
 import { Database } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import {
   DISABLED_ROW_DESKTOP,
@@ -41,7 +42,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { createServerError } from '@/lib/server-error-message'
+import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getApiKeys, searchApiKeys } from '../api'
@@ -52,13 +53,7 @@ import {
   ERROR_MESSAGES,
 } from '../constants'
 import type { ApiKey } from '../types'
-import { ApiKeyQuotaCell } from './api-key-quota-cell'
-import { ApiKeyActivityCell } from './api-key-timestamp-cell'
-import {
-  ApiKeyCell,
-  ModelLimitsCell,
-  IpRestrictionsCell,
-} from './api-keys-cells'
+import { ApiKeyCell, UnlimitedQuotaBadge } from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
@@ -77,11 +72,11 @@ function isDisabledApiKeyRow(apiKey: ApiKey) {
 
 function ApiKeysMobileSkeleton() {
   return (
-    <div className='min-w-0 space-y-3'>
+    <div className='divide-border overflow-hidden rounded-lg border'>
       {API_KEYS_MOBILE_SKELETON_IDS.map((id) => (
         <div
           key={id}
-          className='border-border/60 bg-card space-y-2 rounded-xl border p-3.5'
+          className='space-y-2 border-b px-3 py-2.5 last:border-b-0'
         >
           <div className='flex items-center justify-between'>
             <Skeleton className='h-4 w-32' />
@@ -101,11 +96,9 @@ function ApiKeysMobileSkeleton() {
 function ApiKeysMobileList({
   table,
   isLoading,
-  now,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
-  now: number
 }) {
   const { t } = useTranslation()
   const rows = table.getRowModel().rows
@@ -133,29 +126,27 @@ function ApiKeysMobileList({
   }
 
   return (
-    <div className='min-w-0 space-y-3'>
+    <div className='divide-border overflow-hidden rounded-lg border'>
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
-        const groupCell = row
-          .getAllCells()
-          .find((cell) => cell.column.id === 'group')
-        const expiryCell = row
-          .getAllCells()
-          .find((cell) => cell.column.id === 'expired_time')
+        const total = apiKey.used_quota + apiKey.remain_quota
 
         return (
           <div
             key={row.id}
             className={cn(
-              'border-border/60 bg-card min-w-0 space-y-2 rounded-xl border p-3.5 text-xs leading-4',
+              'bg-card space-y-2.5 border-b px-3 py-2.5 last:border-b-0',
               isDisabledApiKeyRow(apiKey) && DISABLED_ROW_MOBILE
             )}
           >
             <div className='flex items-start justify-between gap-3'>
               <div className='min-w-0'>
-                <div className='text-sm leading-5 font-semibold break-words'>
+                <div className='truncate text-sm font-semibold'>
                   {apiKey.name}
+                </div>
+                <div className='text-muted-foreground text-[11px]'>
+                  {t('API Key')}
                 </div>
               </div>
               {statusConfig && (
@@ -163,7 +154,6 @@ function ApiKeysMobileList({
                   label={t(statusConfig.label)}
                   variant={statusConfig.variant}
                   copyable={false}
-                  className='shrink-0 px-0 text-xs font-normal'
                 />
               )}
             </div>
@@ -175,38 +165,19 @@ function ApiKeysMobileList({
               <DataTableRowActions row={row} />
             </div>
 
-            <div className='min-w-0 space-y-3 py-1'>
-              <div className='min-w-0'>
-                {groupCell &&
-                  flexRender(
-                    groupCell.column.columnDef.cell,
-                    groupCell.getContext()
-                  )}
-              </div>
-              <ApiKeyQuotaCell apiKey={apiKey} now={now} variant='card' />
-            </div>
-
-            <div className='flex flex-wrap items-center gap-x-5 gap-y-1'>
-              <ModelLimitsCell apiKey={apiKey} detailsTrigger='click' />
-              <IpRestrictionsCell apiKey={apiKey} detailsTrigger='click' />
-            </div>
-
-            <div className='grid grid-cols-3 items-start gap-3 border-t pt-2'>
-              <div className='col-span-2 min-w-0'>
-                <ApiKeyActivityCell
-                  apiKey={apiKey}
-                  now={now}
-                  layout='columns'
-                />
-              </div>
-              <div className='min-w-0 space-y-1 [&_[data-slot=status-badge]]:text-xs [&_[data-slot=status-badge]]:font-normal'>
-                <div className='text-muted-foreground'>{t('Expires')}</div>
-                {expiryCell &&
-                  flexRender(
-                    expiryCell.column.columnDef.cell,
-                    expiryCell.getContext()
-                  )}
-              </div>
+            <div className='flex items-center justify-between gap-2 text-xs'>
+              <span className='text-muted-foreground'>{t('Quota')}</span>
+              {apiKey.unlimited_quota ? (
+                <UnlimitedQuotaBadge used={apiKey.used_quota} />
+              ) : (
+                <span className='font-medium tabular-nums'>
+                  {formatQuota(apiKey.remain_quota)}
+                  <span className='text-muted-foreground font-normal'>
+                    {' / '}
+                    {formatQuota(total)}
+                  </span>
+                </span>
+              )}
             </div>
           </div>
         )
@@ -284,14 +255,15 @@ export function ApiKeysTable() {
           })
 
       if (!result.success) {
-        throw createServerError(
-          result,
-          t(
-            shouldSearch
-              ? ERROR_MESSAGES.SEARCH_FAILED
-              : ERROR_MESSAGES.LOAD_FAILED
-          )
+        toast.error(
+          result.message ||
+            t(
+              shouldSearch
+                ? ERROR_MESSAGES.SEARCH_FAILED
+                : ERROR_MESSAGES.LOAD_FAILED
+            )
         )
+        return { items: [], total: 0 }
       }
 
       return {
@@ -320,23 +292,6 @@ export function ApiKeysTable() {
     totalCount: data?.total || 0,
     ensurePageInRange,
   })
-
-  const columnVisibility = table.getState().columnVisibility
-  useEffect(() => {
-    // Restore the dates hidden by the previous default when adopting the combined time column.
-    if (
-      columnVisibility.activity_time === undefined &&
-      columnVisibility.created_time === false &&
-      columnVisibility.accessed_time === false &&
-      columnVisibility.expired_time === false
-    ) {
-      table.setColumnVisibility((previous) => ({
-        ...previous,
-        activity_time: true,
-        expired_time: true,
-      }))
-    }
-  }, [columnVisibility, table])
 
   return (
     <DataTablePage
@@ -371,9 +326,7 @@ export function ApiKeysTable() {
           },
         ],
       }}
-      mobile={
-        <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
-      }
+      mobile={<ApiKeysMobileList table={table} isLoading={isLoading} />}
       getRowClassName={(row) =>
         isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
       }

@@ -25,16 +25,14 @@ import {
   useState,
 } from 'react'
 
-import {
-  readThemePreference,
-  THEME_STORAGE_KEYS,
-  writeThemePreference,
-} from '@/lib/theme-storage'
+import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
 
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = Exclude<Theme, 'system'>
 
 const DEFAULT_THEME = 'system'
+const THEME_COOKIE_NAME = 'vite-ui-theme'
+const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 const THEMES = new Set<Theme>(['dark', 'light', 'system'])
 
 type ThemeProviderProps = {
@@ -72,17 +70,22 @@ function resolveTheme(theme: Theme): ResolvedTheme {
   return theme === 'system' ? getSystemTheme() : theme
 }
 
+function getStoredTheme(storageKey: string, fallback: Theme): Theme {
+  const storedTheme = getCookie(storageKey) as Theme | undefined
+  return storedTheme && THEMES.has(storedTheme) ? storedTheme : fallback
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = DEFAULT_THEME,
-  storageKey = THEME_STORAGE_KEYS.mode,
+  storageKey = THEME_COOKIE_NAME,
   ...props
 }: ThemeProviderProps) {
   const [theme, _setTheme] = useState<Theme>(() =>
-    readThemePreference(storageKey, THEMES, defaultTheme)
+    getStoredTheme(storageKey, defaultTheme)
   )
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    resolveTheme(theme)
+    resolveTheme(getStoredTheme(storageKey, defaultTheme))
   )
 
   useEffect(() => {
@@ -105,14 +108,14 @@ export function ThemeProvider({
 
   const setTheme = useCallback(
     (theme: Theme) => {
-      writeThemePreference(storageKey, theme)
+      setCookie(storageKey, theme, THEME_COOKIE_MAX_AGE)
       _setTheme(theme)
     },
     [storageKey]
   )
 
   const resetTheme = useCallback(() => {
-    writeThemePreference(storageKey, null)
+    removeCookie(storageKey)
     _setTheme(defaultTheme)
   }, [defaultTheme, storageKey])
 

@@ -4,12 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"slices"
+	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"strconv"
 	"strings"
 	"unsafe"
-
-	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 
 	"github.com/samber/lo"
 )
@@ -38,7 +36,7 @@ func GetRandomString(length int) string {
 	return lo.RandomString(length, lo.AlphanumericCharset)
 }
 
-func MapToJsonStr(m map[string]any) string {
+func MapToJsonStr(m map[string]interface{}) string {
 	bytes, err := json.Marshal(m)
 	if err != nil {
 		return ""
@@ -46,8 +44,8 @@ func MapToJsonStr(m map[string]any) string {
 	return string(bytes)
 }
 
-func StrToMap(str string) (map[string]any, error) {
-	m := make(map[string]any)
+func StrToMap(str string) (map[string]interface{}, error) {
+	m := make(map[string]interface{})
 	err := Unmarshal([]byte(str), &m)
 	if err != nil {
 		return nil, err
@@ -55,8 +53,8 @@ func StrToMap(str string) (map[string]any, error) {
 	return m, nil
 }
 
-func StrToJsonArray(str string) ([]any, error) {
-	var js []any
+func StrToJsonArray(str string) ([]interface{}, error) {
+	var js []interface{}
 	err := json.Unmarshal([]byte(str), &js)
 	if err != nil {
 		return nil, err
@@ -65,12 +63,12 @@ func StrToJsonArray(str string) ([]any, error) {
 }
 
 func IsJsonArray(str string) bool {
-	var js []any
+	var js []interface{}
 	return json.Unmarshal([]byte(str), &js) == nil
 }
 
 func IsJsonObject(str string) bool {
-	var js map[string]any
+	var js map[string]interface{}
 	return json.Unmarshal([]byte(str), &js) == nil
 }
 
@@ -83,7 +81,12 @@ func String2Int(str string) int {
 }
 
 func StringsContains(strs []string, str string) bool {
-	return slices.Contains(strs, str)
+	for _, s := range strs {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }
 
 // StringToByteSlice []byte only read, panic on append
@@ -123,14 +126,14 @@ func MaskEmail(email string) string {
 	}
 
 	// Find the @ symbol
-	_, after, ok := strings.Cut(email, "@")
-	if !ok {
+	atIndex := strings.Index(email, "@")
+	if atIndex == -1 {
 		// No @ symbol found, return masked
 		return "***masked***"
 	}
 
 	// Return only the domain part with @ symbol
-	return "***@" + after
+	return "***@" + email[atIndex+1:]
 }
 
 // MaskSensitiveInfo 复用 RelayKit 的敏感信息脱敏实现，保证主模块与协议转换模块的输出规则一致。

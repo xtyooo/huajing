@@ -71,11 +71,6 @@ func DoDownloadRequestWithHeaders(originUrl string, headers map[string]string, r
 }
 
 func DoDownloadRequestWithHeadersContext(ctx context.Context, originUrl string, headers map[string]string, reason ...string) (resp *http.Response, err error) {
-	for name, value := range headers {
-		if value != "" && (strings.EqualFold(name, "Authorization") || strings.EqualFold(name, "Cookie") || strings.EqualFold(name, "Proxy-Authorization") || strings.EqualFold(name, "x-goog-api-key")) {
-			return downloadChannelMedia(ctx, originUrl, headers)
-		}
-	}
 	if system_setting.EnableWorker() {
 		common.SysLog(fmt.Sprintf("downloading file from worker: %s, reason: %s", common.MaskSensitiveInfo(originUrl), strings.Join(reason, ", ")))
 		req := &WorkerRequest{
@@ -98,5 +93,5 @@ func DoDownloadRequestWithHeadersContext(ctx context.Context, originUrl string, 
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return SameOriginMediaClient(GetSSRFProtectedHTTPClient()).Do(req)
+	return GetSSRFProtectedHTTPClient().Do(req)
 }

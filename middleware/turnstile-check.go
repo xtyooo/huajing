@@ -17,7 +17,10 @@ func TurnstileCheck() gin.HandlerFunc {
 		if common.TurnstileCheckEnabled {
 			response := c.Query("turnstile")
 			if response == "" {
-				common.ApiErrorT(c, "Turnstile token is empty")
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "Turnstile token 为空",
+				})
 				c.Abort()
 				return
 			}
@@ -48,7 +51,10 @@ func TurnstileCheck() gin.HandlerFunc {
 				return
 			}
 			if !res.Success {
-				common.ApiErrorT(c, "Turnstile verification failed, please refresh and try again!")
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "Turnstile 校验失败，请刷新重试！",
+				})
 				c.Abort()
 				return
 			}

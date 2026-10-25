@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"math"
-	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -517,7 +516,9 @@ func sortedRankingBuckets(bucketSet map[int64]struct{}) []int64 {
 	for bucket := range bucketSet {
 		buckets = append(buckets, bucket)
 	}
-	slices.Sort(buckets)
+	sort.Slice(buckets, func(i, j int) bool {
+		return buckets[i] < buckets[j]
+	})
 	return buckets
 }
 

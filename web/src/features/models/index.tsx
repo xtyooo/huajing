@@ -25,7 +25,6 @@ import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { listDeployments } from './api'
 import { DeploymentAccessGuard } from './components/deployment-access-guard'
@@ -35,7 +34,6 @@ import { ModelsDialogs } from './components/models-dialogs'
 import { ModelsPrimaryButtons } from './components/models-primary-buttons'
 import { ModelsProvider, useModels } from './components/models-provider'
 import { ModelsTable } from './components/models-table'
-import { VendorsTable } from './components/vendors-table'
 import { useModelDeploymentSettings } from './hooks/use-model-deployment-settings'
 import { deploymentsQueryKeys } from './lib'
 import {
@@ -46,25 +44,19 @@ import {
 
 const route = getRouteApi('/_authenticated/models/$section')
 
-const SECTION_META: Record<
-  ModelsSectionId,
-  { titleKey: string; tabKey: string }
-> = {
+const SECTION_META: Record<ModelsSectionId, { titleKey: string }> = {
   metadata: {
-    titleKey: 'Model management',
-    tabKey: 'Models',
+    titleKey: 'Metadata',
   },
-  vendors: { titleKey: 'Vendor management', tabKey: 'Vendors' },
   deployments: {
     titleKey: 'Deployments',
-    tabKey: 'Deployments',
   },
 }
 
 function ModelsContent() {
   const { t } = useTranslation()
-  const navigate = useNavigate({ from: '/models/$section' })
-  const { tabCategory, setTabCategory, setOpen, setCurrentVendor } = useModels()
+  const navigate = useNavigate()
+  const { tabCategory, setTabCategory } = useModels()
   const params = route.useParams()
   const activeSection = (params.section ??
     MODELS_DEFAULT_SECTION) as ModelsSectionId
@@ -84,7 +76,6 @@ function ModelsContent() {
       void navigate({
         to: '/models/$section',
         params: { section: section as ModelsSectionId },
-        search: (previous) => previous,
       })
     },
     [navigate]
@@ -92,52 +83,38 @@ function ModelsContent() {
 
   const meta = SECTION_META[activeSection] ?? SECTION_META.metadata
 
-  let actions = <ModelsPrimaryButtons />
-  let content = <ModelsTable />
-  if (activeSection === 'vendors') {
-    actions = (
-      <Button
-        size='sm'
-        onClick={() => {
-          setCurrentVendor(null)
-          setOpen('create-vendor')
-        }}
-      >
-        <Plus className='size-4' />
-        {t('Add Vendor')}
-      </Button>
-    )
-    content = <VendorsTable />
-  } else if (activeSection === 'deployments') {
-    actions = (
-      <Button onClick={() => setCreateDeploymentOpen(true)} size='sm'>
-        <Plus className='size-4' />
-        {t('Create deployment')}
-      </Button>
-    )
-    content = <DeploymentsSection />
-  }
-
   return (
     <>
-      <SectionPageLayout
-        fixedContent
-        stackActionsOnMobile={activeSection === 'metadata'}
-      >
+      <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>{actions}</SectionPageLayout.Actions>
+        <SectionPageLayout.Actions>
+          {activeSection === 'metadata' ? (
+            <ModelsPrimaryButtons />
+          ) : (
+            <Button onClick={() => setCreateDeploymentOpen(true)} size='sm'>
+              <Plus className='h-4 w-4' />
+              {t('Create deployment')}
+            </Button>
+          )}
+        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
             <Tabs value={activeSection} onValueChange={handleSectionChange}>
               <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
                 {MODELS_SECTION_IDS.map((section) => (
                   <TabsTrigger key={section} value={section}>
-                    {t(SECTION_META[section].tabKey)}
+                    {t(SECTION_META[section].titleKey)}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
-            <div className='min-h-0 flex-1'>{content}</div>
+            <div className='min-h-0 flex-1'>
+              {activeSection === 'metadata' ? (
+                <ModelsTable />
+              ) : (
+                <DeploymentsSection />
+              )}
+            </div>
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
@@ -169,8 +146,7 @@ function DeploymentsSection() {
       const defaultParams = { p: 1, page_size: 10 }
       queryClient.prefetchQuery({
         queryKey: deploymentsQueryKeys.list(defaultParams),
-        queryFn: async () =>
-          requireServerSuccess(await listDeployments(defaultParams)),
+        queryFn: () => listDeployments(defaultParams),
         staleTime: 30 * 1000,
       })
     }

@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -35,13 +34,19 @@ func ClearChannelAffinityCache(c *gin.Context) {
 	}
 
 	if ruleName == "" {
-		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Missing parameter rule_name, or use all=true to clear everything"))
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "缺少参数：rule_name，或使用 all=true 清空全部",
+		})
 		return
 	}
 
 	deleted, err := service.ClearChannelAffinityCacheByRuleName(ruleName)
 	if err != nil {
-		common.ApiErrorStatus(c, http.StatusBadRequest, err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
 		return
 	}
 

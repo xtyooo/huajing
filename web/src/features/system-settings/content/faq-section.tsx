@@ -50,7 +50,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { SettingsSwitchField } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
@@ -130,8 +129,8 @@ export function FAQSection({ enabled, data }: FAQSectionProps) {
       })
       setIsEnabled(checked)
       toast.success(t('Setting saved'))
-    } catch (error) {
-      handleServerError(error, t('Failed to update setting'))
+    } catch {
+      toast.error(t('Failed to update setting'))
     }
   }
 
@@ -214,8 +213,8 @@ export function FAQSection({ enabled, data }: FAQSectionProps) {
       })
       setHasChanges(false)
       toast.success(t('FAQ saved successfully'))
-    } catch (error) {
-      handleServerError(error, t('Failed to save FAQ'))
+    } catch {
+      toast.error(t('Failed to save FAQ'))
     }
   }
 

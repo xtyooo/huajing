@@ -41,8 +41,6 @@ import {
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
-import { handleServerError } from '@/lib/handle-server-error'
-import { getServerMessage } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
@@ -139,17 +137,19 @@ export function MultiKeyManageDialog({
         setManualDisabledCount(response.data.manual_disabled_count || 0)
         setAutoDisabledCount(response.data.auto_disabled_count || 0)
       } else {
-        handleServerError(response, t('Failed to load key status'))
+        toast.error(response.message || t('Failed to load key status'))
       }
     } catch (error: unknown) {
-      handleServerError(error, t('Failed to load key status'))
+      toast.error(
+        error instanceof Error ? error.message : t('Failed to load key status')
+      )
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleStatusFilterChange = (value: string) => {
-    const newFilter = value === 'all' ? null : Number.parseInt(value)
+    const newFilter = value === 'all' ? null : parseInt(value)
     setStatusFilter(newFilter)
     setCurrentPage(1)
     loadKeyStatus(1, pageSize, newFilter)
@@ -192,7 +192,7 @@ export function MultiKeyManageDialog({
       }
 
       if (response?.success) {
-        toast.success(getServerMessage(response) || t('Operation successful'))
+        toast.success(response.message || t('Operation successful'))
         queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
 
         // Reload data - reset to page 1 for bulk actions
@@ -204,10 +204,12 @@ export function MultiKeyManageDialog({
           loadKeyStatus(currentPage, pageSize)
         }
       } else {
-        handleServerError(response, t('Operation failed'))
+        toast.error(response?.message || t('Operation failed'))
       }
     } catch (error: unknown) {
-      handleServerError(error, t('Operation failed'))
+      toast.error(
+        error instanceof Error ? error.message : t('Operation failed')
+      )
     } finally {
       setIsPerformingAction(false)
       setConfirmAction(null)
@@ -262,7 +264,7 @@ export function MultiKeyManageDialog({
         description={t(
           'Manage multi-key status and configuration for this channel'
         )}
-        contentClassName='flex max-h-[min(90dvh,var(--dialog-available-height))] max-w-5xl flex-col'
+        contentClassName='flex max-h-[90vh] max-w-5xl flex-col'
         titleClassName='flex items-center gap-2'
         contentHeight='min(72vh, 720px)'
         bodyClassName='space-y-4'
@@ -292,10 +294,12 @@ export function MultiKeyManageDialog({
           {/* Toolbar */}
           <div className='flex shrink-0 items-center justify-between'>
             <Select
-              items={MULTI_KEY_FILTER_OPTIONS.map((option) => ({
-                value: option.value,
-                label: t(option.label),
-              }))}
+              items={[
+                ...MULTI_KEY_FILTER_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: t(option.label),
+                })),
+              ]}
               value={statusFilter === null ? 'all' : statusFilter.toString()}
               onValueChange={(v) => v !== null && handleStatusFilterChange(v)}
             >
@@ -374,17 +378,15 @@ export function MultiKeyManageDialog({
 
           {/* Table */}
           <div className='min-h-0 flex-1 overflow-auto rounded-md border'>
-            {isLoading && (
+            {isLoading ? (
               <div className='flex items-center justify-center py-12'>
                 <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
               </div>
-            )}
-            {!isLoading && keys.length === 0 && (
+            ) : keys.length === 0 ? (
               <div className='text-muted-foreground py-12 text-center'>
                 {t('No keys found')}
               </div>
-            )}
-            {!isLoading && !(keys.length === 0) && (
+            ) : (
               <StaticDataTable
                 className='rounded-none border-0'
                 tableClassName='min-w-[800px]'

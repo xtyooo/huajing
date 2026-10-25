@@ -21,13 +21,11 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BadgeCell } from '@/components/data-table'
-import { MaskedValueTrigger } from '@/components/masked-value-display'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
   PopoverContent,
-  PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
@@ -36,6 +34,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { formatQuota } from '@/lib/format'
 
 import type { ApiKey } from '../types'
 import { useApiKeys } from './api-keys-provider'
@@ -87,7 +86,15 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
   return (
     <div className='flex max-w-full min-w-0 items-center'>
       <Popover open={popoverOpen} onOpenChange={handlePopoverOpen}>
-        <PopoverTrigger render={<MaskedValueTrigger />}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground h-7 max-w-full min-w-0 justify-start truncate px-0 font-mono text-xs hover:bg-transparent aria-expanded:bg-transparent'
+            />
+          }
+        >
           <span className='truncate'>{maskedKey}</span>
         </PopoverTrigger>
         <PopoverContent
@@ -135,65 +142,47 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
   )
 }
 
-type ApiKeyRestrictionProps = {
-  apiKey: ApiKey
-  detailsTrigger?: 'hover' | 'click'
+type UnlimitedQuotaBadgeProps = {
+  used: number
 }
 
-export function ModelLimitsCell(props: ApiKeyRestrictionProps) {
+export function UnlimitedQuotaBadge(props: UnlimitedQuotaBadgeProps) {
   const { t } = useTranslation()
-  const models = props.apiKey.model_limits_enabled
-    ? (props.apiKey.model_limits || '').split(',').filter(Boolean)
-    : []
+  const formattedUsed = formatQuota(props.used)
 
   return (
-    <ApiKeyRestrictionCell
-      items={models}
-      label={t('{{count}} models', { count: models.length })}
-      title={t('Models')}
-      emptyLabel={t('Unlimited')}
-      detailsTrigger={props.detailsTrigger}
-    />
-  )
-}
-
-export function IpRestrictionsCell(props: ApiKeyRestrictionProps) {
-  const { t } = useTranslation()
-  const ips = (props.apiKey.allow_ips || '')
-    .split('\n')
-    .map((ip) => ip.trim())
-    .filter(Boolean)
-
-  return (
-    <ApiKeyRestrictionCell
-      items={ips}
-      label={t('{{count}} IP(s)', { count: ips.length })}
-      title={t('IP Restriction')}
-      emptyLabel={t('No restriction')}
-      detailsTrigger={props.detailsTrigger}
-    />
-  )
-}
-
-function ApiKeyRestrictionCell(props: {
-  items: string[]
-  label: string
-  title: string
-  emptyLabel: string
-  detailsTrigger?: 'hover' | 'click'
-}) {
-  if (!props.items.length) {
-    if (props.detailsTrigger === 'click') {
-      return (
-        <span className='inline-flex items-center gap-1.5 text-xs'>
-          <span className='text-muted-foreground'>{props.title}</span>
-          <span>{props.emptyLabel}</span>
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type='button'
+            className='focus-visible:ring-ring/50 -ml-1.5 cursor-help rounded-4xl focus-visible:ring-[3px] focus-visible:outline-none'
+            aria-label={`${t('Unlimited')}; ${t('Used:')} ${formattedUsed}`}
+          />
+        }
+      >
+        <StatusBadge
+          label={t('Unlimited')}
+          variant='neutral'
+          copyable={false}
+        />
+      </PopoverTrigger>
+      <PopoverContent className='w-auto p-2' side='top'>
+        <span className='text-xs'>
+          {t('Used:')} {formattedUsed}
         </span>
-      )
-    }
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+export function ModelLimitsCell({ apiKey }: { apiKey: ApiKey }) {
+  const { t } = useTranslation()
+
+  if (!apiKey.model_limits_enabled || !apiKey.model_limits) {
     return (
       <StatusBadge
-        label={props.emptyLabel}
+        label={t('Unlimited')}
         variant='neutral'
         copyable={false}
         className='-ml-1.5'
@@ -201,46 +190,67 @@ function ApiKeyRestrictionCell(props: {
     )
   }
 
-  const details = (
-    <div className='max-h-[200px] space-y-1 overflow-y-auto text-xs'>
-      {props.items.map((item) => (
-        <div key={item} className='font-mono break-all'>
-          {item}
-        </div>
-      ))}
-    </div>
-  )
-
-  if (props.detailsTrigger === 'click') {
-    return (
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button
-              variant='ghost'
-              size='sm'
-              aria-label={`${props.title}: ${props.label}`}
-              className='h-7 max-w-full justify-start px-0 text-xs font-normal underline decoration-dotted underline-offset-4'
-            />
-          }
-        >
-          {props.label}
-        </PopoverTrigger>
-        <PopoverContent align='start' className='max-w-[calc(100vw-2rem)]'>
-          <PopoverTitle>{props.title}</PopoverTitle>
-          {details}
-        </PopoverContent>
-      </Popover>
-    )
-  }
+  const models = apiKey.model_limits.split(',').filter(Boolean)
 
   return (
     <Tooltip>
       <TooltipTrigger render={<BadgeCell />}>
-        <StatusBadge label={props.label} variant='neutral' copyable={false} />
+        <StatusBadge
+          label={t('{{count}} model(s)', { count: models.length })}
+          variant='neutral'
+          copyable={false}
+        />
       </TooltipTrigger>
       <TooltipContent side='top' className='max-w-xs'>
-        {details}
+        <div className='max-h-[200px] space-y-0.5 overflow-y-auto text-xs'>
+          {models.map((m) => (
+            <div key={m} className='font-mono'>
+              {m}
+            </div>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+export function IpRestrictionsCell({ apiKey }: { apiKey: ApiKey }) {
+  const { t } = useTranslation()
+  const allowIps = apiKey.allow_ips?.trim()
+
+  if (!allowIps) {
+    return (
+      <StatusBadge
+        label={t('No restriction')}
+        variant='neutral'
+        copyable={false}
+        className='-ml-1.5'
+      />
+    )
+  }
+
+  const ips = allowIps
+    .split('\n')
+    .map((ip) => ip.trim())
+    .filter(Boolean)
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<BadgeCell />}>
+        <StatusBadge
+          label={t('{{count}} IP(s)', { count: ips.length })}
+          variant='neutral'
+          copyable={false}
+        />
+      </TooltipTrigger>
+      <TooltipContent side='top' className='max-w-xs'>
+        <div className='max-h-[200px] space-y-0.5 overflow-y-auto text-xs'>
+          {ips.map((ip) => (
+            <div key={ip} className='font-mono'>
+              {ip}
+            </div>
+          ))}
+        </div>
       </TooltipContent>
     </Tooltip>
   )

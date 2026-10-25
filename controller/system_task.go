@@ -66,17 +66,9 @@ func GetCurrentSystemTask(c *gin.Context) {
 }
 
 func ListSystemTasks(c *gin.Context) {
-	var query struct {
-		model.SystemTaskFilter
-		Offset int `form:"offset" binding:"gte=0"`
-		Limit  int `form:"limit"`
-	}
-	if err := c.ShouldBindQuery(&query); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid system task filters"})
-		return
-	}
+	limit, _ := strconv.Atoi(c.Query("limit"))
 
-	tasks, total, err := model.ListSystemTasks(query.SystemTaskFilter, query.Offset, query.Limit)
+	tasks, err := model.ListSystemTasks(limit)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -91,25 +83,6 @@ func ListSystemTasks(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    responses,
-		"total":   total,
-	})
-}
-
-func DeleteSystemTaskHistory(c *gin.Context) {
-	var filter model.SystemTaskFilter
-	if err := c.ShouldBindQuery(&filter); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid system task filters"})
-		return
-	}
-	deleted, err := model.DeleteSystemTaskHistory(filter)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    gin.H{"deleted_count": deleted},
 	})
 }
 

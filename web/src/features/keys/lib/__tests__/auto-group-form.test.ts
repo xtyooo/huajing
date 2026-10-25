@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
+
 import type { TFunction } from 'i18next'
-import { describe, expect, test } from 'vitest'
 
 import { apiKeySchema, type ApiKey } from '../../types'
 import {
@@ -58,16 +60,16 @@ describe('API key Auto group form mapping', () => {
     const legacyApiKey: Record<string, unknown> = { ...baseApiKey }
     delete legacyApiKey.auto_groups
 
-    expect(apiKeySchema.parse(legacyApiKey).auto_groups).toBe(null)
+    assert.equal(apiKeySchema.parse(legacyApiKey).auto_groups, null)
   })
 
   test('creates an Auto token that inherits the global order', () => {
     const defaults = getApiKeyFormDefaultValues(true)
 
-    expect(defaults.group).toBe('auto')
-    expect(defaults.auto_groups_mode).toBe('inherit')
-    expect(defaults.auto_groups).toEqual([])
-    expect(transformFormDataToPayload(defaults).auto_groups).toEqual([])
+    assert.equal(defaults.group, 'auto')
+    assert.equal(defaults.auto_groups_mode, 'inherit')
+    assert.deepEqual(defaults.auto_groups, [])
+    assert.deepEqual(transformFormDataToPayload(defaults).auto_groups, [])
   })
 
   test('maps omitted, null, and empty snapshots to inheritance on edit', () => {
@@ -86,8 +88,8 @@ describe('API key Auto group form mapping', () => {
         2
       )
 
-      expect(defaults.auto_groups_mode).toBe('inherit')
-      expect(defaults.auto_groups).toEqual([])
+      assert.equal(defaults.auto_groups_mode, 'inherit')
+      assert.deepEqual(defaults.auto_groups, [])
     }
   })
 
@@ -101,8 +103,8 @@ describe('API key Auto group form mapping', () => {
       2
     )
 
-    expect(defaults.auto_groups_mode).toBe('custom')
-    expect(defaults.auto_groups).toEqual(['vip', 'default'])
+    assert.equal(defaults.auto_groups_mode, 'custom')
+    assert.deepEqual(defaults.auto_groups, ['vip', 'default'])
   })
 
   test('keeps a fully filtered snapshot custom and rejects it until resolved', () => {
@@ -112,14 +114,15 @@ describe('API key Auto group form mapping', () => {
       2
     )
 
-    expect(defaults.auto_groups_mode).toBe('custom')
-    expect(defaults.auto_groups).toEqual([])
+    assert.equal(defaults.auto_groups_mode, 'custom')
+    assert.deepEqual(defaults.auto_groups, [])
 
     const result = getApiKeyFormSchema(t, 2).safeParse(defaults)
-    expect(result.success).toBe(false)
+    assert.equal(result.success, false)
     if (result.success) return
-    expect(result.error.issues[0]?.path).toEqual(['auto_groups'])
-    expect(result.error.issues[0]?.message).toBe(
+    assert.deepEqual(result.error.issues[0]?.path, ['auto_groups'])
+    assert.equal(
+      result.error.issues[0]?.message,
       'Select at least one Auto group or restore global Auto.'
     )
   })
@@ -131,7 +134,7 @@ describe('API key Auto group form mapping', () => {
       auto_groups: ['vip', 'default'],
     }
 
-    expect(transformFormDataToPayload(custom).auto_groups).toEqual([
+    assert.deepEqual(transformFormDataToPayload(custom).auto_groups, [
       'vip',
       'default',
     ])
@@ -139,7 +142,7 @@ describe('API key Auto group form mapping', () => {
 
   test('submits an empty array for inheritance and for non-Auto groups', () => {
     const inherited = getApiKeyFormDefaultValues(true)
-    expect(transformFormDataToPayload(inherited).auto_groups).toEqual([])
+    assert.deepEqual(transformFormDataToPayload(inherited).auto_groups, [])
 
     const nonAuto = {
       ...inherited,
@@ -147,8 +150,8 @@ describe('API key Auto group form mapping', () => {
       auto_groups_mode: 'custom' as const,
       auto_groups: ['vip'],
     }
-    expect(transformFormDataToPayload(nonAuto).auto_groups).toEqual([])
-    expect(transformFormDataToPayload(nonAuto).cross_group_retry).toBe(false)
+    assert.deepEqual(transformFormDataToPayload(nonAuto).auto_groups, [])
+    assert.equal(transformFormDataToPayload(nonAuto).cross_group_retry, false)
   })
 
   test('rejects snapshots over the configured limit', () => {
@@ -159,10 +162,13 @@ describe('API key Auto group form mapping', () => {
       auto_groups: ['default', 'vip'],
     })
 
-    expect(result.success).toBe(false)
+    assert.equal(result.success, false)
     if (result.success) return
-    expect(result.error.issues[0]?.path[0]).toBe('auto_groups')
-    expect(result.error.issues[0]?.message).toBe('Select at most 1 Auto groups')
+    assert.equal(result.error.issues[0]?.path[0], 'auto_groups')
+    assert.equal(
+      result.error.issues[0]?.message,
+      'Select at most 1 Auto groups'
+    )
   })
 
   test('rejects duplicate custom groups', () => {
@@ -173,9 +179,10 @@ describe('API key Auto group form mapping', () => {
       auto_groups: ['vip', 'vip'],
     })
 
-    expect(result.success).toBe(false)
+    assert.equal(result.success, false)
     if (result.success) return
-    expect(result.error.issues[0]?.message).toBe(
+    assert.equal(
+      result.error.issues[0]?.message,
       'Auto groups must not contain duplicates'
     )
   })

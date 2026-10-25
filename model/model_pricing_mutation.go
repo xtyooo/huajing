@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,9 +22,6 @@ const (
 )
 
 type ModelPricingMutation struct {
-	// Nil preserves the legacy API contract. Versioned clients must supply a
-	// read-time version for every source/destination model the save changes.
-	ExpectedVersions     map[string]string  `json:"-"`
 	Mode                 string             `json:"mode"`
 	Price                *float64           `json:"price,omitempty"`
 	Ratio                *float64           `json:"ratio,omitempty"`
@@ -40,12 +36,13 @@ type ModelPricingMutation struct {
 }
 
 var (
-	pricingConfigMutex sync.RWMutex
+	pricingConfigMutex      sync.RWMutex
+	pricingPersistenceMutex sync.Mutex
 )
 
 func isPricingOptionKey(key string) bool {
 	switch key {
-	case "billing_setting.plugin_billing_expr", "ModelPrice", "ModelRatio", "CacheRatio", "CreateCacheRatio",
+	case "ModelPrice", "ModelRatio", "CacheRatio", "CreateCacheRatio",
 		"CompletionRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio",
 		"GroupRatio", "GroupGroupRatio", "SelfUseModeEnabled", "PreConsumedQuota",
 		"QuotaPerUnit", "quota_setting.enable_free_model_pre_consume",
@@ -73,7 +70,7 @@ func validatePricingOptionValue(key, value string) error {
 		return validatePricingJSONMap[float64](key, value)
 	case "GroupGroupRatio":
 		return validatePricingJSONMap[map[string]float64](key, value)
-	case "billing_setting.billing_mode", "billing_setting.billing_expr", "billing_setting.plugin_billing_expr":
+	case "billing_setting.billing_mode", "billing_setting.billing_expr":
 		return validatePricingJSONMap[string](key, value)
 	case "billing_setting.skip_seconds":
 		return validatePricingJSONMap[bool](key, value)
@@ -178,7 +175,7 @@ func loadOptionMapForUpdate[T any](tx *gorm.DB, key string) (map[string]T, error
 		return nil, err
 	}
 	var option Option
-	if err := lockForUpdate(tx).Where(commonKeyCol+" = ?", key).First(&option).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(commonKeyCol+" = ?", key).First(&option).Error; err != nil {
 		return nil, err
 	}
 	values := make(map[string]T)
@@ -387,19 +384,15 @@ func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMut
 	if err := validateModelPricingMutation(pricing); err != nil {
 		return err
 	}
-	// Serialize with metadata deletion before entering the pricing transaction.
-	metadataMutationMu.Lock()
-	defer metadataMutationMu.Unlock()
 
+	pricingPersistenceMutex.Lock()
+	defer pricingPersistenceMutex.Unlock()
 	writtenOptions := make(map[string]string)
-	err := mutateModelPricingOptions(func(tx *gorm.DB, values map[string]map[string]any) error {
-		if err := lockMetadataMutation(tx); err != nil {
-			return err
-		}
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		persistedModelName := ""
 		if m.Id != 0 {
 			var persisted Model
-			if err := lockForUpdate(tx).Select("id", "model_name").First(&persisted, m.Id).Error; err != nil {
+			if err := tx.Select("id", "model_name").First(&persisted, m.Id).Error; err != nil {
 				return err
 			}
 			persistedModelName = persisted.ModelName
@@ -414,21 +407,6 @@ func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMut
 		}
 		if duplicateCount > 0 {
 			return fmt.Errorf("model name already exists")
-		}
-		previous := modelPricingValues(values, persistedModelName)
-		if pricing.ExpectedVersions != nil {
-			required := map[string]bool{m.ModelName: true}
-			if persistedModelName != "" {
-				required[persistedModelName] = true
-			}
-			if len(pricing.ExpectedVersions) != len(required) {
-				return ErrModelPricingConflict
-			}
-			for name := range required {
-				if pricing.ExpectedVersions[name] != ModelPricingVersion(modelPricingValues(values, name)) {
-					return ErrModelPricingConflict
-				}
-			}
 		}
 
 		now := common.GetTimestamp()
@@ -453,35 +431,12 @@ func SaveModelWithPricing(m *Model, oldModelName string, pricing ModelPricingMut
 				return err
 			}
 		}
-		if err := persistModelPricing(tx, m.ModelName, persistedModelName, pricing, writtenOptions); err != nil {
-			return err
-		}
-		loaded, _, _, err := readModelPricingMaps(tx)
-		if err != nil {
-			return err
-		}
-		for key, entries := range loaded {
-			values[key] = entries
-		}
-		if persistedModelName != "" && persistedModelName != m.ModelName {
-			variants := values[billing_setting.PluginBillingExprOption]
-			for composite, expression := range variants {
-				plugin, name, ok := billing_setting.SplitPluginBillingExprKey(composite)
-				if !ok || name != persistedModelName {
-					continue
-				}
-				newKey := billing_setting.PluginBillingExprKey(plugin, m.ModelName)
-				if existing, ok := variants[newKey]; ok && existing != expression {
-					return ErrModelPricingConflict
-				}
-				delete(variants, composite)
-				variants[newKey] = expression
-			}
-		}
-		return validateModelPricing(m.ModelName, modelPricingValues(values, m.ModelName), previous)
+		return persistModelPricing(tx, m.ModelName, persistedModelName, pricing, writtenOptions)
 	})
 	if err != nil {
 		return err
 	}
-	return nil
+	pricingConfigMutex.Lock()
+	defer pricingConfigMutex.Unlock()
+	return refreshPricingOptions(writtenOptions)
 }

@@ -64,8 +64,8 @@ func ClaudeErrorWrapper(err error, code string, statusCode int) *dto.ClaudeError
 	lowerText := strings.ToLower(text)
 	if !strings.HasPrefix(lowerText, "get file base64 from url") {
 		if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
-			common.SysLog(common.LogText("error: %s", text))
-			text = "request to the upstream address failed"
+			common.SysLog(fmt.Sprintf("error: %s", text))
+			text = "请求上游地址失败"
 		}
 	}
 	claudeError := types.ClaudeError{
@@ -107,7 +107,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		if showBodyWhenFail {
 			newApiErr.Err = buildErrWithBody("")
 		} else {
-			logger.LogError(ctx, common.LogText("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
 			newApiErr.Err = fmt.Errorf("bad response status code %d", resp.StatusCode)
 		}
 		return
@@ -126,9 +126,8 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	}
 	message := errResponse.ToMessage()
 	if message == "" {
-		// The body parsed as JSON but carried no usable error message; log the
-		// raw body so the upstream failure remains diagnosable.
-		logger.LogError(ctx, common.LogText("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
+		// 响应体虽然是合法 JSON，但没有可用的错误消息；记录原始响应预览以便定位上游故障。
+		logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
 	}
 	newApiErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	if showBodyWhenFail {
@@ -203,7 +202,7 @@ func TaskErrorWrapper(err error, code string, statusCode int) *taskdto.TaskError
 	text := common.MaskRequiredQuotaAmount(rawText)
 	lowerText := strings.ToLower(rawText)
 	if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
-		common.SysLog(common.LogText("error: %s", rawText))
+		common.SysLog(fmt.Sprintf("error: %s", rawText))
 		//text = "请求上游地址失败"
 		text = common.MaskSensitiveInfo(text)
 	}

@@ -16,17 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { Table } from '@tanstack/react-table'
+import { type Table } from '@tanstack/react-table'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { batchDeleteApiKeys } from '../api'
 import { ERROR_MESSAGES } from '../constants'
-import type { ApiKey } from '../types'
+import { type ApiKey } from '../types'
 import { useApiKeys } from './api-keys-provider'
 
 type ApiKeysMultiDeleteDialogProps<TData> = {
@@ -58,10 +57,10 @@ export function ApiKeysMultiDeleteDialog<TData>({
         triggerRefresh()
         onOpenChange(false)
       } else {
-        handleServerError(result, t(ERROR_MESSAGES.BATCH_DELETE_FAILED))
+        toast.error(result.message || t(ERROR_MESSAGES.BATCH_DELETE_FAILED))
       }
     } catch (_error) {
-      handleServerError(_error, t(ERROR_MESSAGES.UNEXPECTED))
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsDeleting(false)
     }

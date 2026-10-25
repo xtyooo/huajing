@@ -36,14 +36,6 @@ export const CHANNEL_TYPE_WANCHEN = 78
 export const CHANNEL_TYPE_YAOCHEN = 79
 export const CHANNEL_TYPE_LONGXIA6 = 80
 export const CHANNEL_TYPE_SNUMOM = 81
-export const CHANNEL_TYPE_OLLAMA = 4
-export const CHANNEL_TYPE_SUB2API = CHANNEL_TYPE_SUB2_API
-
-export const CHANNEL_TYPE_TASK_PLUGIN = 82
-
-export const CHANNEL_TYPE_VLLM = 83
-
-export const CHANNEL_TYPE_SGLANG = 84
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -72,7 +64,7 @@ export const CHANNEL_TYPES = {
   23: 'Tencent',
   24: 'Gemini',
   25: 'Moonshot',
-  26: 'Zhipu GLM',
+  26: 'Zhipu V4',
   27: 'Perplexity',
   31: 'LingYiWanWu',
   33: 'AWS',
@@ -96,7 +88,7 @@ export const CHANNEL_TYPES = {
   51: 'Jimeng',
   52: 'Vidu',
   53: 'Submodel',
-  54: 'Doubao',
+  54: 'DoubaoVideo',
   55: 'Sora',
   56: 'Replicate',
   57: 'ChatGPT Subscription (Codex)',
@@ -124,162 +116,13 @@ export const CHANNEL_TYPES = {
   79: 'yaochen',
   80: 'longxia6',
   81: 'snumom',
-  82: 'Task Plugin',
-  83: 'vLLM',
-  84: 'SGLang',
 } as const
 
-export type ChannelProviderPresentation = {
-  descriptionKey: string
-  detailKey?: string
-  badge?: { labelKey: string; tone: 'warning' | 'primary' }
-}
-
-// Display copy only; channel routing, availability and ordering remain independent.
-export const CHANNEL_PROVIDER_PRESENTATION: Partial<
-  Record<number, ChannelProviderPresentation>
-> = {
-  1: { descriptionKey: 'Connect to the OpenAI API or compatible services' },
-  2: { descriptionKey: 'Generate Midjourney images through MjProxy' },
-  3: { descriptionKey: 'Connect to OpenAI models deployed on Azure' },
-  4: { descriptionKey: 'Connect to local or self-hosted Ollama models' },
-  5: { descriptionKey: 'Generate Midjourney images through MjProxyPlus' },
-  7: { descriptionKey: 'Access model services through the OhMyGPT gateway' },
-  8: {
-    descriptionKey:
-      'Legacy full-URL integration; use Advanced Custom for new channels',
-    badge: { labelKey: 'Deprecated', tone: 'warning' },
-  },
-  14: { descriptionKey: 'Connect to the Anthropic API or compatible services' },
-  15: { descriptionKey: 'Access Baidu Qianfan models through the legacy API' },
-  16: { descriptionKey: 'Access Zhipu models through the legacy API' },
-  17: { descriptionKey: 'Connect to Alibaba Cloud Bailian model services' },
-  18: { descriptionKey: 'Connect to iFlytek Spark model services' },
-  19: { descriptionKey: 'Connect to 360 model services' },
-  20: {
-    descriptionKey: 'Access models from multiple providers through OpenRouter',
-  },
-  22: { descriptionKey: 'Connect to FastGPT applications' },
-  23: { descriptionKey: 'Connect to Tencent Hunyuan model services' },
-  24: { descriptionKey: 'Connect to models through the Google Gemini API' },
-  25: { descriptionKey: 'Connect to Moonshot AI model services' },
-  26: { descriptionKey: 'Access Zhipu models through the V4 API' },
-  27: { descriptionKey: 'Connect to Perplexity model services' },
-  31: { descriptionKey: 'Connect to LingYiWanWu model services' },
-  33: { descriptionKey: 'Access models through Amazon Bedrock' },
-  34: { descriptionKey: 'Connect to Cohere model services' },
-  35: { descriptionKey: 'Connect to MiniMax model services' },
-  36: { descriptionKey: 'Generate music and lyrics through SunoAPI' },
-  37: { descriptionKey: 'Connect to Dify applications and workflows' },
-  38: { descriptionKey: 'Connect to Jina embedding and reranking services' },
-  39: { descriptionKey: 'Access models through Cloudflare Workers AI' },
-  40: { descriptionKey: 'Connect to SiliconFlow model inference services' },
-  41: { descriptionKey: 'Access models through Google Cloud Vertex AI' },
-  42: { descriptionKey: 'Connect to Mistral AI model services' },
-  43: { descriptionKey: 'Connect to DeepSeek model services' },
-  44: { descriptionKey: 'Access model services through MokaAI' },
-  45: { descriptionKey: 'Connect to Volcengine Ark model services' },
-  46: { descriptionKey: 'Access Baidu Qianfan models through the V2 API' },
-  47: { descriptionKey: 'Connect to self-hosted models served by Xinference' },
-  48: { descriptionKey: 'Connect to xAI Grok model services' },
-  49: { descriptionKey: 'Connect to Coze bots' },
-  50: { descriptionKey: 'Connect to Kling video generation services' },
-  51: {
-    descriptionKey: 'Connect to Jimeng image and video generation services',
-  },
-  52: { descriptionKey: 'Connect to Vidu video generation services' },
-  53: { descriptionKey: 'Connect to Submodel model services' },
-  54: {
-    descriptionKey:
-      'Connect to Doubao Seedance video and Seedream image generation through Volcengine Ark',
-  },
-  55: { descriptionKey: 'Connect to OpenAI Sora video generation services' },
-  56: { descriptionKey: 'Access hosted model predictions through Replicate' },
-  57: { descriptionKey: 'Access Codex using ChatGPT subscription credentials' },
-  64: {
-    descriptionKey:
-      'Configure endpoint routing, authentication and protocol conversion for different upstream services',
-    detailKey:
-      "New API's flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently",
-    badge: { labelKey: 'Flexible integration', tone: 'primary' },
-  },
-  68: { descriptionKey: 'Connect to model services through a Sub2API gateway' },
-  69: {
-    descriptionKey:
-      'Connect to New API model services with support for multiple task plugins',
-  },
-  83: { descriptionKey: 'Connect to self-hosted models served by vLLM' },
-  84: { descriptionKey: 'Connect to self-hosted models served by SGLang' },
-  58: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  59: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  60: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  61: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  62: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  63: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  65: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  66: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  67: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  70: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  71: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  72: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  73: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  74: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  75: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  76: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  77: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  78: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  79: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  80: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-  81: {
-    descriptionKey: 'Connect to an administrator-configured model service',
-  },
-}
-
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
-  1, 14, 33, 24, 43, 3, 41, 48, 69, 64, 68, 82, 42, 34, 20, 4, 40, 27, 25, 17,
-  26, 15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 22, 21, 44,
-  2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59, 60, 61, 62, 63, 65, 66, 67, 70,
-  71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 83, 84,
+  1, 14, 33, 24, 43, 3, 41, 48, 69, 64, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15,
+  46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 68, 22, 21, 44, 2,
+  5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59, 60, 61, 62, 63, 65, 66, 67, 70, 71,
+  72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -300,17 +143,6 @@ export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
   }
   return ordered
 })()
-
-export function channelTypeOptionsForTaskPluginBind(
-  canBindTaskPlugin: boolean
-): { value: number; label: string }[] {
-  if (canBindTaskPlugin) {
-    return CHANNEL_TYPE_OPTIONS
-  }
-  return CHANNEL_TYPE_OPTIONS.filter(
-    (option) => option.value !== CHANNEL_TYPE_TASK_PLUGIN
-  )
-}
 
 // ============================================================================
 // Channel Status (label values are i18n keys; use t(config.label) in components)
@@ -571,7 +403,7 @@ export const FIELD_DESCRIPTIONS = {
     'List of models supported by this channel. Use comma to separate multiple models.',
   GROUP: 'User groups that can access this channel. ',
   MODEL_MAPPING:
-    'For this channel, map the model name in client requests to the model name sent upstream.',
+    'Map request model names to actual provider model names (JSON format)',
   PRIORITY: 'Higher priority channels are selected first',
   WEIGHT: 'Used for load balancing. Higher weight = more requests',
   TEST_MODEL: 'Model to use when testing channel connectivity',
@@ -614,38 +446,6 @@ export const MODEL_FETCHABLE_TYPES = new Set([
   64,
   CHANNEL_TYPE_SUB2_API,
   CHANNEL_TYPE_NEW_API,
-  CHANNEL_TYPE_VLLM,
-  CHANNEL_TYPE_SGLANG,
-])
-
-export const FIELD_PASSTHROUGH_TYPES = new Set([
-  1,
-  14,
-  57,
-  64,
-  CHANNEL_TYPE_SUB2_API,
-  CHANNEL_TYPE_NEW_API,
-  CHANNEL_TYPE_VLLM,
-  CHANNEL_TYPE_SGLANG,
-])
-
-export const OPENAI_FIELD_PASSTHROUGH_TYPES = new Set([
-  1,
-  57,
-  64,
-  CHANNEL_TYPE_SUB2_API,
-  CHANNEL_TYPE_NEW_API,
-  CHANNEL_TYPE_VLLM,
-  CHANNEL_TYPE_SGLANG,
-])
-
-export const CLAUDE_FIELD_PASSTHROUGH_TYPES = new Set([
-  14,
-  64,
-  CHANNEL_TYPE_SUB2_API,
-  CHANNEL_TYPE_NEW_API,
-  CHANNEL_TYPE_VLLM,
-  CHANNEL_TYPE_SGLANG,
 ])
 
 export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
@@ -659,8 +459,6 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
   57: 'Paste Codex OAuth JSON credential (access_token / refresh_token / account_id)',
   [CHANNEL_TYPE_SUB2_API]: 'Enter API key for this channel',
   [CHANNEL_TYPE_NEW_API]: 'Enter API key for this channel',
-  83: 'vLLM API key, or EMPTY if authentication is disabled',
-  84: 'SGLang API key, or EMPTY if authentication is disabled',
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {

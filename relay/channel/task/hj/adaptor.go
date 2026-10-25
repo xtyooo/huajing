@@ -62,7 +62,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	return strings.TrimSuffix(strings.TrimRight(a.baseURL, "/"), BasePath) + BasePath + SubmitEndpoint, nil
+	return strings.TrimRight(a.baseURL, "/") + BasePath + SubmitEndpoint, nil
 }
 
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
@@ -147,7 +147,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := strings.TrimSuffix(strings.TrimRight(baseUrl, "/"), BasePath) + BasePath + QueryEndpoint + taskID
+	uri := strings.TrimRight(baseUrl, "/") + BasePath + QueryEndpoint + taskID
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {

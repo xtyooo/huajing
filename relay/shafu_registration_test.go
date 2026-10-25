@@ -18,7 +18,7 @@ func TestShafuChannelRegistration(t *testing.T) {
 	assert.Equal(t, constant.APITypeOpenAI, apiType)
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(constant.ChannelTypeShafu, shafu.ModelList[0]))
 	adaptor := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu)))
-	assert.IsType(t, &shafu.TaskAdaptor{}, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeShafu))))
+	assert.IsType(t, &shafu.TaskAdaptor{}, adaptor)
 	imagePricingAdaptor, ok := adaptor.(channel.TaskImageSizePricingAdaptor)
 	require.True(t, ok)
 	assert.False(t, imagePricingAdaptor.SupportsImageSizePricing())

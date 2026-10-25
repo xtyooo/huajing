@@ -18,12 +18,9 @@ type ChannelAffinityRule struct {
 	ValueRegex string `json:"value_regex"`
 	TTLSeconds int    `json:"ttl_seconds"`
 
-	ParamOverrideTemplate map[string]any `json:"param_override_template,omitempty"`
+	ParamOverrideTemplate map[string]interface{} `json:"param_override_template,omitempty"`
 
 	SkipRetryOnFailure bool `json:"skip_retry_on_failure"`
-	// "inherit" uses the global default; off/prefer/strict override it.
-	// Empty preserves the legacy SkipRetryOnFailure behavior.
-	SessionMode string `json:"session_mode,omitempty"`
 
 	IncludeUsingGroup bool `json:"include_using_group"`
 	IncludeModelName  bool `json:"include_model_name"`
@@ -31,9 +28,7 @@ type ChannelAffinityRule struct {
 }
 
 type ChannelAffinitySetting struct {
-	Enabled bool `json:"enabled"`
-	// Default for rules with SessionMode "inherit". Empty defaults to "prefer".
-	SessionMode           string                `json:"session_mode"`
+	Enabled               bool                  `json:"enabled"`
 	SwitchOnSuccess       bool                  `json:"switch_on_success"`
 	KeepOnChannelDisabled bool                  `json:"keep_on_channel_disabled"`
 	MaxEntries            int                   `json:"max_entries"`
@@ -86,11 +81,11 @@ var claudeCliPassThroughHeaders = []string{
 	"Anthropic-Version",
 }
 
-func buildPassHeaderTemplate(headers []string) map[string]any {
+func buildPassHeaderTemplate(headers []string) map[string]interface{} {
 	clonedHeaders := make([]string, 0, len(headers))
 	clonedHeaders = append(clonedHeaders, headers...)
-	return map[string]any{
-		"operations": []map[string]any{
+	return map[string]interface{}{
+		"operations": []map[string]interface{}{
 			{
 				"mode":        "pass_headers",
 				"value":       clonedHeaders,
@@ -100,11 +95,11 @@ func buildPassHeaderTemplate(headers []string) map[string]any {
 	}
 }
 
-func buildCodexPassHeaderTemplate() map[string]any {
+func buildCodexPassHeaderTemplate() map[string]interface{} {
 	requestHeaders := make([]string, 0, len(codexCliPassThroughHeaders))
 	requestHeaders = append(requestHeaders, codexCliPassThroughHeaders...)
-	return map[string]any{
-		"operations": []map[string]any{
+	return map[string]interface{}{
+		"operations": []map[string]interface{}{
 			{
 				"mode":        "pass_headers",
 				"value":       requestHeaders,

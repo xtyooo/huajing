@@ -9,7 +9,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -50,7 +49,7 @@ func redisUserRateLimitKey(mark string, userID int) string {
 	return fmt.Sprintf("%s:user:%s:%d", redisRateLimitNamespace, mark, userID)
 }
 
-func redisReplyInteger(value any) (int64, error) {
+func redisReplyInteger(value interface{}) (int64, error) {
 	switch typed := value.(type) {
 	case int64:
 		return typed, nil
@@ -115,7 +114,7 @@ func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark st
 		duration,
 	)
 	if err != nil {
-		logger.LogError(c.Request.Context(), common.LogText("rate limit check failed (mark=%s): %v", mark, err))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("rate limit check failed (mark=%s): %v", mark, err))
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
 		return
@@ -158,26 +157,11 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 	}
 }
 
-// GlobalWebRateLimit limits dashboard pages and other fallback paths per IP.
-// Files that exist in the frontend build count against a separate static
-// limiter instead, so lazy-loaded chunks and icons do not use up the page
-// budget. The static limiter is disabled by default.
-func GlobalWebRateLimit(frontendFS static.ServeFileSystem) func(c *gin.Context) {
-	webLimit := defNext
+func GlobalWebRateLimit() func(c *gin.Context) {
 	if common.GlobalWebRateLimitEnable {
-		webLimit = rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
+		return rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
 	}
-	staticLimit := defNext
-	if common.GlobalStaticRateLimitEnable {
-		staticLimit = rateLimitFactory(common.GlobalStaticRateLimitNum, common.GlobalStaticRateLimitDuration, "GS")
-	}
-	return func(c *gin.Context) {
-		if frontendFS.Exists("/", c.Request.URL.Path) {
-			staticLimit(c)
-			return
-		}
-		webLimit(c)
-	}
+	return defNext
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
@@ -250,7 +234,7 @@ func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c
 func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key string) {
 	allowed, _, ttlSeconds, err := redisFixedWindowTake(c.Request.Context(), key, maxRequestNum, duration)
 	if err != nil {
-		logger.LogError(c.Request.Context(), common.LogText("rate limit check failed (key=%s): %v", key, err))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("rate limit check failed (key=%s): %v", key, err))
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
 		return

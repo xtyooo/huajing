@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -59,7 +58,6 @@ func TestMain(m *testing.M) {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
-		&UserAccessToken{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -78,7 +76,6 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM two_fa_backup_codes")
 		DB.Exec("DELETE FROM two_fas")
 		DB.Exec("DELETE FROM tokens")
-		DB.Exec("DELETE FROM user_access_tokens")
 		DB.Exec("DELETE FROM user_oauth_bindings")
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM logs")
@@ -101,40 +98,6 @@ func insertTask(t *testing.T, task *Task) {
 	task.CreatedAt = time.Now().Unix()
 	task.UpdatedAt = time.Now().Unix()
 	require.NoError(t, DB.Create(task).Error)
-}
-
-func TestGetTaskForProtocolObservationScopesOwnerAndPlatform(t *testing.T) {
-	truncateTables(t)
-	task := &Task{
-		TaskID:   "task_protocol_scope",
-		UserId:   7,
-		Platform: "plugin-a",
-		Status:   TaskStatusInProgress,
-	}
-	insertTask(t, task)
-
-	got, exists, err := GetTaskForProtocolObservation(context.Background(), 7, "plugin-a", task.TaskID)
-	require.NoError(t, err)
-	require.True(t, exists)
-	assert.Equal(t, task.ID, got.ID)
-
-	for _, query := range []struct {
-		userID   int
-		platform string
-	}{
-		{userID: 8, platform: "plugin-a"},
-		{userID: 7, platform: "plugin-b"},
-	} {
-		got, exists, err = GetTaskForProtocolObservation(context.Background(), query.userID, constant.TaskPlatform(query.platform), task.TaskID)
-		require.NoError(t, err)
-		assert.False(t, exists)
-		assert.Nil(t, got)
-	}
-
-	cancelled, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, _, err = GetTaskForProtocolObservation(cancelled, 7, "plugin-a", task.TaskID)
-	require.ErrorIs(t, err, context.Canceled)
 }
 
 // ---------------------------------------------------------------------------
@@ -179,29 +142,6 @@ func TestSnapshotEqual_NilVsEmpty(t *testing.T) {
 	assert.True(t, a.Equal(b))
 }
 
-func TestSnapshotEqual_PluginStateAndPollFailures(t *testing.T) {
-	base := taskSnapshot{
-		Status:       TaskStatusInProgress,
-		PluginState:  json.RawMessage(`{"req_key":"a"}`),
-		PollFailures: 2,
-	}
-	assert.True(t, base.Equal(taskSnapshot{
-		Status:       TaskStatusInProgress,
-		PluginState:  json.RawMessage(`{"req_key":"a"}`),
-		PollFailures: 2,
-	}))
-	assert.False(t, base.Equal(taskSnapshot{
-		Status:       TaskStatusInProgress,
-		PluginState:  json.RawMessage(`{"req_key":"b"}`),
-		PollFailures: 2,
-	}))
-	assert.False(t, base.Equal(taskSnapshot{
-		Status:       TaskStatusInProgress,
-		PluginState:  json.RawMessage(`{"req_key":"a"}`),
-		PollFailures: 3,
-	}))
-}
-
 func TestSnapshot_Roundtrip(t *testing.T) {
 	task := &Task{
 		Status:     TaskStatusInProgress,
@@ -210,9 +150,7 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 		FinishTime: 5678,
 		FailReason: "timeout",
 		PrivateData: TaskPrivateData{
-			ResultURL:    "https://example.com/result.mp4",
-			PluginState:  json.RawMessage(`{"req_key":"keep"}`),
-			PollFailures: 3,
+			ResultURL: "https://example.com/result.mp4",
 		},
 		Data: json.RawMessage(`{"model":"test-model"}`),
 	}
@@ -224,8 +162,6 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 	assert.Equal(t, task.FailReason, snap.FailReason)
 	assert.Equal(t, task.PrivateData.ResultURL, snap.ResultURL)
 	assert.JSONEq(t, string(task.Data), string(snap.Data))
-	assert.Equal(t, task.PrivateData.PluginState, snap.PluginState)
-	assert.Equal(t, task.PrivateData.PollFailures, snap.PollFailures)
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +227,7 @@ func TestUpdateWithStatus_ConcurrentWinner(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for i := range goroutines {
+	for i := 0; i < goroutines; i++ {
 		go func(idx int) {
 			defer wg.Done()
 			t := &Task{}
@@ -464,31 +400,4 @@ func TestResetInvalidSoraMediaDownloads(t *testing.T) {
 	require.NoError(t, DB.First(&reloadedValid, valid.ID).Error)
 	assert.Equal(t, MediaStatusSuccess, reloadedValid.MediaStatus)
 	assert.Equal(t, valid.MediaURL, reloadedValid.MediaURL)
-}
-
-func TestUpdateWithStatus_PersistsPluginStateAndPollFailures(t *testing.T) {
-	truncateTables(t)
-
-	task := &Task{
-		TaskID: "task_cas_plugin_state",
-		Status: TaskStatusInProgress,
-		Data:   json.RawMessage(`{}`),
-		PrivateData: TaskPrivateData{
-			PluginState:  json.RawMessage(`{"req_key":"old"}`),
-			PollFailures: 1,
-		},
-	}
-	insertTask(t, task)
-
-	task.PrivateData.PluginState = json.RawMessage(`{"req_key":"new"}`)
-	task.PrivateData.PollFailures = 4
-	won, err := task.UpdateWithStatus(TaskStatusInProgress)
-	require.NoError(t, err)
-	require.True(t, won)
-
-	var reloaded Task
-	require.NoError(t, DB.First(&reloaded, task.ID).Error)
-	assert.EqualValues(t, TaskStatusInProgress, reloaded.Status)
-	assert.JSONEq(t, `{"req_key":"new"}`, string(reloaded.PrivateData.PluginState))
-	assert.Equal(t, 4, reloaded.PrivateData.PollFailures)
 }

@@ -3,16 +3,13 @@ package common
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	kitreasoning "github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
@@ -55,21 +52,17 @@ type paramOverrideAuditRecorder struct {
 }
 
 type ConditionOperation struct {
-	Path           string `json:"path"`             // JSON路径
-	Mode           string `json:"mode"`             // full, prefix, suffix, contains, regex, gt, gte, lt, lte
-	Value          any    `json:"value"`            // 匹配的值
-	Invert         bool   `json:"invert"`           // 反选功能，true表示取反结果
-	PassMissingKey bool   `json:"pass_missing_key"` // 未获取到json key时的行为
-
-	// Conditions are parsed per request. Reuse the lazily compiled pattern when
-	// pruning multiple objects; never compile before a matching key exists.
-	regex *regexp.Regexp
+	Path           string      `json:"path"`             // JSON路径
+	Mode           string      `json:"mode"`             // full, prefix, suffix, contains, gt, gte, lt, lte
+	Value          interface{} `json:"value"`            // 匹配的值
+	Invert         bool        `json:"invert"`           // 反选功能，true表示取反结果
+	PassMissingKey bool        `json:"pass_missing_key"` // 未获取到json key时的行为
 }
 
 type ParamOperation struct {
 	Path       string               `json:"path"`
 	Mode       string               `json:"mode"` // delete, set, move, copy, prepend, append, trim_prefix, trim_suffix, ensure_prefix, ensure_suffix, trim_space, to_lower, to_upper, replace, regex_replace, return_error, prune_objects, set_header, delete_header, copy_header, move_header, pass_headers, sync_fields
-	Value      any                  `json:"value"`
+	Value      interface{}          `json:"value"`
 	KeepOrigin bool                 `json:"keep_origin"`
 	From       string               `json:"from,omitempty"`
 	To         string               `json:"to,omitempty"`
@@ -147,7 +140,7 @@ func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIEr
 	}, statusCode, opts...)
 }
 
-func ApplyParamOverride(jsonData []byte, paramOverride map[string]any, conditionContext map[string]any) ([]byte, error) {
+func ApplyParamOverride(jsonData []byte, paramOverride map[string]interface{}, conditionContext map[string]interface{}) ([]byte, error) {
 	if len(paramOverride) == 0 {
 		return jsonData, nil
 	}
@@ -173,11 +166,11 @@ func ApplyParamOverride(jsonData []byte, paramOverride map[string]any, condition
 	return applyOperationsLegacy(jsonData, paramOverride, auditRecorder)
 }
 
-func buildLegacyParamOverride(paramOverride map[string]any) map[string]any {
+func buildLegacyParamOverride(paramOverride map[string]interface{}) map[string]interface{} {
 	if len(paramOverride) == 0 {
 		return nil
 	}
-	legacy := make(map[string]any, len(paramOverride))
+	legacy := make(map[string]interface{}, len(paramOverride))
 	for key, value := range paramOverride {
 		if strings.EqualFold(strings.TrimSpace(key), "operations") {
 			continue
@@ -231,73 +224,22 @@ func syncReasoningEffortAfterParamOverride(info *RelayInfo, before, after []byte
 }
 
 func extractReasoningEffortFromJSON(format types.RelayFormat, data []byte) (string, bool) {
+	var paths []string
 	switch format {
 	case types.RelayFormatOpenAI:
-		if effort, exists := firstStringValue(data, "reasoning_effort"); exists && effort != "" {
-			return effort, true
-		}
-		if enabled := gjson.GetBytes(data, "reasoning.enabled"); enabled.Exists() {
-			if enabled.Type != gjson.True && enabled.Type != gjson.False {
-				return "", true
-			}
-			if !enabled.Bool() {
-				return string(kitreasoning.EffortNone), true
-			}
-			if effort, exists := firstStringValue(data, "reasoning.effort"); exists && effort != "" {
-				return effort, true
-			}
-			if budget := gjson.GetBytes(data, "reasoning.max_tokens"); budget.Exists() {
-				return reasoningEffortFromBudgetValue(budget)
-			}
-			return string(kitreasoning.EffortHigh), true
-		}
-		if effort, exists := firstStringValue(data, "reasoning.effort"); exists && effort != "" {
-			return effort, true
-		}
-		if budget := gjson.GetBytes(data, "reasoning.max_tokens"); budget.Exists() {
-			return reasoningEffortFromBudgetValue(budget)
-		}
-		return "", false
+		paths = []string{"reasoning_effort", "reasoning.effort"}
 	case types.RelayFormatOpenAIResponses:
-		return firstStringValue(data, "reasoning.effort")
+		paths = []string{"reasoning.effort"}
 	case types.RelayFormatClaude:
-		if effort, exists := firstStringValue(data, "output_config.effort"); exists && effort != "" {
-			return effort, true
-		}
-		thinkingType, hasThinkingType := firstStringValue(data, "thinking.type")
-		if thinkingType == "disabled" {
-			return string(kitreasoning.EffortNone), true
-		}
-		if budget := gjson.GetBytes(data, "thinking.budget_tokens"); budget.Exists() {
-			return reasoningEffortFromBudgetValue(budget)
-		}
-		if thinkingType == "enabled" || thinkingType == "adaptive" {
-			return string(kitreasoning.EffortHigh), true
-		}
-		return "", hasThinkingType
+		paths = []string{"output_config.effort"}
 	case types.RelayFormatGemini:
-		level, hasLevel := firstStringValue(data,
+		paths = []string{
 			"generationConfig.thinkingConfig.thinkingLevel",
 			"generation_config.thinking_config.thinking_level",
-		)
-		if level != "" {
-			return level, true
 		}
-		for _, path := range []string{
-			"generationConfig.thinkingConfig.thinkingBudget",
-			"generation_config.thinking_config.thinking_budget",
-		} {
-			if budget := gjson.GetBytes(data, path); budget.Exists() {
-				return reasoningEffortFromBudgetValue(budget)
-			}
-		}
-		return "", hasLevel
 	default:
 		return "", false
 	}
-}
-
-func firstStringValue(data []byte, paths ...string) (string, bool) {
 	for _, path := range paths {
 		value := gjson.GetBytes(data, path)
 		if !value.Exists() {
@@ -311,26 +253,7 @@ func firstStringValue(data []byte, paths ...string) (string, bool) {
 	return "", false
 }
 
-func reasoningEffortFromBudgetValue(value gjson.Result) (string, bool) {
-	if value.Type != gjson.Number {
-		return "", true
-	}
-	budget := value.Float()
-	switch {
-	case budget == 0:
-		return string(kitreasoning.EffortNone), true
-	case budget < 0:
-		return string(kitreasoning.EffortHigh), true
-	case budget <= 1024:
-		return string(kitreasoning.EffortLow), true
-	case budget <= 8192:
-		return string(kitreasoning.EffortMedium), true
-	default:
-		return string(kitreasoning.EffortHigh), true
-	}
-}
-
-func shouldEnableParamOverrideAudit(paramOverride map[string]any) bool {
+func shouldEnableParamOverrideAudit(paramOverride map[string]interface{}) bool {
 	if common.DebugEnabled {
 		return true
 	}
@@ -360,7 +283,7 @@ func shouldEnableParamOverrideAudit(paramOverride map[string]any) bool {
 	return false
 }
 
-func getParamOverrideAuditRecorder(context map[string]any) *paramOverrideAuditRecorder {
+func getParamOverrideAuditRecorder(context map[string]interface{}) *paramOverrideAuditRecorder {
 	if context == nil {
 		return nil
 	}
@@ -368,7 +291,7 @@ func getParamOverrideAuditRecorder(context map[string]any) *paramOverrideAuditRe
 	return recorder
 }
 
-func (r *paramOverrideAuditRecorder) recordOperation(mode, path, from, to string, value any) {
+func (r *paramOverrideAuditRecorder) recordOperation(mode, path, from, to string, value interface{}) {
 	if r == nil {
 		return
 	}
@@ -402,10 +325,15 @@ func shouldAuditOperation(mode, path, from, to string) bool {
 	if common.DebugEnabled {
 		return true
 	}
-	return slices.ContainsFunc([]string{path, from, to}, shouldAuditParamPath)
+	for _, candidate := range []string{path, from, to} {
+		if shouldAuditParamPath(candidate) {
+			return true
+		}
+	}
+	return false
 }
 
-func formatParamOverrideAuditValue(value any) string {
+func formatParamOverrideAuditValue(value interface{}) string {
 	switch typed := value.(type) {
 	case nil:
 		return "<empty>"
@@ -416,7 +344,7 @@ func formatParamOverrideAuditValue(value any) string {
 	}
 }
 
-func buildParamOverrideAuditLine(mode, path, from, to string, value any) string {
+func buildParamOverrideAuditLine(mode, path, from, to string, value interface{}) string {
 	mode = strings.TrimSpace(mode)
 	path = strings.TrimSpace(path)
 	from = strings.TrimSpace(from)
@@ -504,25 +432,25 @@ func buildParamOverrideAuditLine(mode, path, from, to string, value any) string 
 	}
 }
 
-func getParamOverrideMap(info *RelayInfo) map[string]any {
+func getParamOverrideMap(info *RelayInfo) map[string]interface{} {
 	if info == nil || info.ChannelMeta == nil {
 		return nil
 	}
 	return info.ChannelMeta.ParamOverride
 }
 
-func getHeaderOverrideMap(info *RelayInfo) map[string]any {
+func getHeaderOverrideMap(info *RelayInfo) map[string]interface{} {
 	if info == nil || info.ChannelMeta == nil {
 		return nil
 	}
 	return info.ChannelMeta.HeadersOverride
 }
 
-func sanitizeHeaderOverrideMap(source map[string]any) map[string]any {
+func sanitizeHeaderOverrideMap(source map[string]interface{}) map[string]interface{} {
 	if len(source) == 0 {
-		return map[string]any{}
+		return map[string]interface{}{}
 	}
-	target := make(map[string]any, len(source))
+	target := make(map[string]interface{}, len(source))
 	for key, value := range source {
 		normalizedKey := normalizeHeaderContextKey(key)
 		if normalizedKey == "" {
@@ -551,9 +479,9 @@ func isHeaderPassthroughRuleKeyForOverride(key string) bool {
 	return strings.HasPrefix(key, "re:") || strings.HasPrefix(key, "regex:")
 }
 
-func GetEffectiveHeaderOverride(info *RelayInfo) map[string]any {
+func GetEffectiveHeaderOverride(info *RelayInfo) map[string]interface{} {
 	if info == nil {
-		return map[string]any{}
+		return map[string]interface{}{}
 	}
 	if info.UseRuntimeHeadersOverride {
 		return sanitizeHeaderOverrideMap(info.RuntimeHeadersOverride)
@@ -561,25 +489,25 @@ func GetEffectiveHeaderOverride(info *RelayInfo) map[string]any {
 	return sanitizeHeaderOverrideMap(getHeaderOverrideMap(info))
 }
 
-func tryParseOperations(paramOverride map[string]any) ([]ParamOperation, bool) {
+func tryParseOperations(paramOverride map[string]interface{}) ([]ParamOperation, bool) {
 	// 检查是否包含 "operations" 字段
 	opsValue, exists := paramOverride["operations"]
 	if !exists {
 		return nil, false
 	}
 
-	var opMaps []map[string]any
+	var opMaps []map[string]interface{}
 	switch ops := opsValue.(type) {
-	case []any:
-		opMaps = make([]map[string]any, 0, len(ops))
+	case []interface{}:
+		opMaps = make([]map[string]interface{}, 0, len(ops))
 		for _, op := range ops {
-			opMap, ok := op.(map[string]any)
+			opMap, ok := op.(map[string]interface{})
 			if !ok {
 				return nil, false
 			}
 			opMaps = append(opMaps, opMap)
 		}
-	case []map[string]any:
+	case []map[string]interface{}:
 		opMaps = ops
 	default:
 		return nil, false
@@ -637,8 +565,8 @@ func checkConditions(data []byte, contextJSON string, conditions []ConditionOper
 		return true, nil // 没有条件，直接通过
 	}
 	results := make([]bool, len(conditions))
-	for i := range conditions {
-		result, err := checkSingleCondition(data, contextJSON, &conditions[i])
+	for i, condition := range conditions {
+		result, err := checkSingleCondition(data, contextJSON, condition)
 		if err != nil {
 			return false, err
 		}
@@ -651,7 +579,7 @@ func checkConditions(data []byte, contextJSON string, conditions []ConditionOper
 	return lo.SomeBy(results, func(item bool) bool { return item }), nil
 }
 
-func checkSingleCondition(data []byte, contextJSON string, condition *ConditionOperation) (bool, error) {
+func checkSingleCondition(data []byte, contextJSON string, condition ConditionOperation) (bool, error) {
 	// 处理负数索引
 	path := processNegativeIndex(data, condition.Path)
 	value := gjson.GetBytes(data, path)
@@ -672,7 +600,7 @@ func checkSingleCondition(data []byte, contextJSON string, condition *ConditionO
 	}
 	targetValue := gjson.ParseBytes(targetBytes)
 
-	result, err := condition.compareGjsonValues(value, targetValue)
+	result, err := compareGjsonValues(value, targetValue, strings.ToLower(condition.Mode))
 	if err != nil {
 		return false, fmt.Errorf("comparison failed for path %s: %v", condition.Path, err)
 	}
@@ -714,8 +642,7 @@ func processNegativeIndex(data []byte, path string) string {
 }
 
 // compareGjsonValues 直接比较两个gjson.Result，支持所有比较模式
-func (condition *ConditionOperation) compareGjsonValues(jsonValue, targetValue gjson.Result) (bool, error) {
-	mode := strings.ToLower(condition.Mode)
+func compareGjsonValues(jsonValue, targetValue gjson.Result, mode string) (bool, error) {
 	switch mode {
 	case "full":
 		return compareEqual(jsonValue, targetValue)
@@ -725,18 +652,6 @@ func (condition *ConditionOperation) compareGjsonValues(jsonValue, targetValue g
 		return strings.HasSuffix(jsonValue.String(), targetValue.String()), nil
 	case "contains":
 		return strings.Contains(jsonValue.String(), targetValue.String()), nil
-	case "regex":
-		if targetValue.Type != gjson.String {
-			return false, fmt.Errorf("regex pattern must be a string")
-		}
-		if condition.regex == nil {
-			re, err := regexp.Compile(targetValue.String())
-			if err != nil {
-				return false, fmt.Errorf("invalid regex pattern: %w", err)
-			}
-			condition.regex = re
-		}
-		return condition.regex.MatchString(jsonValue.String()), nil
 	case "gt":
 		return compareNumeric(jsonValue, targetValue, "gt")
 	case "gte":
@@ -813,7 +728,7 @@ func compareNumeric(jsonValue, targetValue gjson.Result, operator string) (bool,
 // 语义保持：每个 paramOverride 顶层 key 视为字面 key（不解析点号路径），
 // 与旧的 reqMap[key] = value 一致。包含 `.` `*` `?` `\` 的 key 会被转义，
 // 防止被 sjson 当作嵌套路径或通配符。
-func applyOperationsLegacy(jsonData []byte, paramOverride map[string]any, auditRecorder *paramOverrideAuditRecorder) ([]byte, error) {
+func applyOperationsLegacy(jsonData []byte, paramOverride map[string]interface{}, auditRecorder *paramOverrideAuditRecorder) ([]byte, error) {
 	if len(paramOverride) == 0 {
 		return jsonData, nil
 	}
@@ -858,7 +773,7 @@ func escapeSjsonLiteralKey(key string) string {
 // payload 来说每次重试都额外多花 2 倍 body 体积的临时内存。
 // 这里改成全程在 []byte 上工作，sjson.SetBytes / gjson.GetBytes 都是
 // 直接读写 []byte，每个操作只会产生一份新 buffer。
-func applyOperations(jsonData []byte, operations []ParamOperation, conditionContext map[string]any) ([]byte, error) {
+func applyOperations(jsonData []byte, operations []ParamOperation, conditionContext map[string]interface{}) ([]byte, error) {
 	context := ensureContextMap(conditionContext)
 	auditRecorder := getParamOverrideAuditRecorder(context)
 	contextJSON, err := marshalContextJSON(context)
@@ -1108,7 +1023,7 @@ func applyOperations(jsonData []byte, operations []ParamOperation, conditionCont
 	return result, nil
 }
 
-func parseParamOverrideReturnError(value any) (*ParamOverrideReturnError, error) {
+func parseParamOverrideReturnError(value interface{}) (*ParamOverrideReturnError, error) {
 	result := &ParamOverrideReturnError{
 		StatusCode: http.StatusBadRequest,
 		Code:       string(types.ErrorCodeInvalidRequest),
@@ -1121,7 +1036,7 @@ func parseParamOverrideReturnError(value any) (*ParamOverrideReturnError, error)
 		return nil, fmt.Errorf("return_error value is required")
 	case string:
 		result.Message = strings.TrimSpace(raw)
-	case map[string]any:
+	case map[string]interface{}:
 		if message, ok := raw["message"].(string); ok {
 			result.Message = strings.TrimSpace(message)
 		}
@@ -1174,7 +1089,7 @@ func parseParamOverrideReturnError(value any) (*ParamOverrideReturnError, error)
 	return result, nil
 }
 
-func parseOverrideInt(v any) (int, bool) {
+func parseOverrideInt(v interface{}) (int, bool) {
 	switch value := v.(type) {
 	case int:
 		return value, true
@@ -1188,14 +1103,14 @@ func parseOverrideInt(v any) (int, bool) {
 	}
 }
 
-func ensureContextMap(conditionContext map[string]any) map[string]any {
+func ensureContextMap(conditionContext map[string]interface{}) map[string]interface{} {
 	if conditionContext != nil {
 		return conditionContext
 	}
-	return make(map[string]any)
+	return make(map[string]interface{})
 }
 
-func marshalContextJSON(context map[string]any) (string, error) {
+func marshalContextJSON(context map[string]interface{}) (string, error) {
 	if context == nil || len(context) == 0 {
 		return "", nil
 	}
@@ -1206,7 +1121,7 @@ func marshalContextJSON(context map[string]any) (string, error) {
 	return string(ctxBytes), nil
 }
 
-func setHeaderOverrideInContext(context map[string]any, headerName string, value any, keepOrigin bool) error {
+func setHeaderOverrideInContext(context map[string]interface{}, headerName string, value interface{}, keepOrigin bool) error {
 	headerName = normalizeHeaderContextKey(headerName)
 	if headerName == "" {
 		return fmt.Errorf("header name is required")
@@ -1235,16 +1150,16 @@ func setHeaderOverrideInContext(context map[string]any, headerName string, value
 	return nil
 }
 
-func resolveHeaderOverrideValue(context map[string]any, headerName string, value any) (string, bool, error) {
+func resolveHeaderOverrideValue(context map[string]interface{}, headerName string, value interface{}) (string, bool, error) {
 	if value == nil {
 		return "", false, fmt.Errorf("header value is required")
 	}
 
-	if mapping, ok := value.(map[string]any); ok {
+	if mapping, ok := value.(map[string]interface{}); ok {
 		return resolveHeaderOverrideValueByMapping(context, headerName, mapping)
 	}
 	if mapping, ok := value.(map[string]string); ok {
-		converted := make(map[string]any, len(mapping))
+		converted := make(map[string]interface{}, len(mapping))
 		for key, item := range mapping {
 			converted[key] = item
 		}
@@ -1258,7 +1173,7 @@ func resolveHeaderOverrideValue(context map[string]any, headerName string, value
 	return headerValue, true, nil
 }
 
-func resolveHeaderOverrideValueByMapping(context map[string]any, headerName string, mapping map[string]any) (string, bool, error) {
+func resolveHeaderOverrideValueByMapping(context map[string]interface{}, headerName string, mapping map[string]interface{}) (string, bool, error) {
 	if len(mapping) == 0 {
 		return "", false, fmt.Errorf("header value mapping cannot be empty")
 	}
@@ -1305,7 +1220,7 @@ func resolveHeaderOverrideValueByMapping(context map[string]any, headerName stri
 	return strings.Join(resultTokens, ","), true, nil
 }
 
-func parseHeaderAppendTokens(mapping map[string]any) ([]string, error) {
+func parseHeaderAppendTokens(mapping map[string]interface{}) ([]string, error) {
 	appendRaw, ok := mapping["$append"]
 	if !ok {
 		return nil, nil
@@ -1313,7 +1228,7 @@ func parseHeaderAppendTokens(mapping map[string]any) ([]string, error) {
 	return parseHeaderReplacementTokens(appendRaw)
 }
 
-func parseHeaderKeepOnlyDeclared(mapping map[string]any) bool {
+func parseHeaderKeepOnlyDeclared(mapping map[string]interface{}) bool {
 	keepOnlyDeclaredRaw, ok := mapping["$keep_only_declared"]
 	if !ok {
 		return false
@@ -1325,7 +1240,7 @@ func parseHeaderKeepOnlyDeclared(mapping map[string]any) bool {
 	return keepOnlyDeclared
 }
 
-func parseHeaderReplacementTokens(value any) ([]string, error) {
+func parseHeaderReplacementTokens(value interface{}) ([]string, error) {
 	switch raw := value.(type) {
 	case nil:
 		return nil, nil
@@ -1337,7 +1252,7 @@ func parseHeaderReplacementTokens(value any) ([]string, error) {
 			tokens = append(tokens, splitHeaderListValue(item)...)
 		}
 		return lo.Uniq(tokens), nil
-	case []any:
+	case []interface{}:
 		tokens := make([]string, 0, len(raw))
 		for _, item := range raw {
 			itemTokens, err := parseHeaderReplacementTokens(item)
@@ -1347,7 +1262,7 @@ func parseHeaderReplacementTokens(value any) ([]string, error) {
 			tokens = append(tokens, itemTokens...)
 		}
 		return lo.Uniq(tokens), nil
-	case map[string]any, map[string]string:
+	case map[string]interface{}, map[string]string:
 		return nil, fmt.Errorf("header replacement value must be string, array or null")
 	default:
 		token := strings.TrimSpace(fmt.Sprintf("%v", raw))
@@ -1369,7 +1284,7 @@ func splitHeaderListValue(raw string) []string {
 	})
 }
 
-func copyHeaderInContext(context map[string]any, fromHeader, toHeader string, keepOrigin bool) error {
+func copyHeaderInContext(context map[string]interface{}, fromHeader, toHeader string, keepOrigin bool) error {
 	fromHeader = normalizeHeaderContextKey(fromHeader)
 	toHeader = normalizeHeaderContextKey(toHeader)
 	if fromHeader == "" || toHeader == "" {
@@ -1382,7 +1297,7 @@ func copyHeaderInContext(context map[string]any, fromHeader, toHeader string, ke
 	return setHeaderOverrideInContext(context, toHeader, value, keepOrigin)
 }
 
-func moveHeaderInContext(context map[string]any, fromHeader, toHeader string, keepOrigin bool) error {
+func moveHeaderInContext(context map[string]interface{}, fromHeader, toHeader string, keepOrigin bool) error {
 	fromHeader = normalizeHeaderContextKey(fromHeader)
 	toHeader = normalizeHeaderContextKey(toHeader)
 	if fromHeader == "" || toHeader == "" {
@@ -1397,7 +1312,7 @@ func moveHeaderInContext(context map[string]any, fromHeader, toHeader string, ke
 	return deleteHeaderOverrideInContext(context, fromHeader)
 }
 
-func deleteHeaderOverrideInContext(context map[string]any, headerName string) error {
+func deleteHeaderOverrideInContext(context map[string]interface{}, headerName string) error {
 	headerName = normalizeHeaderContextKey(headerName)
 	if headerName == "" {
 		return fmt.Errorf("header name is required")
@@ -1407,7 +1322,7 @@ func deleteHeaderOverrideInContext(context map[string]any, headerName string) er
 	return nil
 }
 
-func parseHeaderPassThroughNames(value any) ([]string, error) {
+func parseHeaderPassThroughNames(value interface{}) ([]string, error) {
 	normalizeNames := func(values []string) []string {
 		names := lo.FilterMap(values, func(item string, _ int) (string, bool) {
 			headerName := normalizeHeaderContextKey(item)
@@ -1428,7 +1343,7 @@ func parseHeaderPassThroughNames(value any) ([]string, error) {
 			return nil, fmt.Errorf("pass_headers value is required")
 		}
 		if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
-			var parsed any
+			var parsed interface{}
 			if err := common.UnmarshalJsonStr(trimmed, &parsed); err == nil {
 				return parseHeaderPassThroughNames(parsed)
 			}
@@ -1438,8 +1353,8 @@ func parseHeaderPassThroughNames(value any) ([]string, error) {
 			return nil, fmt.Errorf("pass_headers value is invalid")
 		}
 		return names, nil
-	case []any:
-		names := lo.FilterMap(raw, func(item any, _ int) (string, bool) {
+	case []interface{}:
+		names := lo.FilterMap(raw, func(item interface{}, _ int) (string, bool) {
 			headerName := normalizeHeaderContextKey(fmt.Sprintf("%v", item))
 			if headerName == "" {
 				return "", false
@@ -1464,7 +1379,7 @@ func parseHeaderPassThroughNames(value any) ([]string, error) {
 			return nil, fmt.Errorf("pass_headers value is invalid")
 		}
 		return names, nil
-	case map[string]any:
+	case map[string]interface{}:
 		candidates := make([]string, 0, 8)
 		if headersRaw, ok := raw["headers"]; ok {
 			names, err := parseHeaderPassThroughNames(headersRaw)
@@ -1505,8 +1420,8 @@ func parseSyncTarget(spec string) (syncTarget, error) {
 		return syncTarget{}, fmt.Errorf("sync_fields target is required")
 	}
 
-	before, after, ok := strings.Cut(raw, ":")
-	if !ok {
+	idx := strings.Index(raw, ":")
+	if idx < 0 {
 		// Backward compatibility: treat bare value as JSON path.
 		return syncTarget{
 			kind: "json",
@@ -1514,8 +1429,8 @@ func parseSyncTarget(spec string) (syncTarget, error) {
 		}, nil
 	}
 
-	kind := strings.ToLower(strings.TrimSpace(before))
-	key := strings.TrimSpace(after)
+	kind := strings.ToLower(strings.TrimSpace(raw[:idx]))
+	key := strings.TrimSpace(raw[idx+1:])
 	if key == "" {
 		return syncTarget{}, fmt.Errorf("sync_fields target key is required: %s", raw)
 	}
@@ -1536,7 +1451,7 @@ func parseSyncTarget(spec string) (syncTarget, error) {
 	}
 }
 
-func readSyncTargetValue(data []byte, context map[string]any, target syncTarget) (any, bool, error) {
+func readSyncTargetValue(data []byte, context map[string]interface{}, target syncTarget) (interface{}, bool, error) {
 	switch target.kind {
 	case "json":
 		path := processNegativeIndex(data, target.key)
@@ -1559,7 +1474,7 @@ func readSyncTargetValue(data []byte, context map[string]any, target syncTarget)
 	}
 }
 
-func writeSyncTargetValue(data []byte, context map[string]any, target syncTarget, value any) ([]byte, error) {
+func writeSyncTargetValue(data []byte, context map[string]interface{}, target syncTarget, value interface{}) ([]byte, error) {
 	switch target.kind {
 	case "json":
 		path := processNegativeIndex(data, target.key)
@@ -1578,7 +1493,7 @@ func writeSyncTargetValue(data []byte, context map[string]any, target syncTarget
 	}
 }
 
-func syncFieldsBetweenTargets(data []byte, context map[string]any, fromSpec string, toSpec string) ([]byte, error) {
+func syncFieldsBetweenTargets(data []byte, context map[string]interface{}, fromSpec string, toSpec string) ([]byte, error) {
 	fromTarget, err := parseSyncTarget(fromSpec)
 	if err != nil {
 		return nil, err
@@ -1607,21 +1522,21 @@ func syncFieldsBetweenTargets(data []byte, context map[string]any, fromSpec stri
 	return data, nil
 }
 
-func ensureMapKeyInContext(context map[string]any, key string) map[string]any {
+func ensureMapKeyInContext(context map[string]interface{}, key string) map[string]interface{} {
 	if context == nil {
-		return map[string]any{}
+		return map[string]interface{}{}
 	}
 	if existing, ok := context[key]; ok {
-		if mapVal, ok := existing.(map[string]any); ok {
+		if mapVal, ok := existing.(map[string]interface{}); ok {
 			return mapVal
 		}
 	}
-	result := make(map[string]any)
+	result := make(map[string]interface{})
 	context[key] = result
 	return result
 }
 
-func getHeaderValueFromContext(context map[string]any, headerName string) (string, bool) {
+func getHeaderValueFromContext(context map[string]interface{}, headerName string) (string, bool) {
 	headerName = normalizeHeaderContextKey(headerName)
 	if headerName == "" {
 		return "", false
@@ -1644,9 +1559,9 @@ func normalizeHeaderContextKey(key string) string {
 	return strings.TrimSpace(strings.ToLower(key))
 }
 
-func buildRequestHeadersContext(headers map[string]string) map[string]any {
+func buildRequestHeadersContext(headers map[string]string) map[string]interface{} {
 	if len(headers) == 0 {
-		return map[string]any{}
+		return map[string]interface{}{}
 	}
 	entries := lo.Entries(headers)
 	normalizedEntries := lo.FilterMap(entries, func(item lo.Entry[string, string], _ int) (lo.Entry[string, string], bool) {
@@ -1657,12 +1572,12 @@ func buildRequestHeadersContext(headers map[string]string) map[string]any {
 		}
 		return lo.Entry[string, string]{Key: normalized, Value: value}, true
 	})
-	return lo.SliceToMap(normalizedEntries, func(item lo.Entry[string, string]) (string, any) {
+	return lo.SliceToMap(normalizedEntries, func(item lo.Entry[string, string]) (string, interface{}) {
 		return item.Key, item.Value
 	})
 }
 
-func syncRuntimeHeaderOverrideFromContext(info *RelayInfo, context map[string]any) {
+func syncRuntimeHeaderOverrideFromContext(info *RelayInfo, context map[string]interface{}) {
 	if info == nil || context == nil {
 		return
 	}
@@ -1670,7 +1585,7 @@ func syncRuntimeHeaderOverrideFromContext(info *RelayInfo, context map[string]an
 	if !exists {
 		return
 	}
-	rawMap, ok := raw.(map[string]any)
+	rawMap, ok := raw.(map[string]interface{})
 	if !ok {
 		return
 	}
@@ -1715,7 +1630,7 @@ func resolveOperationPaths(data []byte, path string) ([]string, error) {
 }
 
 func expandWildcardPaths(data []byte, path string) ([]string, error) {
-	var root any
+	var root interface{}
 	if err := common.Unmarshal(data, &root); err != nil {
 		return nil, err
 	}
@@ -1725,7 +1640,7 @@ func expandWildcardPaths(data []byte, path string) ([]string, error) {
 	return lo.Uniq(paths), nil
 }
 
-func collectWildcardPaths(node any, segments []string, prefix []string) []string {
+func collectWildcardPaths(node interface{}, segments []string, prefix []string) []string {
 	if len(segments) == 0 {
 		return []string{strings.Join(prefix, ".")}
 	}
@@ -1738,13 +1653,13 @@ func collectWildcardPaths(node any, segments []string, prefix []string) []string
 
 	if segment == "*" {
 		switch typed := node.(type) {
-		case map[string]any:
+		case map[string]interface{}:
 			keys := lo.Keys(typed)
 			sort.Strings(keys)
 			return lo.FlatMap(keys, func(key string, _ int) []string {
 				return collectWildcardPaths(typed[key], segments[1:], append(prefix, key))
 			})
-		case []any:
+		case []interface{}:
 			return lo.FlatMap(lo.Range(len(typed)), func(index int, _ int) []string {
 				return collectWildcardPaths(typed[index], segments[1:], append(prefix, strconv.Itoa(index)))
 			})
@@ -1754,7 +1669,7 @@ func collectWildcardPaths(node any, segments []string, prefix []string) []string
 	}
 
 	switch typed := node.(type) {
-	case map[string]any:
+	case map[string]interface{}:
 		if isLast {
 			return []string{strings.Join(append(prefix, segment), ".")}
 		}
@@ -1763,7 +1678,7 @@ func collectWildcardPaths(node any, segments []string, prefix []string) []string
 			return nil
 		}
 		return collectWildcardPaths(next, segments[1:], append(prefix, segment))
-	case []any:
+	case []interface{}:
 		index, err := strconv.Atoi(segment)
 		if err != nil || index < 0 || index >= len(typed) {
 			return nil
@@ -1784,7 +1699,7 @@ func deleteValue(data []byte, path string) ([]byte, error) {
 	return sjson.DeleteBytes(data, path)
 }
 
-func modifyValue(data []byte, path string, value any, keepOrigin, isPrepend bool) ([]byte, error) {
+func modifyValue(data []byte, path string, value interface{}, keepOrigin, isPrepend bool) ([]byte, error) {
 	current := gjson.GetBytes(data, path)
 	switch {
 	case current.IsArray():
@@ -1797,12 +1712,12 @@ func modifyValue(data []byte, path string, value any, keepOrigin, isPrepend bool
 	return data, fmt.Errorf("operation not supported for type: %v", current.Type)
 }
 
-func modifyArray(data []byte, path string, value any, isPrepend bool) ([]byte, error) {
+func modifyArray(data []byte, path string, value interface{}, isPrepend bool) ([]byte, error) {
 	current := gjson.GetBytes(data, path)
-	var newArray []any
+	var newArray []interface{}
 	// 添加新值
 	addValue := func() {
-		if arr, ok := value.([]any); ok {
+		if arr, ok := value.([]interface{}); ok {
 			newArray = append(newArray, arr...)
 		} else {
 			newArray = append(newArray, value)
@@ -1825,7 +1740,7 @@ func modifyArray(data []byte, path string, value any, isPrepend bool) ([]byte, e
 	return sjson.SetBytes(data, path, newArray)
 }
 
-func modifyString(data []byte, path string, value any, isPrepend bool) ([]byte, error) {
+func modifyString(data []byte, path string, value interface{}, isPrepend bool) ([]byte, error) {
 	current := gjson.GetBytes(data, path)
 	valueStr := fmt.Sprintf("%v", value)
 	var newStr string
@@ -1837,7 +1752,7 @@ func modifyString(data []byte, path string, value any, isPrepend bool) ([]byte, 
 	return sjson.SetBytes(data, path, newStr)
 }
 
-func trimStringValue(data []byte, path string, value any, isPrefix bool) ([]byte, error) {
+func trimStringValue(data []byte, path string, value interface{}, isPrefix bool) ([]byte, error) {
 	current := gjson.GetBytes(data, path)
 	if current.Type != gjson.String {
 		return data, fmt.Errorf("operation not supported for type: %v", current.Type)
@@ -1857,7 +1772,7 @@ func trimStringValue(data []byte, path string, value any, isPrefix bool) ([]byte
 	return sjson.SetBytes(data, path, newStr)
 }
 
-func ensureStringAffix(data []byte, path string, value any, isPrefix bool) ([]byte, error) {
+func ensureStringAffix(data []byte, path string, value interface{}, isPrefix bool) ([]byte, error) {
 	current := gjson.GetBytes(data, path)
 	if current.Type != gjson.String {
 		return data, fmt.Errorf("operation not supported for type: %v", current.Type)
@@ -1925,14 +1840,14 @@ type pruneObjectsOptions struct {
 	recursive  bool
 }
 
-func pruneObjects(data []byte, path, contextJSON string, value any) ([]byte, error) {
+func pruneObjects(data []byte, path, contextJSON string, value interface{}) ([]byte, error) {
 	options, err := parsePruneObjectsOptions(value)
 	if err != nil {
 		return nil, err
 	}
 
 	if path == "" {
-		var root any
+		var root interface{}
 		if err := common.Unmarshal(data, &root); err != nil {
 			return nil, err
 		}
@@ -1948,7 +1863,7 @@ func pruneObjects(data []byte, path, contextJSON string, value any) ([]byte, err
 		return data, nil
 	}
 
-	var targetNode any
+	var targetNode interface{}
 	if target.Type == gjson.JSON {
 		if err := common.UnmarshalJsonStr(target.Raw, &targetNode); err != nil {
 			return nil, err
@@ -1968,7 +1883,7 @@ func pruneObjects(data []byte, path, contextJSON string, value any) ([]byte, err
 	return sjson.SetRawBytes(data, path, cleanedBytes)
 }
 
-func parsePruneObjectsOptions(value any) (pruneObjectsOptions, error) {
+func parsePruneObjectsOptions(value interface{}) (pruneObjectsOptions, error) {
 	opts := pruneObjectsOptions{
 		logic:     "AND",
 		recursive: true,
@@ -1989,7 +1904,7 @@ func parsePruneObjectsOptions(value any) (pruneObjectsOptions, error) {
 				Value: v,
 			},
 		}
-	case map[string]any:
+	case map[string]interface{}:
 		if logic, ok := raw["logic"].(string); ok && strings.TrimSpace(logic) != "" {
 			opts.logic = logic
 		}
@@ -2006,7 +1921,7 @@ func parsePruneObjectsOptions(value any) (pruneObjectsOptions, error) {
 		}
 
 		if whereRaw, exists := raw["where"]; exists {
-			whereMap, ok := whereRaw.(map[string]any)
+			whereMap, ok := whereRaw.(map[string]interface{})
 			if !ok {
 				return opts, fmt.Errorf("prune_objects where must be object")
 			}
@@ -2040,11 +1955,11 @@ func parsePruneObjectsOptions(value any) (pruneObjectsOptions, error) {
 	return opts, nil
 }
 
-func parseConditionOperations(raw any) ([]ConditionOperation, error) {
+func parseConditionOperations(raw interface{}) ([]ConditionOperation, error) {
 	switch typed := raw.(type) {
-	case map[string]any:
+	case map[string]interface{}:
 		entries := lo.Entries(typed)
-		conditions := lo.FilterMap(entries, func(item lo.Entry[string, any], _ int) (ConditionOperation, bool) {
+		conditions := lo.FilterMap(entries, func(item lo.Entry[string, interface{}], _ int) (ConditionOperation, bool) {
 			path := strings.TrimSpace(item.Key)
 			if path == "" {
 				return ConditionOperation{}, false
@@ -2059,11 +1974,11 @@ func parseConditionOperations(raw any) ([]ConditionOperation, error) {
 			return nil, fmt.Errorf("conditions object must contain at least one key")
 		}
 		return conditions, nil
-	case []any:
+	case []interface{}:
 		items := typed
 		result := make([]ConditionOperation, 0, len(items))
 		for _, item := range items {
-			itemMap, ok := item.(map[string]any)
+			itemMap, ok := item.(map[string]interface{})
 			if !ok {
 				return nil, fmt.Errorf("condition must be object")
 			}
@@ -2093,10 +2008,10 @@ func parseConditionOperations(raw any) ([]ConditionOperation, error) {
 	}
 }
 
-func pruneObjectsNode(node any, options pruneObjectsOptions, contextJSON string, isRoot bool) (any, bool, error) {
+func pruneObjectsNode(node interface{}, options pruneObjectsOptions, contextJSON string, isRoot bool) (interface{}, bool, error) {
 	switch value := node.(type) {
-	case []any:
-		result := make([]any, 0, len(value))
+	case []interface{}:
+		result := make([]interface{}, 0, len(value))
 		for _, item := range value {
 			next, drop, err := pruneObjectsNode(item, options, contextJSON, false)
 			if err != nil {
@@ -2108,7 +2023,7 @@ func pruneObjectsNode(node any, options pruneObjectsOptions, contextJSON string,
 			result = append(result, next)
 		}
 		return result, false, nil
-	case map[string]any:
+	case map[string]interface{}:
 		shouldDrop, err := shouldPruneObject(value, options, contextJSON)
 		if err != nil {
 			return nil, false, err
@@ -2136,7 +2051,7 @@ func pruneObjectsNode(node any, options pruneObjectsOptions, contextJSON string,
 	}
 }
 
-func shouldPruneObject(node map[string]any, options pruneObjectsOptions, contextJSON string) (bool, error) {
+func shouldPruneObject(node map[string]interface{}, options pruneObjectsOptions, contextJSON string) (bool, error) {
 	nodeBytes, err := common.Marshal(node)
 	if err != nil {
 		return false, err
@@ -2144,9 +2059,9 @@ func shouldPruneObject(node map[string]any, options pruneObjectsOptions, context
 	return checkConditions(nodeBytes, contextJSON, options.conditions, options.logic)
 }
 
-func mergeObjects(data []byte, path string, value any, keepOrigin bool) ([]byte, error) {
+func mergeObjects(data []byte, path string, value interface{}, keepOrigin bool) ([]byte, error) {
 	current := gjson.GetBytes(data, path)
-	var currentMap, newMap map[string]any
+	var currentMap, newMap map[string]interface{}
 
 	// 解析当前值（current.Raw 是 data 的子串，避免再分配一份）
 	if err := common.UnmarshalJsonStr(current.Raw, &currentMap); err != nil {
@@ -2154,7 +2069,7 @@ func mergeObjects(data []byte, path string, value any, keepOrigin bool) ([]byte,
 	}
 	// 解析新值
 	switch v := value.(type) {
-	case map[string]any:
+	case map[string]interface{}:
 		newMap = v
 	default:
 		jsonBytes, _ := common.Marshal(v)
@@ -2163,8 +2078,10 @@ func mergeObjects(data []byte, path string, value any, keepOrigin bool) ([]byte,
 		}
 	}
 	// 合并
-	result := make(map[string]any)
-	maps.Copy(result, currentMap)
+	result := make(map[string]interface{})
+	for k, v := range currentMap {
+		result[k] = v
+	}
 	for k, v := range newMap {
 		if !keepOrigin || result[k] == nil {
 			result[k] = v
@@ -2183,12 +2100,12 @@ func mergeObjects(data []byte, path string, value any, keepOrigin bool) ([]byte,
 //   - using_group：当前实际使用的分组，自动跨分组重试时可能变化。
 //   - request_path：请求路径
 //   - is_channel_test：是否为渠道测试请求（同 is_test）。
-func BuildParamOverrideContext(info *RelayInfo) map[string]any {
+func BuildParamOverrideContext(info *RelayInfo) map[string]interface{} {
 	if info == nil {
 		return nil
 	}
 
-	ctx := make(map[string]any)
+	ctx := make(map[string]interface{})
 	ctx["user_id"] = info.UserId
 	ctx["user_group"] = info.UserGroup
 	ctx["token_group"] = info.TokenGroup
@@ -2218,7 +2135,7 @@ func BuildParamOverrideContext(info *RelayInfo) map[string]any {
 
 	ctx["retry_index"] = info.RetryIndex
 	ctx["is_retry"] = info.RetryIndex > 0
-	ctx["retry"] = map[string]any{
+	ctx["retry"] = map[string]interface{}{
 		"index":    info.RetryIndex,
 		"is_retry": info.RetryIndex > 0,
 	}
@@ -2226,7 +2143,7 @@ func BuildParamOverrideContext(info *RelayInfo) map[string]any {
 	if info.LastError != nil {
 		code := string(info.LastError.GetErrorCode())
 		errorType := string(info.LastError.GetErrorType())
-		lastError := map[string]any{
+		lastError := map[string]interface{}{
 			"status_code": info.LastError.StatusCode,
 			"message":     info.LastError.Error(),
 			"code":        code,

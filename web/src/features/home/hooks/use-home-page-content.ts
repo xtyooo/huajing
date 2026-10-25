@@ -18,9 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import i18next from 'i18next'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 import { isHttpUrl } from '@/lib/content-format'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { getHomePageContent } from '../api'
 import type { HomePageContentResult } from '../types'
@@ -61,7 +61,9 @@ export function useHomePageContent(): HomePageContentResult {
         }
       } catch (error) {
         if (!mounted) return
-        handleServerError(error, i18next.t('Failed to load home page content'))
+        // eslint-disable-next-line no-console
+        console.error('Failed to load home page content:', error)
+        toast.error(i18next.t('Failed to load home page content'))
       } finally {
         if (mounted) {
           setIsLoaded(true)

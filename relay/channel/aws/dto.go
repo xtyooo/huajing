@@ -40,18 +40,17 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 	awsClaudeRequest.AnthropicVersion = "bedrock-2023-05-31"
 
 	// check header anthropic-beta
-	var betas []string
-	for beta := range strings.SplitSeq(requestHeader.Get("anthropic-beta"), ",") {
-		if beta = strings.TrimSpace(beta); beta != "" {
-			betas = append(betas, beta)
+	anthropicBetaValues := requestHeader.Get("anthropic-beta")
+	if len(anthropicBetaValues) > 0 {
+		var tempArray []string
+		tempArray = strings.Split(anthropicBetaValues, ",")
+		if len(tempArray) > 0 {
+			betaJson, err := json.Marshal(tempArray)
+			if err != nil {
+				return nil, err
+			}
+			awsClaudeRequest.AnthropicBeta = betaJson
 		}
-	}
-	if len(betas) > 0 {
-		betaJson, err := common.Marshal(betas)
-		if err != nil {
-			return nil, err
-		}
-		awsClaudeRequest.AnthropicBeta = betaJson
 	}
 	logger.LogJson(context.Background(), "json", awsClaudeRequest)
 	return &awsClaudeRequest, nil
@@ -134,7 +133,7 @@ func parseStopSequences(stop any) []string {
 		}
 	case []string:
 		return v
-	case []any:
+	case []interface{}:
 		var sequences []string
 		for _, item := range v {
 			if str, ok := item.(string); ok && str != "" {

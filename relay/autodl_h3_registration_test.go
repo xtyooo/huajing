@@ -18,7 +18,7 @@ func TestAutoDLH3ChannelRegistration(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, constant.APITypeOpenAI, apiType)
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, common.GetEndpointTypesByChannelType(constant.ChannelTypeAutoDLH3, autodl_h3.ModelList[0]))
-	assert.IsType(t, &autodl_h3.TaskAdaptor{}, getNativeTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3))))
+	assert.IsType(t, &autodl_h3.TaskAdaptor{}, GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAutoDLH3))))
 	assert.Equal(t, []string{
 		"minimax_h3_lightx2v_no_pic",
 		"minimax_h3_image_audio_to_video_v2_15s",
