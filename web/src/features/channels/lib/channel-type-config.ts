@@ -30,6 +30,8 @@ import {
   CHANNEL_TYPE_YAOCHEN,
   CHANNEL_TYPE_LONGXIA6,
   CHANNEL_TYPE_SNUMOM,
+  CHANNEL_TYPE_XXUAN,
+  CHANNEL_TYPE_XXUAN_UPSCALE,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_SUB2_API,
 } from '../constants'
@@ -367,6 +369,28 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
     ],
     hints: {
       models: 'Models fetched from upstream /v1/models',
+    },
+  },
+  [CHANNEL_TYPE_XXUAN]: {
+    id: CHANNEL_TYPE_XXUAN,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_XXUAN],
+    icon: 'openai',
+    defaultBaseUrl: 'https://api.xxuanaigc.cn/open/v1',
+    supportedModels: [],
+    hints: {
+      models:
+        'Fetch product IDs from upstream /catalog; configure public model mappings and prices separately.',
+    },
+  },
+  [CHANNEL_TYPE_XXUAN_UPSCALE]: {
+    id: CHANNEL_TYPE_XXUAN_UPSCALE,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_XXUAN_UPSCALE],
+    icon: 'openai',
+    defaultBaseUrl: 'https://api.xxuanaigc.cn/open/v1',
+    supportedModels: ['xxuan-video-upscale'],
+    hints: {
+      models:
+        'Use a public model alias for routing and pricing. Source video is uploaded automatically; duration is verified upstream.',
     },
   },
   [CHANNEL_TYPE_SNUMOM]: {

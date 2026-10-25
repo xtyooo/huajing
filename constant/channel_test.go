@@ -64,7 +64,11 @@ func TestCustomChannelTypeIDsRemainStable(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, actual)
-	assert.Equal(t, 82, ChannelTypeDummy)
+	assert.Equal(t, 87, ChannelTypeDummy)
+	assert.Equal(t, 85, ChannelTypeXxuan)
+	assert.Equal(t, 86, ChannelTypeXxuanUpscale)
+	assert.Equal(t, "https://api.xxuanaigc.cn/open/v1", ChannelBaseURLs[ChannelTypeXxuan])
+	assert.Equal(t, ChannelBaseURLs[ChannelTypeXxuan], ChannelBaseURLs[ChannelTypeXxuanUpscale])
 	require.Len(t, ChannelBaseURLs, ChannelTypeDummy)
 	for name, channelType := range actual {
 		assert.Equal(t, name, ChannelTypeNames[channelType])

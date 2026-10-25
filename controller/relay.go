@@ -623,6 +623,9 @@ func RelayTask(c *gin.Context) {
 	if taskErr == nil {
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+		if relayInfo.ChannelType == constant.ChannelTypeXxuan || relayInfo.ChannelType == constant.ChannelTypeXxuanUpscale {
+			task.PrivateData.NextPollAt = c.GetInt64("xxuan_next_poll_at")
+		}
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
@@ -730,6 +733,10 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
+	// A dispatched xxuan create may have succeeded even if its response was lost.
+	if c.GetBool("xxuan_task_submit_started") {
+		return false
+	}
 	if taskErr == nil {
 		return false
 	}

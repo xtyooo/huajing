@@ -559,7 +559,8 @@ func requiresValidatedVideoResultURL(platform constant.TaskPlatform) bool {
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanchen)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeYaochen)) ||
 		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeLongxia6)) ||
-		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom))
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) ||
+		isXxuanTaskPlatform(platform)
 }
 
 func isAnheTask(task *model.Task) bool {
@@ -658,7 +659,7 @@ func resolveMediaFileExtension(platform constant.TaskPlatform, rawURL string, co
 		return urlExt
 	}
 	contentTypeExt := getExtFromContentType(contentType)
-	if usesOpenAIVideoContentEndpoint(platform) || platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) {
+	if usesOpenAIVideoContentEndpoint(platform) || platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) || isXxuanTaskPlatform(platform) {
 		if knownMediaExts[strings.ToLower(contentTypeExt)] {
 			return contentTypeExt
 		}

@@ -572,4 +572,8 @@ export const STATIC_I18N_KEYS = [
   'This user account is disabled.',
   'Telegram binding failed. Please try again.',
   'Verification scope is missing',
+  'xxuan Video Generation',
+  'xxuan Video Upscale',
+  'Fetch product IDs from upstream /catalog; configure public model mappings and prices separately.',
+  'Use a public model alias for routing and pricing. Source video is uploaded automatically; duration is verified upstream.',
 ] as const

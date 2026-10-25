@@ -337,6 +337,59 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 	if channel.GetBaseURL() != "" {
 		baseURL = channel.GetBaseURL()
 	}
+	if channel.Type == constant.ChannelTypeXxuanUpscale {
+		// Upscale options describe output capabilities, not upstream model IDs.
+		return []string{"xxuan-video-upscale"}, nil
+	}
+	if channel.Type == constant.ChannelTypeXxuan {
+		key, _, apiErr := channel.GetNextEnabledKey()
+		if apiErr != nil {
+			return nil, fmt.Errorf("获取渠道密钥失败: %w", apiErr)
+		}
+		key = strings.TrimSpace(key)
+		headers, err := buildFetchModelsHeaders(channel, key)
+		if err != nil {
+			return nil, sanitizeFetchModelsError(err, key)
+		}
+		baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		if !strings.HasSuffix(baseURL, "/open/v1") {
+			if strings.HasSuffix(baseURL, "/v1") {
+				baseURL = strings.TrimSuffix(baseURL, "/v1")
+			}
+			if strings.HasSuffix(baseURL, "/open") {
+				baseURL += "/v1"
+			} else {
+				baseURL += "/open/v1"
+			}
+		}
+		body, err := getFetchModelsResponseBody(http.MethodGet, baseURL+"/catalog", channel, headers)
+		if err != nil {
+			return nil, sanitizeFetchModelsError(err, key)
+		}
+		var catalog struct {
+			Products []struct {
+				ProductID     string `json:"product_id"`
+				OperationType string `json:"operation_type"`
+				Available     *bool  `json:"available"`
+			} `json:"products"`
+		}
+		if err := common.Unmarshal(body, &catalog); err != nil || catalog.Products == nil {
+			return nil, fmt.Errorf("invalid xxuan catalog response: products is required")
+		}
+		ids := make([]string, 0, len(catalog.Products))
+		seen := make(map[string]bool)
+		for _, product := range catalog.Products {
+			if product.OperationType != "" && product.OperationType != "generate" || product.Available != nil && !*product.Available {
+				continue
+			}
+			// The product ID is opaque; never derive it from display names or tiers.
+			if strings.TrimSpace(product.ProductID) != "" && !seen[product.ProductID] {
+				ids = append(ids, product.ProductID)
+				seen[product.ProductID] = true
+			}
+		}
+		return ids, nil
+	}
 
 	if channel.Type == constant.ChannelTypeOllama {
 		key := strings.TrimSpace(strings.Split(channel.Key, "\n")[0])

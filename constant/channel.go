@@ -79,7 +79,10 @@ const (
 	ChannelTypeYaochen        = 79
 	ChannelTypeLongxia6       = 80
 	ChannelTypeSnumom         = 81
-	ChannelTypeDummy          = 82 // 仅用于统计渠道数量，禁止在其后新增渠道类型
+	// 82–84 are reserved for the deferred official integration.
+	ChannelTypeXxuan        = 85
+	ChannelTypeXxuanUpscale = 86
+	ChannelTypeDummy        = 87 // count sentinel; never a persisted channel type
 
 )
 
@@ -146,26 +149,31 @@ var ChannelBaseURLs = []string{
 	"https://api.meai.cloud",                    //59
 	"https://api.xs-token.com",                  //60
 	"http://64.81.114.92:8080/api/gateway/v1", //61
-	"",                             //62 Mimo, no default base URL
-	"",                             //63 Lingjing, no default base URL
-	"",                             //64 Advanced Custom
-	"https://api.pro666.top",       //65 Kuai
-	"https://aivideo.beauty",       //66 sd0717
-	"https://token-api.wufan.com",  //67 wufan
-	"",                             //68 Sub2API
-	"",                             //69 NewAPI
-	"https://anhedean.cn",          //70 Anhe
-	"https://bf.dszyym.com",        //71 zhou_sd
-	"https://autodl.art",           //72 AutoDL H3
-	"https://llm.chre3.com",        //73 diaomao
-	"https://shafu.it.com",         //74 shafu
-	"https://api.manjuai.top",      //75 manju
-	"https://gpt.qinnaonao.com",    //76 naonao
-	"https://shafu.it.com",         //77 manying
-	"https://api.qilingze.com",     //78 wanchen
-	"https://api.chengyuapi.top",   //79 yaochen
-	"https://api8.longxiaai.store", //80 longxia6
-	"https://snumom.com",           //81 snumom
+	"",                                 //62 Mimo, no default base URL
+	"",                                 //63 Lingjing, no default base URL
+	"",                                 //64 Advanced Custom
+	"https://api.pro666.top",           //65 Kuai
+	"https://aivideo.beauty",           //66 sd0717
+	"https://token-api.wufan.com",      //67 wufan
+	"",                                 //68 Sub2API
+	"",                                 //69 NewAPI
+	"https://anhedean.cn",              //70 Anhe
+	"https://bf.dszyym.com",            //71 zhou_sd
+	"https://autodl.art",               //72 AutoDL H3
+	"https://llm.chre3.com",            //73 diaomao
+	"https://shafu.it.com",             //74 shafu
+	"https://api.manjuai.top",          //75 manju
+	"https://gpt.qinnaonao.com",        //76 naonao
+	"https://shafu.it.com",             //77 manying
+	"https://api.qilingze.com",         //78 wanchen
+	"https://api.chengyuapi.top",       //79 yaochen
+	"https://api8.longxiaai.store",     //80 longxia6
+	"https://snumom.com",               //81 snumom
+	"",                                 //82 reserved
+	"",                                 //83 reserved
+	"",                                 //84 reserved
+	"https://api.xxuanaigc.cn/open/v1", //85 xxuan generation
+	"https://api.xxuanaigc.cn/open/v1", //86 xxuan upscale
 }
 
 var ChannelTypeNames = map[int]string{
@@ -247,6 +255,8 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeYaochen:        "yaochen",
 	ChannelTypeLongxia6:       "longxia6",
 	ChannelTypeSnumom:         "snumom",
+	ChannelTypeXxuan:          "xxuan Video Generation",
+	ChannelTypeXxuanUpscale:   "xxuan Video Upscale",
 }
 
 func GetChannelTypeName(channelType int) string {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -455,6 +456,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		logger.LogError(ctx, fmt.Sprintf("Task %s not found in taskM", taskId))
 		return fmt.Errorf("task %s not found", taskId)
 	}
+	xxuanTask := isXxuanTaskPlatform(task.Platform)
+	if xxuanTask && task.PrivateData.NextPollAt > time.Now().Unix() {
+		return nil
+	}
 	key := ch.Key
 
 	privateData := task.PrivateData
@@ -474,7 +479,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
-	logger.LogDebug(ctx, "updateVideoSingleTask response: %s", responseBody)
+	if !xxuanTask {
+		logger.LogDebug(ctx, "updateVideoSingleTask response: %s", responseBody)
+	}
 
 	snap := task.Snapshot()
 
@@ -483,7 +490,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	// nested result. Let these adaptors parse it before the generic decoder
 	// discards the result URL.
 	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnhe)) ||
-		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) {
+		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeSnumom)) || xxuanTask {
 		if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 		}
@@ -504,11 +511,22 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		}
 	}
 
-	task.Data = redactVideoResponseBody(responseBody)
-
-	logger.LogDebug(ctx, "updateVideoSingleTask taskResult: %+v", taskResult)
-
 	now := time.Now().Unix()
+	if xxuanTask {
+		if taskResult.NextPollAfterSeconds < 0 || taskResult.NextPollAfterSeconds > math.MaxInt64-now {
+			return fmt.Errorf("invalid xxuan polling interval")
+		}
+		task.PrivateData.NextPollAt = now + taskResult.NextPollAfterSeconds
+		// Signed result URLs and provider IDs belong only in private_data.
+		task.Data, err = common.Marshal(map[string]any{"status": taskResult.Status, "progress": taskResult.Progress})
+		if err != nil {
+			return err
+		}
+		logger.LogDebug(ctx, "updateVideoSingleTask xxuan status: %s", taskResult.Status)
+	} else {
+		task.Data = redactVideoResponseBody(responseBody)
+		logger.LogDebug(ctx, "updateVideoSingleTask taskResult: %+v", taskResult)
+	}
 	if taskResult.Status == "" {
 		//taskResult = relaycommon.FailTaskInfo("upstream returned empty status")
 		errorResult := &dto.GeneralErrorResponse{}
@@ -645,6 +663,11 @@ func taskBypassesMediaCache(task *model.Task) bool {
 		return false
 	}
 	return task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeKuai))
+}
+
+func isXxuanTaskPlatform(platform constant.TaskPlatform) bool {
+	return platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeXxuan)) ||
+		platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeXxuanUpscale))
 }
 
 func redactVideoResponseBody(body []byte) []byte {

@@ -147,6 +147,7 @@ func (m *Properties) Scan(val interface{}) error {
 }
 
 type TaskPrivateData struct {
+	NextPollAt     int64  `json:"next_poll_at,omitempty"` // Provider minimum polling time; stored in existing private JSON.
 	Key            string `json:"key,omitempty"`
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
@@ -267,7 +268,9 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeManju ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeNaonao ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeManying ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSnumom {
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeSnumom ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeXxuan ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeXxuanUpscale {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
 		if relayInfo.UpstreamModelName != "" {
@@ -556,6 +559,7 @@ func (Task *Task) Insert() error {
 }
 
 type taskSnapshot struct {
+	NextPollAt int64
 	Status     TaskStatus
 	Progress   string
 	StartTime  int64
@@ -566,7 +570,7 @@ type taskSnapshot struct {
 }
 
 func (s taskSnapshot) Equal(other taskSnapshot) bool {
-	return s.Status == other.Status &&
+	return s.NextPollAt == other.NextPollAt && s.Status == other.Status &&
 		s.Progress == other.Progress &&
 		s.StartTime == other.StartTime &&
 		s.FinishTime == other.FinishTime &&
@@ -577,6 +581,7 @@ func (s taskSnapshot) Equal(other taskSnapshot) bool {
 
 func (t *Task) Snapshot() taskSnapshot {
 	return taskSnapshot{
+		NextPollAt: t.PrivateData.NextPollAt,
 		Status:     t.Status,
 		Progress:   t.Progress,
 		StartTime:  t.StartTime,

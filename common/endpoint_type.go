@@ -50,7 +50,7 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
 	case constant.ChannelTypeNaonao:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
-	case constant.ChannelTypeManying, constant.ChannelTypeWanchen, constant.ChannelTypeYaochen, constant.ChannelTypeLongxia6, constant.ChannelTypeSnumom:
+	case constant.ChannelTypeManying, constant.ChannelTypeWanchen, constant.ChannelTypeYaochen, constant.ChannelTypeLongxia6, constant.ChannelTypeSnumom, constant.ChannelTypeXxuan, constant.ChannelTypeXxuanUpscale:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
 	case constant.ChannelTypeSub2API, constant.ChannelTypeNewAPI:
 		endpointTypes = []constant.EndpointType{

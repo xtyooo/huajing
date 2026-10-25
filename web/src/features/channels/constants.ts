@@ -36,6 +36,9 @@ export const CHANNEL_TYPE_WANCHEN = 78
 export const CHANNEL_TYPE_YAOCHEN = 79
 export const CHANNEL_TYPE_LONGXIA6 = 80
 export const CHANNEL_TYPE_SNUMOM = 81
+// 82–84 remain reserved for the deferred official integration.
+export const CHANNEL_TYPE_XXUAN = 85
+export const CHANNEL_TYPE_XXUAN_UPSCALE = 86
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -116,13 +119,15 @@ export const CHANNEL_TYPES = {
   79: 'yaochen',
   80: 'longxia6',
   81: 'snumom',
+  85: 'xxuan Video Generation',
+  86: 'xxuan Video Upscale',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 69, 64, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15,
   46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 68, 22, 21, 44, 2,
   5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59, 60, 61, 62, 63, 65, 66, 67, 70, 71,
-  72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+  72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 85, 86,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {

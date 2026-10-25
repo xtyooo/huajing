@@ -1,5 +1,9 @@
 {
   "translation": {
+    "xxuan Video Generation": "xxuan 影片生成",
+    "xxuan Video Upscale": "xxuan 影片超解析度",
+    "Fetch product IDs from upstream /catalog; configure public model mappings and prices separately.": "從上游 /catalog 取得產品 ID，公開模型對應和售價請另行設定。",
+    "Use a public model alias for routing and pricing. Source video is uploaded automatically; duration is verified upstream.": "使用公開模型別名設定路由和售價。來源影片會自動上傳，時長以上游驗證結果為準。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

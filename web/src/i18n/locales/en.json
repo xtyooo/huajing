@@ -1,5 +1,9 @@
 {
   "translation": {
+    "xxuan Video Generation": "xxuan Video Generation",
+    "xxuan Video Upscale": "xxuan Video Upscale",
+    "Fetch product IDs from upstream /catalog; configure public model mappings and prices separately.": "Fetch product IDs from upstream /catalog; configure public model mappings and prices separately.",
+    "Use a public model alias for routing and pricing. Source video is uploaded automatically; duration is verified upstream.": "Use a public model alias for routing and pricing. Source video is uploaded automatically; duration is verified upstream.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",
